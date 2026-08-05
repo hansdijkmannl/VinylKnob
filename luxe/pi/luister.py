@@ -652,7 +652,21 @@ async def api_kasthoes(request):
     return web.Response(body=klein, content_type="image/jpeg")
 
 
-PANEEL = os.environ.get("PANEEL_HOST", "")
+# Where the panel lives.
+#
+# You should not have to configure this. The panel polls /nu every four seconds
+# and every one of those requests carries its address, so the Pi simply
+# remembers who called. Setting PANEL_HOST overrides that — useful if you have
+# two panels, or if you want to reach one that is not polling yet.
+#
+# The alternative was asking for an IP during setup, which is a poor question:
+# at that moment the panel usually has no network yet, so you would be typing
+# an address that does not exist.
+PANEEL = os.environ.get("PANEL_HOST", os.environ.get("PANEEL_HOST", ""))
+
+
+def paneel_host() -> str:
+    return PANEEL or oren.laatste_paneel
 
 
 async def _doorgeef(request, doel: str, wat: str):
@@ -698,10 +712,13 @@ async def paneel_proxy(request):
     hangen werkt zonder er iets aan te herschrijven — zowel voor de eigen
     pagina van het paneel als voor de tabbladversie hier.
     """
-    if not PANEEL:
-        raise web.HTTPServiceUnavailable(text="geen PANEEL_HOST ingesteld")
+    host = paneel_host()
+    if not host:
+        raise web.HTTPServiceUnavailable(
+            text="the panel has not been seen yet; it announces itself as soon "
+                 "as it polls this Pi")
     return await _doorgeef(request,
-                           f"http://{PANEEL}/{request.match_info.get('staart', '')}",
+                           f"http://{host}/{request.match_info.get('staart', '')}",
                            "paneel")
 
 
@@ -785,10 +802,11 @@ async def bewaak_versterker() -> None:
     zet de versterker niet aan en uit tussen twee kanten door.
     """
     while True:
-        if PANEEL:
+        host = paneel_host()
+        if host:
             try:
                 async with ClientSession(timeout=ClientTimeout(total=4)) as s:
-                    async with s.get(f"http://{PANEEL}/api/state") as r:
+                    async with s.get(f"http://{host}/api/state") as r:
                         st = await r.json()
                 # Alleen bij zekerheid dichtzetten: geen verbinding met de
                 # receiver betekent dat het paneel het ook niet weet.
@@ -847,7 +865,7 @@ def main() -> None:
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", POORT).start()
         print(f"[luister] microfoon {APPARAAT}, brein op {BREIN}, "
-              f"paneel op {PANEEL or 'niet ingesteld'}, poort {POORT}", flush=True)
+              f"panel {PANEEL or 'auto'}, port {POORT}", flush=True)
 
         # Poort 80 is een extraatje: lukt het niet (geen rechten), dan blijft de
         # rest gewoon draaien in plaats van dat de dienst omvalt.

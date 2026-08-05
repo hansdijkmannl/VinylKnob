@@ -114,9 +114,9 @@ fi
 
 echo
 echo "==> Klaar."
-echo "    Webinterface : http://$(hostname).local:8790"
-echo "    Oren         : http://$(hostname).local:8791/status"
-echo "    Logboek      : journalctl -u marantzknob-brein -u marantzknob-luister -f"
+echo "    Web interface : http://$(hostname).local"
+echo "    Raw levels    : http://$(hostname).local/status"
+echo "    Logs          : journalctl -u marantzknob-brein -u marantzknob-luister -f"
 echo
 echo "    Je bent net aan de groep 'audio' toegevoegd; log een keer uit en in"
 echo "    als je zelf arecord wilt draaien."

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Snel testen of de SR7015 telnet-commando's aanneemt, vanaf je Mac.
+# Check by hand whether the receiver accepts telnet commands.
 #
 #   ./avr.sh 192.168.1.60 SIPHONO
 #   ./avr.sh 192.168.1.60 MV?
-#   ./avr.sh 192.168.1.60          # interactief, typ commando's + enter
+#   ./avr.sh 192.168.1.60          # interactive: type commands, press enter
 #
-# Let op: de receiver accepteert maar EEN telnet-sessie. Draait de firmware
-# al, dan werkt dit niet tot je die even van het net haalt.
+# Note: the receiver accepts exactly ONE telnet session. If the panel is
+# already running this will not connect until you take it off the network.
 
 set -euo pipefail
 

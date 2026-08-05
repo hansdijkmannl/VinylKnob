@@ -19,10 +19,11 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 Environment=PYTHONUNBUFFERED=1
 Environment=BREIN_URL=http://127.0.0.1:8790
 
-# Het adres van het CrowPanel. De instellingen van het paneel komen via deze
-# dienst binnen onder /paneel/, zodat alles op één adres staat. Leeg laten mag:
-# dan blijft het tabblad Panel leeg en werkt de rest gewoon door.
-Environment=PANEEL_HOST=192.168.1.50
+# The panel's address is normally discovered, not configured: it polls this
+# service every four seconds and every request carries its address. Only set
+# this if you have more than one panel, or want to reach one that is not
+# polling yet.
+#Environment=PANEL_HOST=192.168.1.50
 
 # Welke opnamekaart. installeer.sh vult hier in wat arecord -l gevonden heeft;
 # klopt het niet, dan is dit de regel die je aanpast.

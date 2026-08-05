@@ -109,8 +109,8 @@ Het paneel heeft geen toetsenbord, dus dit gaat via een webpagina.
 
 1. Verbind je telefoon of Mac met het wifi-netwerk **MarantzKnob-setup**
 2. Ga naar <http://192.168.4.1>
-3. Vul in: je eigen wifi, `192.168.1.60` als adres van de SR7015, en de
-   ingangenlijst (PHONO als favoriet)
+3. Vul in: je eigen wifi, het IP-adres van je receiver, en de ingangenlijst
+   (PHONO als favoriet)
 4. Opslaan — hij herstart op je eigen netwerk
 
 Daarna staat dezelfde pagina op <http://marantzpaneel.local> — of gewoon op het
