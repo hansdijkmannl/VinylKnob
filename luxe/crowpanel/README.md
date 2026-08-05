@@ -1,77 +1,119 @@
-# CrowPanel-firmware — fase 2
+# CrowPanel firmware
 
-De bediening: telnet naar de SR7015, volume met de knop, ingang via het scherm.
-Voor het **Elecrow CrowPanel 2.1" ESP32 Rotary Display** (ESP32-S3R8).
+Everything the knob does by itself: telnet to the receiver, volume on the
+encoder, inputs and the record shelf on the screen. For the **Elecrow CrowPanel
+2.1" ESP32 Rotary Display** (ESP32-S3R8, 8 MB PSRAM, 16 MB flash).
 
 ```bash
-pio run                  # bouwen
-pio run -t upload        # flashen over USB-C
-pio device monitor
+pio run                  # build
+pio run -t upload        # flash over USB
+pio device monitor       # watch it boot
 ```
 
-Bouwt schoon: 11% flash, 14% RAM. Er is nog geen hardware getest — dit is
-geschreven vóór het paneel binnen was.
+Currently 21.6% of flash and 31.6% of RAM, with about 1.8 MB of the 8 MB PSRAM
+in use — two full-screen draw buffers, the sleeve, and the shelf's thumbnails.
 
-## Wat af is
+## Flashing while it is mounted
+
+Once the panel sits in the enclosure the USB connector is awkward to reach, but
+it is already wired to the Pi. `flash-via-pi.sh` builds here, copies the four
+binaries across, and runs esptool on the Pi:
+
+```bash
+export KNOB_PI=pi@knob.local
+./flash-via-pi.sh
+```
+
+This works because the ESP32-S3 has native USB: esptool puts the chip into its
+bootloader over that same connection, so the BOOT button is only needed if the
+firmware already on the board has broken the USB stack.
+
+## First boot
+
+With no Wi-Fi stored the panel starts its own access point, **MarantzKnob-setup**.
+Connect to it, open <http://192.168.4.1>, and fill in your network, your
+receiver's address, and the list of inputs you actually use. It restarts onto
+your network.
+
+After that the same page lives at the panel's own address, and also inside the
+Pi's web interface under the **Panel** tab — same settings, nicer surroundings.
+
+Holding the knob for eight seconds clears the Wi-Fi and brings the access point
+back. That is the way out if your router changes.
+
+## Controls
+
+| Gesture | Effect |
+|---|---|
+| turn | volume; in a list, the position |
+| hold + turn | step through inputs |
+| short press | mute, or confirm in a list |
+| double press | jump to the favourite input |
+| hold 1 s | amplifier on or off |
+| hold 8 s | clear Wi-Fi, boot into setup mode |
+| tap the input name | input list |
+| tap the sleeve | the record shelf |
+| tap the note | ask the Pi to listen now |
+
+In the shelf, turning browses and **hold + turn jumps by letter** — with several
+hundred albums, one at a time is no way to travel.
+
+Two behaviours inherited from version 1: an input is only sent 250 ms after your
+last step, so the receiver does not actually switch through every input on the
+way; and turning while the button is held suppresses mute and power, so you
+cannot switch the amplifier off by lingering.
+
+## The files
 
 | | |
 |---|---|
-| `marantz.{h,cpp}` | het protocol, ongewijzigd overgenomen uit versie 1 |
-| `settings.{h,cpp}` | instellingen in NVS, idem |
-| `knob.{h,cpp}` | quadratuur plus alle gebaren van de drukknop |
-| `main.cpp` | wifi, de schermtoestanden, en wat elk gebaar doet |
-| `pcf.{h,cpp}` | de PCF8574 op 0x21 |
-| `config.h` | alle pinnen van het bord |
+| `config.h` | every pin on the board, and the build-time defaults |
+| `marantz.{h,cpp}` | the telnet protocol, taken unchanged from version 1 |
+| `settings.{h,cpp}` | settings in NVS, plus JSON for the web interface |
+| `knob.{h,cpp}` | quadrature decoding and every gesture of the push button |
+| `board.{h,cpp}` | display and touch bring-up, backlight |
+| `pcf.{h,cpp}` | the PCF8574 port expander at 0x21 |
+| `hoes.{h,cpp}` | the sleeve of what is playing, and its dominant colour |
+| `kast.{h,cpp}` | the record shelf: the list, the thumbnails, the browsing |
+| `brein.{h,cpp}` | asking the Pi what is playing |
+| `web.{h,cpp}` | the panel's own settings page |
+| `ui.h` | what a screen must be able to do |
+| `ui_lvgl.cpp` | the real thing: five layers, LVGL |
+| `ui_serial.cpp` | the same interface, printed to the serial monitor |
+| `font_kastletter.c` | Montserrat at 130 px, A–Z only, generated |
 
-## Wat er nog niet in zit, en waarom
+## Testing without a screen
 
-**De displaydriver.** Het ST7701-paneel heeft een lange, paneelspecifieke
-initialisatiereeks, en de aanraakchip staat niet in de documentatie van Elecrow.
-Die twee dingen zijn niet te raden — ze horen uit hun eigen voorbeeldcode te
-komen:
+`ui.h` has two implementations. The reason is not tidiness: when this was
+written the panel had not arrived, and the display was the only part that could
+not be built without hardware on the desk. `ui_serial.cpp` prints the whole
+interface to the serial monitor, so the entire control logic can be run and
+tested with no display at all.
 
-<https://github.com/Elecrow-RD/CrowPanel-2.1inch-HMI-ESP32-Rotary-Display-480-480-IPS-Round-Touch-Knob-Screen>
-
-Daarom is het scherm hier een **interface** (`ui.h`) met twee implementaties.
-`ui_serial.cpp` schrijft naar de seriële monitor en is nu actief; daarmee draait
-en test je de hele bediening zonder paneel. `ui_lvgl.cpp` tekent het straks echt
-volgens [../mockup/](../mockup/) — omwisselen doe je in `build_src_filter` in
-`platformio.ini`.
-
-Die scheiding is niet uit netheid maar omdat het displaygedeelte het enige is
-dat pas met hardware op tafel te schrijven valt. De rest is nu al af.
-
-## Zonder scherm testen
-
-Flash het, open de monitor, en draai aan de knop. Je ziet regels als:
+It still works, and it is still the fastest way to debug a gesture. Swap it in
+via `build_src_filter` in `platformio.ini` and you get:
 
 ```
 === VOLUME ===
-[draait] -38.5 dB   Platenspeler
-[  rust] -38.5 dB   Platenspeler
+[turning] -38.5 dB   Turntable
+[   idle] -38.5 dB   Turntable
 ```
 
-Aanrakingen boots je na met een letter in de monitor: `i` = tik op de
-ingangsnaam, `a` = tik op de hoes, `c` = bevestigen, `x` = wegklikken.
+Touches are simulated with single letters: `i` taps the input name, `a` the
+sleeve, `c` confirms, `x` dismisses.
 
-## Bediening
+## Notes for anyone porting this
 
-| Gebaar | Effect |
-|---|---|
-| draaien | volume; in de ingangenlijst de positie |
-| kort drukken | mute aan/uit, of bevestigen in een keuzescherm |
-| dubbel drukken | direct naar de favoriete ingang |
-| vasthouden (1 s) | versterker aan/uit |
-| vasthouden (8 s) | wifi wissen, opstarten in setup-modus |
-| tik op de ingangsnaam | ingangenlijst |
+The ST7701 panel needs a long, panel-specific initialisation sequence, and the
+touch controller is not in Elecrow's documentation. Neither is guessable — both
+came out of their own example code:
 
-Twee dingen die uit versie 1 meekomen en hier net zo goed gelden: een ingang
-wordt pas 250 ms na je laatste stap verstuurd, zodat de receiver niet alle
-tussenliggende ingangen aantikt. En zodra je tijdens het indrukken draait,
-worden mute en aan/uit onderdrukt.
+<https://github.com/Elecrow-RD/CrowPanel-2.1inch-HMI-ESP32-Rotary-Display-480-480-IPS-Round-Touch-Knob-Screen>
 
-## Wat hierna komt
+Two things cost real time and are worth knowing:
 
-Fase 4: de Pi als brein. Het paneel vraagt dan bij een gebeurtenis — ingang gaat
-naar phono, of geluid begint na stilte — om een opzoeking, en krijgt artiest,
-album en een hoes terug. Zie [../brein/](../brein/), dat draait nu al op je Mac.
+- **`board_upload.flash_size` is what matters**, not `board_build.flash_size`.
+  The latter does nothing, and getting it wrong gives you a boot loop with no
+  useful message.
+- **Arduino_GFX 1.3.1 is pinned** on purpose. Version 1.3.5 renamed the class
+  this driver uses, and register 0x36's BGR bit differs between them.

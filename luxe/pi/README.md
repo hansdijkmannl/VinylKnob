@@ -1,236 +1,216 @@
-# De Pi als brein — fase 4
+# The Pi: ears and brain
 
-Alles om de Raspberry Pi 5 headless in te richten: het brein uit
-[../brein/](../brein/) als dienst, en een luisteraar die de USB-microfoon in de
-gaten houdt.
+Two services run here. The **brain** ([../brein/](../brein/)) does recognition,
+Discogs and the database. The **ears** (`luister.py`) watch the microphone, talk
+to the Apple TV, and serve the web interface.
 
-Er is **niets gewijzigd in `../brein/`**. Die code draait op je Mac en blijft
-het testbed; hier staat alleen wat er nodig is om hem op een Pi te laten
-draaien.
+## Setting it up
 
-## Morgen, in volgorde
+### 1. Write the card
 
-### 1. De kaart schrijven
+Raspberry Pi Imager, **Raspberry Pi OS Lite (64-bit)**. No desktop — it costs
+memory and this machine never gets a screen.
 
-Raspberry Pi Imager, **Raspberry Pi OS Lite (64-bit)**. Geen desktop — die kost
-alleen geheugen en de Pi krijgt nooit een scherm.
-
-Zet in het tandwielmenu meteen goed:
+Set these in the gear menu before writing:
 
 | | |
 |---|---|
-| hostnaam | `marantzknob` |
-| SSH | aan, met je publieke sleutel |
-| wifi | je netwerk (of gewoon ethernet) |
-| gebruiker | je eigen naam, niet `pi` |
+| hostname | `marantzknob` |
+| SSH | on, with your public key |
+| Wi-Fi | your network (or just use ethernet) |
+| user | your own name, not `pi` |
 
-Waarom die hostnaam: dan is alles hieronder bereikbaar op
-`marantzknob.local`, ook als de router een ander IP uitdeelt.
+That hostname matters: everything below is then reachable at
+`marantzknob.local` even when the router hands out a different address.
 
-### 2. Overzetten en installeren
-
-```bash
-rsync -av --exclude '.venv' --exclude '._*' /Volumes/Opslag/Apps/MarantzKnob/ marantzknob.local:/opt/marantzknob/
-```
-
-Dan op de Pi:
+### 2. Copy it over and install
 
 ```bash
+rsync -av --exclude '.venv' --exclude '._*' ./ marantzknob.local:marantzknob/
 ssh marantzknob.local
-cd /opt/marantzknob/luxe/pi && ./installeer.sh
+cd marantzknob/luxe/pi && ./installeer.sh
 ```
 
-Dat script is idempotent — een tweede keer draaien mag altijd. Het zet
-pakketten, een virtuele omgeving, de twee diensten, en beperkt het schrijven
-naar de SD-kaart (logs naar RAM, swap uit — zie [../BOM.md](../BOM.md) over
-waarom dat meer scheelt dan een snellere kaart).
+The script is idempotent — running it again is always safe. It installs
+packages, builds a virtualenv, registers both services, finds the microphone,
+and reduces writes to the SD card (logs to RAM, swap off; see
+[../BOM.md](../BOM.md) for why that matters more than a faster card).
 
-`numpy` en `scipy` komen bewust uit `apt` en niet uit `pip`: scipy zelf bouwen
-duurt op een Pi 5 met 1 GB ruim een uur en past nauwelijks in het geheugen.
+`numpy` and `scipy` come from `apt` rather than `pip` on purpose: building scipy
+on a Pi 5 with 1 GB takes over an hour and barely fits in memory.
 
-### 3. De microfoon controleren
+### 3. Check the microphone
 
 ```bash
-/opt/marantzknob/luxe/pi/microfoon.sh
+./microfoon.sh
 ```
 
-Dit is de vijfminutencontrole uit [../BOM.md](../BOM.md), maar dan uitgevoerd
-in plaats van beschreven. Hij zoekt de kaart, zet **Auto Gain Control** uit,
-neemt vijf seconden op en zegt of daar signaal in zit.
+This is the five-minute check from [../BOM.md](../BOM.md), performed instead of
+described. It finds the card, turns **Auto Gain Control** off, records five
+seconds and tells you whether there is signal in it.
 
-Twee uitkomsten die betekenen dat je de verkeerde microfoon hebt:
+Two outcomes mean you have the wrong microphone:
 
-- **geen enkele regelaar** — dan zit de firmware zelf aan het signaal en kun je
-  er niets aan veranderen;
-- **piek onder 0,002** — stil, dus verkeerd apparaat of gedempt.
+- **no controls at all** — the firmware is doing something to the signal and you
+  cannot stop it;
+- **peak below 0.002** — silent, so wrong device or muted.
 
-Een *laag* niveau is geen probleem. De vingerafdrukker werkt met een relatieve
-drempel; wat herkenning sloopt is een pompende AGC, niet een zachte opname.
+A *low* level is not a problem. Fingerprinting works on a relative threshold;
+what ruins recognition is a pumping AGC, not a quiet recording.
 
-### 4. Kijken of het loopt
+### 4. See whether it runs
 
 ```bash
 journalctl -u marantzknob-brein -u marantzknob-luister -f
 ```
 
-| Wat | Waar |
-|---|---|
-| webinterface | <http://marantzknob.local> |
-| ruwe niveaus als JSON | <http://marantzknob.local/status> |
-| nu meteen luisteren | `curl -X POST http://marantzknob.local/luister` |
-
-Op **Collection** staat de platenkast als rond bladerscherm: de hoezen op een
-rij, de sprongindex als letterring langs de binnenrand met de opening onderaan.
-Scrollen, slepen of op een letter tikken. De zoekbalk eronder filtert ook het
-bladerscherm, dus zoeken en bladeren werken op dezelfde lijst.
-
-Het scherm van het paneel volgt de versterker: gaat de hoofdzone uit — met de
-afstandsbediening, of door je Apple TV via HDMI — dan gaat het schermpje mee, en
-bij het aanzetten komt het weer op. Uit te zetten onder **Panel › Display ›
-Follow the amplifier**.
-
-Op **Now** staat een kopie van het schermpje van het CrowPanel, op ware schaal en
-met dezelfde gegevens: dezelfde hoes van `/hoes`, dezelfde accentkleur uit
-dezelfde berekening als `bepaalAccent()` in `crowpanel/src/hoes.cpp`, en dezelfde
-keuze tussen dB-getal, titel of alleen de hoes als in `uiRender()`. Verander je
-daar iets aan de opmaak, dan hoort het hier ook te veranderen.
-
-Eén pagina met tabbladen — Now, Queue, Collection, Panel en System — geserveerd
-door de oren op poort 80 en 8791. Wat eronder ligt is nog steeds verdeeld: de
-wachtrij en de collectie komen van het brein op 8790 (doorgegeven onder `/api/`)
-en de instellingen van het paneel komen van het paneel zelf (onder `/paneel/`).
-Voor de browser is dat één adres, en dat scheelt drie poortnummers onthouden.
-
-Op `/status` zie je `niveauDb`, `ruisvloerDb` en `drempelDb`. Daarmee stel je de
-drempel af zonder gokken: zet een plaat op, kijk waar `niveauDb` heen gaat, en
-vergelijk dat met de drempel.
-
-### 5. Je Discogs-sleutel en collectie
-
-De database gaat niet mee met `rsync` (die staat in `brein/data/`). Op de Pi
-vul je in de webinterface opnieuw je Discogs-token in en synchroniseer je de
-collectie. Wil je je opgebouwde vingerafdrukken meenemen, kopieer dan
-`brein/data/brein.db` er los naartoe voordat je de dienst start.
-
----
-
-## Hoe het luisteren werkt
-
-Er wordt **niet op een timer** gevraagd maar op een gebeurtenis: geluid na
-stilte. Dat is het moment waarop je de naald neerzet.
-
-Waarom dat zo moet, staat in [../PLAN.md](../PLAN.md): shazamio is een
-onofficiele client zonder sleutel, en een handvol opzoekingen per avond valt
-niet op waar honderden dat wel doen. Het is bovendien zinloos — een plaatkant
-duurt twintig minuten en verandert in die tijd niet van naam.
-
-En het werkt zonder dat deze dienst iets van de versterker hoeft te weten. Dat
-is geen toeval maar noodzaak: de SR7015 laat maar één telnet-sessie toe, en die
-is van het CrowPanel.
-
-**De drempel volgt de kamer.** De stilste tien procent van de afgelopen minuut
-geldt als ruisvloer; er wordt aangeslagen bij 12 dB daarboven. Zo werkt hetzelfde
-getal in een stille kamer en met een raam open.
-
-**De klok telt geluid, geen wandtijd.** Elk blok is precies 0,1 s aan audio, en
-daarop lopen alle drempels. Dat lijkt een detail maar is het niet: met
-`time.time()` zou een hapering van `arecord` een kant kunnen overslaan of juist
-midden in een plaat opnieuw laten vragen.
-
-Afstellen doe je in `marantzknob-luister.service`:
-
-| | Standaard | Waarvoor |
-|---|---|---|
-| `TRIGGER_DB` | 12 | hoeveel boven de ruisvloer telt als muziek |
-| `START_SECONDS` | 2,5 | zo lang geluid voordat het "het speelt" heet |
-| `SETTLE_SECONDS` | 4 | de naald laten zakken voor we happen |
-| `CLIP_SECONDS` | 8 | lengte van het fragment |
-| `QUIET_SECONDS` | 25 | zo lang stilte betekent: kant afgelopen |
-
-Na `systemctl daemon-reload && systemctl restart marantzknob-luister`.
-
-## Waarom `web.py` bestaat
-
-`../brein/server.py` bindt op `127.0.0.1`. Op je Mac is dat precies goed, op een
-headless Pi betekent het dat je er niet bij kunt — terwijl die webinterface juist
-is waar je met je telefoon in de hand onherkende platen koppelt.
-
-`web.py` onderschept alleen die adreskeuze en laat de rest ongemoeid. Wil je het
-ooit netter: maak van de host in `server.py` een instelling en gooi dit bestand
-weg.
-
-Let op dat de webinterface daarmee **zonder wachtwoord open staat op je hele
-thuisnetwerk**. Voor dit apparaat is dat een bewuste afweging — er staat niets
-gevoeligers in dan je platenkast — maar zet hem niet door je router naar buiten.
-
-## Wat het bij de eerste installatie opleverde (1 augustus 2026)
-
-Pi OS Lite 64-bits is inmiddels **Debian 13 (trixie) met Python 3.13**. Twee
-dingen die daardoor misgingen en nu in `installeer.sh` zitten:
-
 | | |
 |---|---|
-| `audioop` weg uit Python 3.13 | pydub importeert hem in drie bestanden — `audioop-lts` erbij |
-| ffmpeg ontbrak | shazamio laat pydub de opname omzetten; zonder ffmpeg faalt dat **stil** en belandt alles onherkend in de wachtrij |
+| web interface | <http://marantzknob.local> |
+| raw levels as JSON | <http://marantzknob.local/status> |
+| listen right now | `curl -X POST http://marantzknob.local/luister` |
 
-Die tweede is de vervelendste soort fout: er is geen foutmelding, alleen een
-wachtrij die volloopt. Het script controleert daarom nu na installatie of
-`import shazamio` werkelijk lukt.
+`/status` gives you `niveauDb`, `ruisvloerDb` and `drempelDb` — level, noise
+floor and threshold. That is how you tune without guessing: put a record on,
+watch where the level goes, compare it with the threshold.
 
-Gemeten aan de microfoon (`AB13X USB Audio`): ruisvloer −53 dB, signaal tussen
-−32 en −53, en die vloer bleef stil staan terwijl de muziek bewoog. Geen AGC dus.
+### 5. Your Discogs token and collection
 
-## Wifi overleeft de eerste herstart niet — cloud-init
+The database does not travel with `rsync`; it lives in `brein/data/`. On the Pi,
+open the web interface, enter your Discogs token again and sync. If you want to
+bring fingerprints you built up elsewhere, copy `brein/data/brein.db` across
+before starting the service.
 
-Pi OS van 2026 (pi-gen, image 18 juni 2026) zet de wifi op via **cloud-init**,
-met een `network-config` op de bootpartitie. Dat werkt bij de eerste start, maar
-cloud-init legt het niet vast op een plek waar NetworkManager het terugvindt:
-`/etc/NetworkManager/system-connections/` blijft leeg en het door NM
-gegenereerde netplan-bestand is nul bytes. Na de eerste herstart is de wifi weg.
+## The web interface
 
-Het lastige eraan is hoe het zich voordoet: de Pi doet niets meer op het
-netwerk, terwijl het CrowPanel gewoon aangaat — dat hangt aan de USB-poort en
-die krijgt al stroom voordat Linux iets doet. Het lijkt daardoor op een kapotte
-SD-kaart terwijl er niets aan de hand is.
+One page, five tabs, served on port 80 and 8791. What sits underneath is still
+split up — the queue and the collection come from the brain on 8790 (passed
+through under `/api/`), the panel's settings from the panel itself (under
+`/paneel/`) — but the browser sees one address, and that saves remembering three
+port numbers.
 
-Zo stel je vast wat het is: **hang er een netwerkkabel aan.** Verschijnt hij,
-dan start Linux prima en is het puur wifi.
+**Now** carries a copy of the panel's screen, at full size and on the same data:
+the same sleeve from `/hoes`, the same accent colour from the same calculation
+as `bepaalAccent()` in `crowpanel/src/hoes.cpp`, and the same choice between the
+dB reading, the title, or nothing but the sleeve as in `uiRender()`. Change the
+layout there and it should change here too.
 
-En zo repareer je het, met de PSK die al in `network-config` op de bootpartitie
-staat (die 64 tekens zijn de sleutel zelf, geen wachtwoord dat je hoeft te
-kennen):
+**Collection** has the shelf as a round browser: sleeves in a row, the jump
+index as a ring of letters along the inner rim with the gap at the bottom.
+Scroll, drag, or tap a letter. The search box below filters the browser too, so
+searching and browsing work on the same list.
+
+**Panel** is the panel's own settings page, rebuilt. Among them: the screen
+follows the amplifier, so when the main zone goes off — by remote, or by your
+Apple TV over HDMI — the display goes with it, and comes back when it returns.
+
+## How the listening works
+
+Lookups happen **on an event, not a timer**: sound after silence. That is the
+moment you put the needle down.
+
+Why it has to be that way is in [../PLAN.md](../PLAN.md): shazamio is an
+unofficial client, and a handful of lookups an evening does not look like
+hundreds. It is also pointless — a side lasts twenty minutes and does not change
+its name in the meantime.
+
+And it works without this service knowing anything about the amplifier. That is
+not a coincidence but a requirement: the receiver allows exactly one telnet
+session, and the panel owns it.
+
+**The threshold follows the room.** The noise floor tracks the quiet and
+triggers a set number of decibels above it. The floor falls quickly and rises
+very slowly, and only while the level is close to it — otherwise a minute of
+continuous music *becomes* the floor and the margin you need disappears.
+
+**The clock counts audio, not wall time.** Every block is exactly 0.1 s of
+sound, and all the thresholds run on that. It looks like a detail and is not:
+with `time.time()`, a hiccup in `arecord` could skip a side or ask again in the
+middle of one.
+
+Tuning lives in `marantzknob-luister.service`:
+
+| | Default | For |
+|---|---|---|
+| `TRIGGER_DB` | 6 | how far above the noise floor counts as music |
+| `START_SECONDS` | 2.5 | how long sound must last before it "is playing" |
+| `SETTLE_SECONDS` | 4 | letting the needle settle before sampling |
+| `CLIP_SECONDS` | 15 | length of the recording sent for lookup |
+| `QUIET_SECONDS` | 15 | how much silence means the side has ended |
+| `RETRY_SECONDS` | 60 | wait before trying an unrecognised side again |
+| `MAX_RETRIES` | 3 | give up after this many failures in a row |
+| `COVER_HOLD_SECONDS` | 300 | how long the sleeve stays after the last sound |
+
+Then `systemctl daemon-reload && systemctl restart marantzknob-luister`.
+
+`MAX_RETRIES` is worth understanding. Without a limit the retry loop runs for as
+long as there is any sound at all, and a talking video on the television once
+produced forty-five empty lookups in a single morning, one every seventy-five
+seconds. Three attempts is plenty for a record — the first sample can be a quiet
+intro — and if three fail, there is no record playing.
+
+## Why `web.py` exists
+
+`../brein/server.py` binds to `127.0.0.1`. On a laptop that is right; on a
+headless Pi it means you cannot reach it. `web.py` intercepts only that choice
+and leaves everything else alone. If you ever want it tidier: make the host a
+setting in `server.py` and delete this file.
+
+Note that this leaves the web interface **open on your whole network with no
+password**. For this device that is a deliberate trade-off — there is nothing in
+it more sensitive than your record collection — but do not forward it through
+your router.
+
+## Troubleshooting
+
+### Wi-Fi does not survive the first reboot
+
+Pi OS images from 2026 configure Wi-Fi through **cloud-init**, with a
+`network-config` on the boot partition. That works on first boot, but cloud-init
+does not record it anywhere NetworkManager will find it:
+`/etc/NetworkManager/system-connections/` stays empty and the netplan file NM
+generates is zero bytes. After the first reboot the Wi-Fi is gone.
+
+What makes this confusing is how it presents: the Pi does nothing on the network
+while the panel comes up perfectly — it hangs off the USB port and gets power
+before Linux does anything. It looks like a dead SD card when nothing is wrong.
+
+To confirm: **plug in an ethernet cable.** If it appears, Linux is fine and this
+is purely Wi-Fi. To fix it, using the PSK already in `network-config` on the
+boot partition (those 64 characters are the key itself, not a password you need
+to know):
 
 ```bash
 sudo nmcli connection add type wifi con-name <SSID> ifname wlan0 ssid <SSID> \
-  wifi-sec.key-mgmt wpa-psk wifi-sec.psk <64-tekens-uit-network-config> \
+  wifi-sec.key-mgmt wpa-psk wifi-sec.psk <64-chars-from-network-config> \
   connection.autoconnect yes
 ```
 
-Dat profiel belandt in `/etc/NetworkManager/system-connections/` en overleeft
-wel een herstart — nagemeten op 2 augustus 2026: na `reboot` staat `wlan0`
-vanzelf weer op `connected` en starten beide diensten mee.
+That profile lands in `/etc/NetworkManager/system-connections/` and does survive
+a reboot.
 
-## De seriële verbinding met het CrowPanel
+### Everything ends up unrecognised, with no error
 
-Nagemeten met het paneel aan de USB van de Pi:
+Check that `ffmpeg` is installed. shazamio has pydub convert the recording, and
+without ffmpeg that fails **silently** — no error, just a queue filling up. The
+installer now verifies that `import shazamio` actually works, for this reason.
+
+Related: Pi OS Lite 64-bit is Debian 13 with Python 3.13, which removed
+`audioop` from the standard library. pydub imports it in three places, so
+`audioop-lts` is installed alongside.
+
+### The serial connection to the panel
+
+Measured with the panel on the Pi's USB:
 
 ```
 /dev/ttyACM0    crw-rw---- root dialout
 Bus 001 Device 002: ID 303a:1001 Espressif USB JTAG/serial debug unit
 ```
 
-Die ene USB-kabel draagt dus werkelijk stroom **en** een seriële verbinding, en
-dat is precies de bedrade koppeling die fase 5 nodig heeft. Een aparte draad
-naar de UART-connector is daarvoor niet nodig.
+That one cable really does carry power **and** a serial connection, which is
+what `flash-via-pi.sh` uses. No separate wire to the UART header is needed.
 
-Wil je hem tóch op UART: `cmdline.txt` bevat `console=serial0,115200`, dus de
-GPIO-UART is bezet door een inlogconsole. Die moet er dan eerst af.
-
-## Wat hier nog niet in zit
-
-- **Het eindpunt waarmee het CrowPanel om een opzoeking vraagt.** Nu luistert de
-  Pi zelfstandig; het paneel weet er niets van. Zodra het paneel binnen is en
-  over USB met de Pi praat, komt dat erbij.
-- **De QR-code op het scherm** als er iets te koppelen valt.
-- **De index in het geheugen** voor de lokale database, die pas nodig wordt
-  voorbij ongeveer honderd kanten.
+If you want the GPIO UART anyway: `cmdline.txt` contains
+`console=serial0,115200`, so a login console is sitting on it. That has to go
+first.
