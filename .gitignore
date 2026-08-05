@@ -1,0 +1,46 @@
+# --- build output ----------------------------------------------------------
+.pio/
+.pioenvs/
+.piolibdeps/
+*.o
+*.elf
+*.bin.bak
+
+# --- Python ----------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- runtime data ----------------------------------------------------------
+# The database, the cached artwork and the saved recordings. All of it is
+# either personal (your collection, your listening history) or rebuildable
+# (covers re-download on demand). Neither belongs in a repository.
+luxe/brein/data/
+luxe/pi/data/
+*.db
+*.db-journal
+*.db-wal
+
+# --- secrets ---------------------------------------------------------------
+# Nothing here should ever hold a token, but a stray dotenv is easy to make.
+.env
+*.token
+secrets.json
+appletv.json
+
+# --- macOS on exFAT --------------------------------------------------------
+# /Volumes/Opslag is exFAT, so macOS writes a "._name" sidecar next to every
+# file to hold the metadata the filesystem cannot store. They are invisible in
+# Finder, they are not part of the project, and they break C/C++ builds when a
+# toolchain globs *.c — see the note in luxe/crowpanel/platformio.ini.
+._*
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# --- editors ---------------------------------------------------------------
+.vscode/
+.idea/
+*.swp

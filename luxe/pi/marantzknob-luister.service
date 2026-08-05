@@ -1,0 +1,45 @@
+[Unit]
+Description=MarantzKnob oren — luistert mee en vraagt het brein om een opzoeking
+After=marantzknob-brein.service sound.target
+Wants=marantzknob-brein.service
+
+[Service]
+Type=simple
+User=__GEBRUIKER__
+WorkingDirectory=__WORTEL__/luxe/pi
+ExecStart=__WORTEL__/.venv/bin/python __WORTEL__/luxe/pi/luister.py
+Restart=always
+RestartSec=10
+
+# Deze dienst serveert de webinterface, ook op poort 80 — zodat het IP van de Pi
+# alleen al genoeg is om erbij te komen. Zonder deze regel mag een gewone
+# gebruiker daar niet op luisteren en blijft alleen 8791 over.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+Environment=PYTHONUNBUFFERED=1
+Environment=BREIN_URL=http://127.0.0.1:8790
+
+# Het adres van het CrowPanel. De instellingen van het paneel komen via deze
+# dienst binnen onder /paneel/, zodat alles op één adres staat. Leeg laten mag:
+# dan blijft het tabblad Panel leeg en werkt de rest gewoon door.
+Environment=PANEEL_HOST=192.168.1.50
+
+# Welke opnamekaart. installeer.sh vult hier in wat arecord -l gevonden heeft;
+# klopt het niet, dan is dit de regel die je aanpast.
+Environment=MIC_DEVICE=__MIC__
+
+# De drempel volgt de kamer, maar deze getallen bepalen wanneer er gevraagd
+# wordt. Staat hij te snel aan: TRIGGER_DB omhoog. Mist hij het begin van een
+# kant: START_SECONDS omlaag.
+Environment=TRIGGER_DB=6
+Environment=START_SECONDS=2.5
+Environment=SETTLE_SECONDS=4
+Environment=CLIP_SECONDS=15
+Environment=QUIET_SECONDS=15
+Environment=RETRY_SECONDS=60
+# Hoe lang de hoes blijft staan na de laatste klank. Los van QUIET_SECONDS,
+# want bij een zwak signaal zakt een zachte passage al onder de drempel.
+Environment=COVER_HOLD_SECONDS=300
+
+[Install]
+WantedBy=multi-user.target

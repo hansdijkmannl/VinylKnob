@@ -1,0 +1,1502 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MarantzKnob</title>
+<!--
+  Eén pagina voor het hele apparaat.
+
+  Hiervoor waren het er drie op twee poorten: de platenkast op 8790, de oren op
+  8791 en de instellingen van het paneel op het paneel zelf. Drie adressen om te
+  onthouden voor één ding op je kast, en op je telefoon drie keer opnieuw laden.
+
+  Nu serveert luister.py deze pagina en geeft hij de andere twee door: /api/*
+  gaat naar het brein, /paneel/* naar het CrowPanel. Voor de browser is alles
+  hetzelfde adres, dus de tabbladen wisselen zonder iets te herladen.
+
+  Geen build, geen framework, geen CDN — de Pi hoort het zonder internet te doen.
+-->
+<style>
+:root{
+  --bg:#101014; --card:#1c1c22; --line:#3a3a42; --dim:#8b8b96;
+  --fg:#f2f2f4; --acc:#e8a33d; --warn:#c2451f; --on:#4a9d5f;
+  color-scheme:dark;
+}
+@media(prefers-color-scheme:light){:root{
+  --bg:#f4f4f6; --card:#fff; --line:#dcdce2; --dim:#6b6b73;
+  --fg:#16161a; --acc:#a06a10; --warn:#b03a18; --on:#2f7a44;
+  color-scheme:light;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+ -webkit-text-size-adjust:100%}
+main{max-width:44rem;margin:0 auto;padding:0 1rem 4rem}
+
+/* ---- kop en tabbladen ---------------------------------------------------
+   De balk blijft staan: op een telefoon scrol je binnen een tabblad ver door
+   en dan wil je zonder terug te scrollen kunnen wisselen. */
+header{position:sticky;top:0;z-index:5;background:var(--bg);
+ padding:1rem 1rem .5rem;max-width:44rem;margin:0 auto}
+header::after{content:"";display:block;height:1px;background:var(--line);
+ margin-top:.5rem}
+h1{font-size:.8125rem;letter-spacing:.1em;text-transform:uppercase;
+ color:var(--dim);margin:0 0 .75rem;font-weight:600}
+nav{display:flex;gap:.35rem;overflow-x:auto;scrollbar-width:none;
+ margin:0 -1rem;padding:0 1rem .1rem}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:0 0 auto;padding:.4rem .8rem;border:1px solid var(--line);
+ border-radius:99px;background:transparent;color:var(--dim);font:inherit;
+ font-size:.875rem;cursor:pointer;white-space:nowrap}
+nav button.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+nav button b{font-weight:700;font-size:.8em;opacity:.8}
+
+/* ---- bouwstenen ---------------------------------------------------------- */
+section[hidden]{display:none}
+h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;
+ color:var(--dim);margin:1.75rem 0 .5rem;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:.75rem;
+ padding:1rem;margin-bottom:.75rem}
+.card>:first-child{margin-top:0}
+.card>:last-child{margin-bottom:0}
+.hint{font-size:.8125rem;color:var(--dim);margin:.5rem 0 0}
+.err{color:var(--warn)}
+.ok{color:var(--on)}
+label{display:block;margin:.75rem 0 .2rem;font-size:.8125rem;color:var(--dim)}
+input,select,textarea{width:100%;padding:.55rem .7rem;border:1px solid var(--line);
+ border-radius:.5rem;background:var(--bg);color:var(--fg);font:inherit}
+input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--acc);height:1.7rem}
+input[type=file]{padding:.4rem;font-size:.875rem}
+button{padding:.55rem 1.1rem;border:0;border-radius:.5rem;background:var(--acc);
+ color:#101014;font:inherit;font-weight:600;cursor:pointer}
+button.sec{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:400}
+button.sec:hover{border-color:var(--acc)}
+button:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+.row>.grow{flex:1 1 10rem;min-width:0}
+.cols{display:flex;gap:.75rem;flex-wrap:wrap}
+.cols>div{flex:1 1 9rem;min-width:0}
+.sl{display:flex;align-items:center;gap:.6rem}
+.sl output{min-width:4rem;text-align:right;font-variant-numeric:tabular-nums;
+ font-weight:600;font-size:.875rem}
+dl{display:grid;grid-template-columns:auto auto;gap:.3rem 1rem;margin:0;
+ font-size:.875rem;color:var(--dim)}
+dd{margin:0;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font-size:.7rem;padding:.15rem .55rem;border-radius:99px;
+ border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.pill.go{background:var(--acc);border-color:var(--acc);color:#101014}
+.pill.bad{background:var(--warn);border-color:var(--warn);color:#fff}
+
+/* ---- Now: het schermpje van het paneel, nagebouwd -------------------------
+   Alles binnen .glas rekent in de 480 pixels van het echte scherm, zodat de
+   getallen uit ui_lvgl.cpp hier letterlijk overgenomen kunnen worden. Passend
+   maken gebeurt met één schaalfactor die het script zet. Ga je hier verschuiven
+   zonder daar, dan is het geen kopie meer. */
+.paneel{margin:0 0 1.25rem}
+.bezel{width:min(30rem,86vw);aspect-ratio:1;margin:0 auto;position:relative;
+ border-radius:50%;overflow:hidden;background:linear-gradient(145deg,#3a3a42,#1b1b20);
+ padding:0;box-shadow:0 1.25rem 3rem rgba(0,0,0,.45),inset 0 2px 3px rgba(255,255,255,.10)}
+/* De ribbels van de draairing. Puur versiering, en het enige aan dit blok dat
+   niet uit de firmware komt. */
+.bezel::after{content:"";position:absolute;inset:0;border-radius:50%;z-index:3;
+ background:repeating-conic-gradient(rgba(255,255,255,.05) 0 1.1deg,transparent 1.1deg 2.6deg);
+ pointer-events:none}
+.glas{position:absolute;top:0;left:0;width:480px;height:480px;border-radius:50%;
+ overflow:hidden;background:#101014;color:#f2f2f4;transform-origin:top left;
+ transform:scale(var(--schaal,1));
+ font-family:Montserrat,"Avenir Next","Helvetica Neue",Helvetica,Arial,sans-serif}
+.glas>*{position:absolute}
+
+.pArt{top:0;left:0;width:480px;height:480px;object-fit:cover;display:none}
+.pSluier{top:0;left:0;width:480px;height:480px;background:#101014;opacity:.2;display:none}
+.pPlaatMidden{left:80px;top:190px;width:320px;height:132px;border-radius:66px;
+ background:#101014;opacity:.5;display:none}
+.pSchijf{left:124px;top:124px;width:232px;height:232px;border-radius:50%;
+ background:#1c1c22;border:1px solid #3a3a42;display:grid;place-items:center;color:#3a3a42}
+.pBoog{top:0;left:0;width:480px;height:480px}
+
+/* Elk tekstveld is 330 breed (480 - 150) en gecentreerd, net als in maakLabel. */
+.pTxt{left:75px;width:330px;text-align:center;line-height:1;transform:translateY(-50%);
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none}
+.pVol{top:226px;font-size:48px;font-weight:600;font-variant-numeric:tabular-nums}
+.pTitel{top:270px;font-size:20px;font-weight:600}
+.pArt2{top:296px;font-size:14px;color:#8b8b96}
+.pIngang{top:386px;font-size:28px;font-weight:600;display:block}
+.pBron{top:180px;font-size:14px;font-weight:600}
+.pMute{top:140px;font-size:20px;font-weight:600;color:#c2451f}
+
+.pPlaatOnder{left:174px;top:404px;width:132px;height:56px;border-radius:999px;
+ background:#101014;opacity:.6}
+.pLuister{left:192px;top:415px;width:96px;height:30px;display:grid;place-items:center;
+ color:#f2f2f4}
+.pHeet{left:160px;top:420px;width:40px;height:24px;display:grid;place-items:center;
+ color:#c2451f;visibility:hidden}
+.pStip{left:287px;top:427px;width:10px;height:10px;border-radius:50%;
+ background:#e8a33d;visibility:hidden}
+
+/* ---- de platenkast, in dezelfde ronde vorm --------------------------------- */
+.glas.kast{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.glas.kast:active{cursor:grabbing}
+.kKop{left:0;top:104px;width:480px;text-align:center;font-size:15px;font-weight:700;
+ letter-spacing:.16em;color:#8b8b96}
+.kRij{left:0;top:170px;width:480px;height:150px;display:flex;align-items:center;
+ justify-content:center;gap:20px}
+.kHoes{width:104px;height:104px;border-radius:10px;flex:0 0 auto;opacity:.4;
+ transform:scale(.8);transition:opacity .16s,transform .16s;background:#22222a;
+ background-size:cover;background-position:center;box-shadow:0 8px 22px rgba(0,0,0,.55)}
+.kHoes.nu{opacity:1;transform:scale(1.32)}
+.kTitel{left:100px;top:352px;width:280px;text-align:center;font-size:19px;font-weight:600;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kArtiest{left:100px;top:380px;width:280px;text-align:center;font-size:14px;color:#8b8b96;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kBalk{left:0;top:0;width:480px;height:480px;pointer-events:none}
+.kBalk circle{transition:stroke-dashoffset .18s}
+.kLetters{left:0;top:0;width:480px;height:480px}
+.kLetters b{position:absolute;left:50%;top:50%;width:22px;margin:-11px 0 0 -11px;
+ font-size:12px;font-weight:700;color:#7a7a86;line-height:22px;text-align:center;
+ cursor:pointer;transform-origin:50% 50%;transition:color .12s,font-size .12s}
+.kLetters b.nu{color:#e8a33d;font-size:16px}
+
+.pMsg{left:0;top:0;width:480px;height:480px;background:#101014;display:none}
+.pMsgKop{position:absolute;left:75px;top:200px;width:330px;text-align:center;
+ font-size:20px;font-weight:600;color:#e8a33d}
+.pMsgTekst{position:absolute;left:75px;top:250px;width:330px;text-align:center;
+ font-size:14px;color:#8b8b96;white-space:pre-line;line-height:1.35}
+
+.balk{height:.5rem;border-radius:.25rem;background:var(--line);position:relative;
+ margin:.75rem 0 1rem}
+.balk i{position:absolute;inset:0 auto 0 0;border-radius:.25rem;background:var(--acc);
+ transition:width .3s}
+.balk u{position:absolute;top:-.25rem;bottom:-.25rem;width:2px;background:var(--fg)}
+#luister{width:100%;padding:.9rem}
+
+/* ---- lijsten (wachtrij) --------------------------------------------------- */
+.item{display:flex;gap:.75rem;padding:.85rem 0;border-top:1px solid var(--line);
+ align-items:flex-start}
+.item:first-child{border-top:0;padding-top:0}
+.thumb{width:3.25rem;height:3.25rem;border-radius:.4rem;background:var(--line);
+ flex:0 0 auto;object-fit:cover;display:grid;place-items:center;color:var(--dim)}
+.item .body{flex:1;min-width:0}
+.item .t{font-weight:600}
+.item .s{color:var(--dim);font-size:.8125rem}
+audio{height:2rem;margin-top:.4rem;max-width:100%}
+.hits{margin-top:.6rem;border-left:2px solid var(--line);padding-left:.75rem}
+.hit{display:flex;gap:.6rem;align-items:center;padding:.3rem 0}
+.hit img{width:2.25rem;height:2.25rem;border-radius:.25rem;object-fit:cover;background:var(--line)}
+.hit .n{flex:1;min-width:0;font-size:.875rem}
+.hit .n small{display:block;color:var(--dim)}
+.mini{padding:.35rem .7rem;font-size:.8125rem}
+button.gevaar{background:var(--warn);color:#fff}
+
+/* ---- meervoudige selectie in de wachtrij ---------------------------------- */
+.kiesbalk{position:sticky;bottom:0;z-index:4;display:flex;gap:.5rem;align-items:center;
+ flex-wrap:wrap;margin:0 0 .75rem;padding:.7rem .85rem;border-radius:.75rem;
+ background:var(--card);border:1px solid var(--acc);
+ box-shadow:0 .5rem 1.5rem rgba(0,0,0,.35)}
+.kiesbalk[hidden]{display:none}
+.kiesbalk span{flex:1 1 7rem;font-size:.875rem;font-weight:600}
+.item .vink{flex:0 0 auto;width:1.25rem;height:1.25rem;margin:.15rem .1rem 0 0;
+ accent-color:var(--acc)}
+.item.gekozen{background:color-mix(in srgb,var(--acc) 10%,transparent);
+ border-radius:.4rem}
+
+/* ---- collectie ------------------------------------------------------------ */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(6.5rem,1fr));gap:.75rem}
+.tile{font-size:.75rem;min-width:0}
+.tile img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:.5rem;background:var(--line);display:block}
+.tile b,.tile span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile b{margin-top:.35rem;font-weight:600}
+.tile span{color:var(--dim)}
+
+/* ---- paneel: ingangenlijst ------------------------------------------------ */
+.irow{display:grid;grid-template-columns:1.4rem 1fr 1fr 2rem;gap:.4rem;
+ align-items:center;margin-bottom:.4rem}
+.irow>span{color:var(--dim);font-size:.8125rem;text-align:center}
+.irow button{padding:.4rem 0;background:transparent;border:1px solid var(--line);
+ color:var(--dim);font-size:1rem;line-height:1;font-weight:400}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:.3rem .9rem;font-size:.8125rem;margin:0}
+.legend dt{font-weight:600}
+.legend dd{margin:0;color:var(--dim);text-align:left}
+.msg{margin-top:.75rem;font-size:.875rem;min-height:1.3em}
+</style>
+</head><body>
+
+<!-- De twee tekens die het paneel gebruikt. LVGL tekent ze uit FontAwesome
+     (LV_SYMBOL_AUDIO is U+F001, LV_SYMBOL_WARNING is U+F071); hier staan
+     dezelfde vormen als pad, zodat er geen letterteken uit een ander lettertype
+     tussendoor glipt dat er net anders uitziet. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="ic-noot" viewBox="0 0 512 512"><path fill="currentColor"
+    d="M470.4 1.5 150.4 96A32 32 0 0 0 128 126.5v261.4A139 139 0 0 0 96 384c-53 0-96 28.7-96 64s43 64 96 64 96-28.7 96-64V214.3l256-75.7v184.4A139 139 0 0 0 416 320c-53 0-96 28.7-96 64s43 64 96 64 96-28.7 96-64V32a32 32 0 0 0-41.6-30.5z"/></symbol>
+  <symbol id="ic-waarschuw" viewBox="0 0 576 512"><path fill="currentColor"
+    d="M569.5 440C588 472 564.8 512 527.9 512H48.1c-36.9 0-60-40.1-41.6-72L246.4 24c18.5-32 64.7-32 83.2 0l239.9 416zM288 354c-25.4 0-46 20.6-46 46s20.6 46 46 46 46-20.6 46-46-20.6-46-46-46zm-43.7-165.3 7.4 136c.3 6.4 5.6 11.3 12 11.3h48.5c6.4 0 11.6-5 12-11.3l7.4-136c.4-6.9-5.1-12.7-12-12.7h-63.3c-6.9 0-12.4 5.8-12 12.7z"/></symbol>
+</defs></svg>
+
+<header>
+  <h1>MarantzKnob</h1>
+  <nav id="tabs">
+    <button data-t="now" class="on">Now</button>
+    <button data-t="queue">Queue <b id="nQueue"></b></button>
+    <button data-t="coll">Collection <b id="nColl"></b></button>
+    <button data-t="panel">Panel</button>
+    <button data-t="sys">System</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ==================== NOW ==================== -->
+<section id="t-now">
+  <!--
+    Het schermpje van het CrowPanel, nagebouwd op ware schaal.
+
+    Alle maten komen letterlijk uit crowpanel/src/ui_lvgl.cpp: 480x480, de boog
+    van 135 tot 405 graden met een lijndikte van 10 op een object van 456, de
+    schijf van 232, het plaatje van 320x132 met straal 66, de knoppenbalk van
+    132x56 op y+192. Verandert daar iets, dan hoort het hier ook te veranderen.
+
+    Het is een spiegel en geen bediening: je ziet wat er nu op je kast staat.
+  -->
+  <div class="paneel">
+    <div class="bezel"><div class="glas" id="glas">
+
+      <img class="pArt" id="pArt" alt="">
+      <div class="pSluier" id="pSluier"></div>
+      <div class="pPlaatMidden" id="pPlaatMidden"></div>
+
+      <div class="pSchijf" id="pSchijf"><svg viewBox="0 0 48 48" width="48" height="48"
+        ><use href="#ic-noot"/></svg></div>
+
+      <svg class="pBoog" viewBox="0 0 480 480">
+        <!-- Ronde uiteinden: lv_theme_default zet arc_rounded aan, dus zo staat
+             het ook op het echte scherm. -->
+        <path id="pSpoor" fill="none" stroke="#3a3a42" stroke-width="10" stroke-linecap="round"/>
+        <path id="pVul"   fill="none" stroke="#e8a33d" stroke-width="10" stroke-linecap="round"/>
+      </svg>
+
+      <div class="pTxt pMute"  id="pMute">MUTE</div>
+      <div class="pTxt pBron"  id="pBron"></div>
+      <div class="pTxt pVol"   id="pVol">--</div>
+      <div class="pTxt pTitel" id="pTitel"></div>
+      <div class="pTxt pArt2"  id="pArtiest"></div>
+      <div class="pTxt pIngang" id="pIngang"></div>
+
+      <div class="pPlaatOnder"></div>
+      <div class="pLuister" id="pLuister"><svg viewBox="0 0 48 48" width="28" height="28"
+        ><use href="#ic-noot"/></svg></div>
+      <div class="pHeet" id="pHeet"><svg viewBox="0 0 48 48" width="20" height="20"
+        ><use href="#ic-waarschuw"/></svg></div>
+      <div class="pStip" id="pStip"></div>
+
+      <!-- Laag 5 uit ui_lvgl.cpp: de meldingen. Alleen deze twee zijn van hier
+           te zien, want ze volgen uit `ap` en `connected` in de paneelstatus.
+           De ingangenlijst, de QR en het uitgeschakelde scherm komen uit een
+           druk op de knop en laten zich niet van buitenaf aflezen. -->
+      <div class="pMsg" id="pMsg">
+        <div class="pMsgKop" id="pMsgKop"></div>
+        <div class="pMsgTekst" id="pMsgTekst"></div>
+      </div>
+
+    </div></div>
+    <p class="hint" id="pOnder" style="text-align:center"></p>
+  </div>
+
+  <div class="balk"><i id="vul"></i><u id="drem"></u></div>
+  <div class="card">
+    <dl>
+      <dt>level</dt><dd id="mNiveau">–</dd>
+      <dt>noise floor</dt><dd id="mVloer">–</dd>
+      <dt>threshold</dt><dd id="mDrempel">–</dd>
+      <dt>Pi</dt><dd id="mPi">–</dd>
+    </dl>
+  </div>
+  <button id="luister">Listen now</button>
+  <p class="hint">Listening runs on the Pi's own microphone. It starts by itself when
+  sound follows silence on the turntable input; this button asks for a lookup right now.</p>
+</section>
+
+<!-- ==================== QUEUE ==================== -->
+<section id="t-queue" hidden>
+  <h2>Waiting to be linked</h2>
+  <!-- De balk blijft onderin staan zolang er iets aangevinkt is. Met tientallen
+       regels ben je anders het weggooien uit het oog verloren tegen de tijd dat
+       je onderaan de lijst bent. -->
+  <div class="kiesbalk" id="kiesBalk" hidden>
+    <span id="kiesAantal">0 selected</span>
+    <button class="sec mini" id="kiesAlles">Select all</button>
+    <button class="sec mini" id="kiesGeen">Clear</button>
+    <button class="mini gevaar" id="kiesWeg">Discard</button>
+  </div>
+  <div class="card" id="queue"><p class="hint">Loading…</p></div>
+  <h2>Recently recognised</h2>
+  <div class="card" id="known"><p class="hint">Loading…</p></div>
+</section>
+
+<!-- ==================== COLLECTION ==================== -->
+<section id="t-coll" hidden>
+  <h2>Discogs</h2>
+  <div class="card">
+    <div class="cols">
+      <div><label for="dUser">Username</label><input id="dUser" autocomplete="off"></div>
+      <div><label for="dToken">Token</label><input id="dToken" type="password"
+        placeholder="unchanged" autocomplete="off"></div>
+    </div>
+    <div class="row" style="margin-top:1rem">
+      <button id="dSave">Save</button>
+      <button class="sec" id="dSync">Sync collection</button>
+    </div>
+    <p class="hint" id="dInfo"></p>
+    <p class="hint">Personal access token: discogs.com &rsaquo; Settings &rsaquo; Developers.
+    The collection also syncs by itself once a day.</p>
+  </div>
+
+  <h2>Your shelf</h2>
+  <!--
+    Door de kast bladeren zoals het op een ronde knop hoort: de hoezen op een
+    rij, en de sprongindex als letterring langs de binnenrand. Een rechte
+    letterbalk wringt in een cirkel — hij loopt over twee regels en botst met de
+    rand — terwijl langs de omtrek juist het midden vrij blijft voor waar het om
+    gaat. Zelfde redenering als op het paneel zelf.
+  -->
+  <div class="paneel">
+    <div class="bezel" id="kastBezel"><div class="glas kast" id="kastGlas">
+
+      <div class="kKop">SHELF</div>
+      <div class="kRij" id="kRij"></div>
+      <div class="kTitel" id="kTitel">—</div>
+      <div class="kArtiest" id="kArtiest"></div>
+
+      <svg class="kBalk" viewBox="0 0 480 480">
+        <circle id="kBalkVul" cx="240" cy="240" r="222"
+                fill="none" stroke="#e8a33d" stroke-width="4" stroke-linecap="round"
+                stroke-dasharray="0 1395" transform="rotate(-90 240 240)"/>
+      </svg>
+      <div class="kLetters" id="kLetters"></div>
+
+    </div></div>
+    <p class="hint" style="text-align:center" id="kOnder">
+      Scroll, drag, or tap a letter to jump.</p>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input class="grow" id="collQ" placeholder="Search artist or title…">
+      <button class="sec" id="collGo">Search</button>
+    </div>
+    <p class="hint" id="collInfo"></p>
+  </div>
+  <div class="card"><div class="grid" id="collGrid"></div></div>
+</section>
+
+<!-- ==================== PANEL ==================== -->
+<section id="t-panel" hidden>
+  <div class="card">
+    <div class="row">
+      <span style="font-size:1.75rem;font-weight:600;font-variant-numeric:tabular-nums"
+            id="kVol">--</span>
+      <span style="font-weight:600" id="kInp">-</span>
+      <span class="pill" id="kConn">link</span>
+      <span class="pill" id="kPwr">standby</span>
+      <span class="pill" id="kMute">mute</span>
+      <span class="pill" id="kRssi">wifi</span>
+    </div>
+  </div>
+
+  <h2>Receiver</h2>
+  <div class="card">
+    <div class="cols">
+      <div style="flex:3 1 12rem"><label for="avrHost">IP or hostname</label>
+        <input id="avrHost" placeholder="192.168.1.60"></div>
+      <div style="flex:1 1 5rem"><label for="avrPort">Port</label>
+        <input id="avrPort" type="number"></div>
+    </div>
+    <p class="hint">In the receiver menu set <b>Network &rsaquo; Network Control</b> to
+    &ldquo;Always On&rdquo;, or port 23 disappears in standby.</p>
+  </div>
+
+  <h2>Display</h2>
+  <div class="card">
+    <div class="cols">
+      <div style="flex:2 1 11rem"><label for="brightness">Brightness</label>
+        <div class="sl"><input id="brightness" type="range" min="10" max="255">
+        <output id="oBright"></output></div></div>
+      <div><label for="rotated">Orientation</label>
+        <select id="rotated"><option value="0">normal</option>
+        <option value="1">upside down</option></select></div>
+      <div><label for="dimAfterS">Dim after</label>
+        <div class="sl"><input id="dimAfterS" type="range" min="0" max="300" step="15">
+        <output id="oDim"></output></div></div>
+    </div>
+    <label for="offWithAmp">Follow the amplifier</label>
+    <select id="offWithAmp">
+      <option value="1">screen off when the amplifier goes off</option>
+      <option value="0">always on</option>
+    </select>
+    <p class="hint">The main zone going off is the signal — so switching off with the remote
+    works, and so does the Apple TV turning the receiver off over HDMI. Touching the glass or
+    turning the knob wakes it again, and so does switching the amplifier back on.</p>
+    <p class="hint">Brightness applies while you drag, so you can see what you are setting.
+    Still press save, or it reverts on the next restart.</p>
+  </div>
+
+  <h2>Brain</h2>
+  <div class="card">
+    <label for="breinHost">IP of the Pi</label>
+    <input id="breinHost" placeholder="192.168.1.175">
+    <p class="hint">The Pi that listens along and recognises records. Leave it empty and
+    the display shows volume and input only.</p>
+  </div>
+
+  <h2>Volume</h2>
+  <div class="card">
+    <div class="cols">
+      <div><label for="halfDbPerClick">Step per click</label>
+        <div class="sl"><input id="halfDbPerClick" type="range" min="1" max="10">
+        <output id="oStep"></output></div></div>
+      <div><label for="accelFactor">Fast-turn boost</label>
+        <div class="sl"><input id="accelFactor" type="range" min="1" max="16">
+        <output id="oAccel"></output></div></div>
+    </div>
+    <div class="cols">
+      <div><label for="accelWindowMs">&ldquo;Fast&rdquo; = clicks within</label>
+        <div class="sl"><input id="accelWindowMs" type="range" min="60" max="600" step="10">
+        <output id="oWin"></output></div></div>
+      <div><label for="volMaxDb">Volume ceiling</label>
+        <div class="sl"><input id="volMaxDb" type="range" min="-40" max="0">
+        <output id="oMax"></output></div></div>
+    </div>
+    <label for="encDivider">Encoder resolution</label>
+    <select id="encDivider">
+      <option value="4">1 step per detent (coarse)</option>
+      <option value="2">2&times; finer</option>
+      <option value="1">4&times; finer (smooth)</option>
+    </select>
+    <p class="hint">Half a dB per click is finely adjustable; at 2 or 3 you reach the right
+    level quicker. The ceiling is an emergency brake — 0 dB is wide open.</p>
+  </div>
+
+  <h2>Inputs</h2>
+  <div class="card">
+    <p class="hint" style="margin:0 0 .7rem">The list you step through by holding the knob
+    and turning. The order below is the direction of rotation.</p>
+    <div id="ilist"></div>
+    <button class="sec mini" id="addInput" style="margin-top:.5rem">Add input</button>
+    <label for="favouriteInput">Favourite (double press)</label>
+    <select id="favouriteInput"></select>
+  </div>
+
+  <h2>Controls</h2>
+  <div class="card">
+    <div class="cols">
+      <div><label for="longPressMs">Hold for on/off (ms)</label>
+        <input id="longPressMs" type="number" min="400" max="3000" step="50"></div>
+      <div><label for="doublePressMs">Double-press window (ms, 0 = off)</label>
+        <input id="doublePressMs" type="number" min="0" max="800" step="50"></div>
+    </div>
+    <dl class="legend" style="margin-top:1rem">
+      <dt>turn</dt><dd>volume</dd>
+      <dt>hold + turn</dt><dd>step through inputs</dd>
+      <dt>short press</dt><dd>mute on/off</dd>
+      <dt>double press</dt><dd>jump to the favourite input</dd>
+      <dt>hold</dt><dd>main zone on/off</dd>
+      <dt>hold 8 s</dt><dd>clear wifi, boot into setup mode</dd>
+    </dl>
+  </div>
+
+  <h2>Wi-Fi</h2>
+  <div class="card">
+    <div class="cols">
+      <div><label for="wifiSsid">Network (SSID)</label><input id="wifiSsid" autocomplete="off"></div>
+      <div><label for="wifiPass">Password</label>
+        <input id="wifiPass" type="password" placeholder="unchanged" autocomplete="off"></div>
+    </div>
+    <p class="hint">Leave the password empty to keep the current one. The board restarts
+    after a change.</p>
+  </div>
+
+  <div class="row" style="margin-top:1rem">
+    <button id="kSave">Save</button>
+    <button class="sec" id="kTest">Test first input</button>
+    <button class="sec" id="kReboot">Restart panel</button>
+  </div>
+  <p class="msg" id="kMsg"></p>
+</section>
+
+<!-- ==================== SYSTEM ==================== -->
+<section id="t-sys" hidden>
+  <h2>Apple TV</h2>
+  <div class="card">
+    <p class="hint" id="atvSt" style="margin:0">…</p>
+    <div id="atvKies" hidden>
+      <label for="atvLijst">Device</label>
+      <select id="atvLijst"></select>
+      <div class="row" style="margin-top:.75rem">
+        <button class="sec" id="atvScan">Search again</button>
+        <button id="atvPair">Pair</button>
+      </div>
+    </div>
+    <div id="atvPinBox" hidden>
+      <label for="atvCode" id="atvVraag">PIN</label>
+      <input id="atvCode" inputmode="numeric" placeholder="PIN from the TV">
+      <div class="row" style="margin-top:.75rem"><button id="atvOk">Confirm</button></div>
+    </div>
+    <div class="row" style="margin-top:.75rem"><button class="sec" id="atvWeg" hidden>Forget this device</button></div>
+    <p class="hint">Pairing asks for two PIN codes, one per protocol — so &ldquo;Confirm&rdquo;
+    sometimes asks again instead of finishing. Netflix hides its metadata; Apple TV+ and
+    Music do not.</p>
+  </div>
+
+  <h2>Raspberry Pi</h2>
+  <div class="card">
+    <dl>
+      <dt>temperature</dt><dd id="sTemp">–</dd>
+      <dt>fan</dt><dd id="sFan">–</dd>
+      <dt>throttled</dt><dd id="sThrot">–</dd>
+      <dt>microphone</dt><dd id="sMic">–</dd>
+      <dt>panel polls</dt><dd id="sPoll">–</dd>
+    </dl>
+    <p class="hint">The fan steps up at 50, 60, 67.5 and 75 °C; throttling only starts at 80.
+    The panel shows a warning symbol from 75 °C.</p>
+  </div>
+
+  <h2>Recognition</h2>
+  <div class="card">
+    <dl>
+      <dt>own fingerprints</dt><dd id="sHash">–</dd>
+      <dt>records recognisable offline</dt><dd id="sRel">–</dd>
+      <dt>service lookups</dt><dd id="sLook">–</dd>
+      <dt>plays logged</dt><dd id="sPlays">–</dd>
+    </dl>
+    <p class="hint">The own database grows with every listen: each pass captures a different
+    stretch of the side, so coverage builds up the more you play a record.</p>
+  </div>
+
+  <h2>AudD</h2>
+  <div class="card">
+    <label for="aToken">Token</label>
+    <input id="aToken" type="password" placeholder="unchanged" autocomplete="off">
+    <div class="row" style="margin-top:.75rem">
+      <button id="aSave">Save</button>
+      <button class="sec" id="aClear">Remove</button>
+    </div>
+    <p class="hint" id="aInfo"></p>
+  </div>
+</section>
+
+</main>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Kleine hulpjes.
+//
+// `on()` bestaat om een fout te voorkomen die deze interface al een keer heeft
+// platgelegd: een handler hangen aan een element dat niet meer in de pagina
+// staat gooit een TypeError, en omdat dat op het hoogste niveau van het script
+// gebeurt sneuvelt alles daarna ook. Hier wordt een ontbrekend element gewoon
+// overgeslagen — dan werkt die ene knop niet, in plaats van de hele pagina.
+// ---------------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                .replace(/"/g, '&quot;');
+const zet = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+
+async function json(url, opties) {
+  const r = await fetch(url, opties);
+  return r.json();
+}
+async function post(url, body) {
+  return json(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)});
+}
+
+// ---------------------------------------------------------------------------
+// Tabbladen.
+//
+// Elk tabblad heeft een `open` (eenmalig laden bij het eerste bezoek) en
+// optioneel een `tik` (verversen zolang je erop staat). Alleen het zichtbare
+// tabblad polst: vijf tabbladen die alle vijf elke twee seconden vragen is
+// vijf keer zoveel verkeer voor evenveel informatie.
+// ---------------------------------------------------------------------------
+const TABS = {};
+let actief = 'now', geopend = new Set(), tikker = null;
+
+function toon(naam) {
+  if (!TABS[naam]) return;
+  actief = naam;
+  document.querySelectorAll('#tabs button').forEach(b =>
+    b.classList.toggle('on', b.dataset.t === naam));
+  Object.keys(TABS).forEach(t => { const s = $('t-' + t); if (s) s.hidden = t !== naam; });
+
+  if (!geopend.has(naam)) { geopend.add(naam); (TABS[naam].open || (() => {}))(); }
+  clearInterval(tikker);
+  const tik = TABS[naam].tik;
+  if (tik) { tik(); tikker = setInterval(tik, TABS[naam].elke || 2000); }
+  // De positie in de pagina hoort bij het tabblad, niet bij de pagina.
+  window.scrollTo(0, 0);
+}
+
+document.querySelectorAll('#tabs button').forEach(b =>
+  b.addEventListener('click', () => toon(b.dataset.t)));
+
+// ===========================================================================
+// NOW — wat er speelt, en of de microfoon iets hoort
+// ===========================================================================
+const pct = db => Math.max(0, Math.min(100, (db + 80) / 80 * 100));
+let hoesSleutel = '';
+
+// ---- het schermpje op schaal brengen --------------------------------------
+// Binnen .glas staat alles in de 480 pixels van het echte paneel; hier wordt
+// alleen bepaald hoe groot dat blok op dít scherm mag zijn.
+// Er zijn er inmiddels twee — het paneel op Now en de platenkast op Collection —
+// dus allebei op maat brengen, niet alleen de eerste.
+function schaalGlas() {
+  for (const bezel of document.querySelectorAll('.bezel')) {
+    const glas = bezel.querySelector('.glas');
+    // Een verborgen tabblad meet nul breed; die stand later niet vastzetten.
+    if (glas && bezel.clientWidth) {
+      glas.style.setProperty('--schaal', bezel.clientWidth / 480);
+    }
+  }
+}
+
+// Met een vangnet, om dezelfde reden als bij on(): een ontbrekende browser-API
+// op deze regel zou het hele script eronder meenemen.
+(() => {
+  const bezels = document.querySelectorAll('.bezel');
+  if (bezels.length && typeof ResizeObserver === 'function') {
+    const kijker = new ResizeObserver(schaalGlas);
+    for (const b of bezels) kijker.observe(b);
+  } else {
+    window.addEventListener('resize', schaalGlas);
+  }
+  schaalGlas();
+})();
+
+// ---- de boog ---------------------------------------------------------------
+// lv_arc rekent vanaf 3 uur met de klok mee, net als SVG bij een y-as die naar
+// beneden wijst. De straal is (456 - 10) / 2: de objectmaat min de lijndikte.
+const BOOG_START = 135, BOOG_EIND = 405, BOOG_R = 223;
+
+function boogPad(van, tot) {
+  if (tot - van < 0.01) return '';
+  const punt = g => {
+    const r = g * Math.PI / 180;
+    return [240 + BOOG_R * Math.cos(r), 240 + BOOG_R * Math.sin(r)];
+  };
+  const [x1, y1] = punt(van), [x2, y2] = punt(Math.min(tot, van + 359.99));
+  const groot = (tot - van) > 180 ? 1 : 0;
+  return `M ${x1} ${y1} A ${BOOG_R} ${BOOG_R} 0 ${groot} 1 ${x2} ${y2}`;
+}
+
+// ---- de accentkleur --------------------------------------------------------
+// Regel voor regel dezelfde berekening als bepaalAccent() in hoes.cpp: elke
+// zesde pixel, eerst terug naar de kleurdiepte van het paneel, dan een
+// histogram over de kleurtoon gewogen met verzadiging maal helderheid.
+//
+// Het moest wel echt hetzelfde zijn. Een gemiddelde of "de meest verzadigde
+// pixel" geeft een andere kleur, en dan klopt de boog hier niet met de boog daar.
+const AC_TERUGVAL = '#e8a33d', AC_GRIJS = '#9fb4c8';
+
+function bepaalAccent(afbeelding) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 480;
+  const ctx = c.getContext('2d', {willReadFrequently: true});
+  ctx.drawImage(afbeelding, 0, 0, 480, 480);
+  let d;
+  try { d = ctx.getImageData(0, 0, 480, 480).data; }
+  catch (e) { return AC_TERUGVAL; }
+
+  const BAKKEN = 24, gewicht = new Float64Array(BAKKEN), stap = 6;
+  for (let y = 0; y < 480; y += stap) {
+    for (let x = 0; x < 480; x += stap) {
+      const i = (y * 480 + x) * 4;
+      // Naar RGB565 en terug: het paneel meet in wat zijn scherm kan tonen.
+      const r = (d[i] >> 3) / 31, g = (d[i + 1] >> 2) / 63, b = (d[i + 2] >> 3) / 31;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), v = mx - mn;
+      if (mx < 0.12 || v < 0.07) continue;          // te donker of te grijs
+      let tint;
+      if      (mx === r) tint = ((g - b) / v) % 6;
+      else if (mx === g) tint = (b - r) / v + 2;
+      else               tint = (r - g) / v + 4;
+      if (tint < 0) tint += 6;
+      gewicht[Math.floor(tint / 6 * BAKKEN) % BAKKEN] += (v / mx) * mx;
+    }
+  }
+
+  let beste = -1, top = 0;
+  for (let i = 0; i < BAKKEN; i++) if (gewicht[i] > top) { top = gewicht[i]; beste = i; }
+  if (beste < 0 || top < 2.0) return AC_GRIJS;      // zwart-wit of heel donker
+
+  const tint = (beste + 0.5) / BAKKEN * 6, S = 0.72, V = 0.98;
+  const C = V * S, X = C * (1 - Math.abs((tint % 2) - 1)), m = V - C;
+  let r = 0, g = 0, b = 0;
+  if      (tint < 1) { r = C; g = X; }
+  else if (tint < 2) { r = X; g = C; }
+  else if (tint < 3) { g = C; b = X; }
+  else if (tint < 4) { g = X; b = C; }
+  else if (tint < 5) { r = X; b = C; }
+  else               { r = C; b = X; }
+  // Afkappen en niet afronden: de C-kant doet een cast naar uint32_t, en dat
+  // scheelt precies één eenheid per kanaal. Zichtbaar is dat niet, maar dan
+  // klopt de kleur ook echt en niet ongeveer.
+  const bij = n => Math.trunc((n + m) * 255);
+  return `rgb(${bij(r)},${bij(g)},${bij(b)})`;
+}
+
+// ---- het schermpje tekenen -------------------------------------------------
+// Het plafond bepaalt hoe ver de boog loopt en verandert alleen als je het zelf
+// verzet, dus dat halen we één keer op in plaats van elke twee seconden.
+let accent = AC_TERUGVAL, heeftHoes = false, paneelVolMax = null;
+
+// Uitdrukkelijk welke display-waarde erbij hoort. Terugzetten op '' zou de
+// regel uit het stijlblad laten winnen, en daar staat voor de meeste van deze
+// lagen juist `none` — dan blijft alles onzichtbaar.
+const LAAG_DISPLAY = {pSchijf: 'grid'};
+
+function toonLaag(id, aan) {
+  const el = $(id);
+  if (el) el.style.display = aan ? (LAAG_DISPLAY[id] || 'block') : 'none';
+}
+
+// Wat er het laatst getekend is, zodat de hoes na het inladen alsnog meteen
+// verschijnt in plaats van pas bij de volgende peiling.
+let laatsteTeken = null;
+
+function tekenGlas(s, nu, paneel, volMax) {
+  laatsteTeken = [s, nu, paneel, volMax];
+  // De meldingschermen gaan voor, precies zoals main.cpp ze kiest: eerst geen
+  // wifi, dan geen receiver, en anders het volumescherm.
+  const melding = !paneel ? ['Paneel offline', 'niet bereikbaar op het netwerk']
+    : paneel.ap ? ['Nog geen wifi', `Verbind met MarantzKnob-setup\nen ga naar ${paneel.ip || '192.168.4.1'}`]
+    : !paneel.connected ? ['Geen receiver', 'Netwerkbesturing op "Altijd aan"?']
+    : null;
+
+  // De teksten in de melding staan bewust in het Nederlands: dit is een kopie
+  // van het scherm, en daar staan ze zo.
+  $('pMsg').style.display = melding ? 'block' : 'none';
+  if (melding) {
+    zet('pMsgKop', melding[0]);
+    zet('pMsgTekst', melding[1]);
+    return paneel ? 'the panel is showing this message' : 'panel not reachable';
+  }
+
+  const logo      = !!(nu && nu.logo);
+  const titel     = (nu && (nu.album || nu.titel)) || '';
+  const artiest   = (nu && nu.artiest) || '';
+  const echteHoes = heeftHoes && !logo;
+  // `turning` is hier altijd onwaar: dat is het moment waarop je aan de knop
+  // draait, en dan sta je niet naar je telefoon te kijken.
+  const toonTekst = !!titel && !echteHoes;
+  const toonVol   = !toonTekst && !titel;
+
+  toonLaag('pVol', toonVol);
+  toonLaag('pTitel', toonTekst);
+  toonLaag('pArtiest', toonTekst);
+  toonLaag('pBron', toonTekst && !!(nu && nu.app) && !logo);
+  toonLaag('pMute', !!paneel.muted);
+  // Het plaatje achter de tekst gaat weg zodra er een hoes ligt: dan draagt de
+  // hoes het beeld en zou een vlak eroverheen er alleen van afhalen.
+  toonLaag('pPlaatMidden', (toonVol || toonTekst) && !heeftHoes);
+  toonLaag('pArt', heeftHoes);
+  toonLaag('pSluier', heeftHoes);
+  toonLaag('pSchijf', !heeftHoes);
+
+  zet('pVol', paneel.haveVolume ? paneel.volDb.toFixed(1) : '--');
+  zet('pTitel', titel);
+  zet('pArtiest', artiest);
+  zet('pBron', (nu && nu.app) || '');
+  zet('pIngang', paneel.inputLabel || '');
+
+  const frac = paneel.haveVolume
+    ? Math.max(0, Math.min(1, (paneel.volDb + 80) / (volMax + 80))) : 0;
+  $('pSpoor').setAttribute('d', boogPad(BOOG_START, BOOG_EIND));
+  $('pVul').setAttribute('d', boogPad(BOOG_START, BOOG_START + (BOOG_EIND - BOOG_START) * frac));
+  $('pVul').setAttribute('stroke', accent);
+  $('pVul').style.opacity = paneel.muted ? 0.3 : 1;
+
+  $('pBron').style.color   = accent;
+  $('pIngang').style.color = paneel.powered ? accent : '#3a3a42';
+  $('pLuister').style.color = (nu && nu.luistert) ? accent : '#f2f2f4';
+  $('pStip').style.background = accent;
+  $('pStip').style.visibility = (nu && nu.koppelen > 0) ? 'visible' : 'hidden';
+  $('pHeet').style.visibility = (nu && nu.heet) ? 'visible' : 'hidden';
+
+  return 'Live copy of the panel'
+       + (paneel.muted ? ' · muted' : '')
+       + (nu && nu.luistert ? ' · listening' : '')
+       + (!paneel.powered ? ' · amplifier in standby' : '');
+}
+
+TABS.now = {
+  elke: 2000,
+  async tik() {
+    let s;
+    try { s = await json('status'); } catch (e) { return; }
+
+    // Drie bronnen: de oren voor de niveaus, /nu voor precies wat het paneel
+    // krijgt, en het paneel zelf voor volume, ingang en mute.
+    let nu = null, paneel = null, volMax = -6;
+    try { nu = await json('nu'); } catch (e) { /* dan zonder */ }
+    try {
+      paneel = await json('paneel/api/state');
+      if (paneelVolMax === null) {
+        const inst = await json('paneel/api/settings');
+        paneelVolMax = inst.volMaxDb;
+      }
+      volMax = paneelVolMax;
+    } catch (e) { paneel = null; }
+
+    // De hoes komt van /hoes, hetzelfde adres waar het paneel hem ophaalt —
+    // eigen collectie, hoes van de dienst, of het app-logo van de Apple TV.
+    // Eén bron, dus geen verschil tussen dit plaatje en dat op de knob.
+    const sleutel = (s.releaseId || '') + '|' + (s.hoesUrl || '') + '|' + (s.laatste || '');
+    if (sleutel !== hoesSleutel) {
+      hoesSleutel = sleutel;
+      const img = $('pArt');
+      const opnieuw = () => { if (laatsteTeken) zet('pOnder', tekenGlas(...laatsteTeken)); };
+      img.onerror = () => { heeftHoes = false; accent = AC_TERUGVAL; opnieuw(); };
+      img.onload  = () => { heeftHoes = true;  accent = bepaalAccent(img); opnieuw(); };
+      img.src = 'hoes?v=' + encodeURIComponent(sleutel);
+    }
+
+    zet('pOnder', tekenGlas(s, nu, paneel, volMax));
+
+    zet('mNiveau', s.niveauDb + ' dB');
+    zet('mVloer', s.ruisvloerDb + ' dB');
+    zet('mDrempel', s.drempelDb + ' dB');
+
+    const p = s.pi || {};
+    zet('mPi', (p.tempC == null ? '–' : p.tempC + ' °C')
+             + (p.fanRpm ? ` · ${p.fanRpm} rpm` : '')
+             + (p.geknepen ? ' · throttled' : ''));
+    const pi = $('mPi'); if (pi) pi.style.color = p.heet ? 'var(--warn)' : '';
+
+    $('vul').style.width = pct(s.niveauDb) + '%';
+    $('drem').style.left = pct(s.drempelDb) + '%';
+  },
+};
+
+on('luister', 'click', async () => {
+  const b = $('luister');
+  b.disabled = true; b.textContent = 'Listening…';
+  await fetch('luister', {method: 'POST'});
+  setTimeout(() => { b.disabled = false; b.textContent = 'Listen now'; }, 20000);
+});
+
+// ===========================================================================
+// QUEUE — zelf koppelen wat niet herkend is
+// ===========================================================================
+TABS.queue = { open: laadWachtrij };
+
+// ---- meervoudige selectie --------------------------------------------------
+// De keuze staat los van de opmaak van de lijst, zodat hij een herteken
+// overleeft: na het koppelen van één plaat wordt alles opnieuw opgebouwd, en
+// dan moet je aangevinkte rest niet weg zijn.
+const gekozen = new Set();
+let inBeeld = [];                     // de ids die nu in de wachtrij staan
+
+function ververselectie() {
+  // Wat inmiddels van de lijst is verdwenen telt niet meer mee.
+  for (const id of [...gekozen]) if (!inBeeld.includes(id)) gekozen.delete(id);
+
+  $('kiesBalk').hidden = gekozen.size === 0;
+  zet('kiesAantal', `${gekozen.size} of ${inBeeld.length} selected`);
+  for (const id of inBeeld) {
+    const rij = $('play-' + id);
+    if (rij) rij.classList.toggle('gekozen', gekozen.has(id));
+    const vink = document.querySelector(`[data-kies="${id}"]`);
+    if (vink) vink.checked = gekozen.has(id);
+  }
+}
+
+on('kiesAlles', 'click', () => { inBeeld.forEach(id => gekozen.add(id)); ververselectie(); });
+on('kiesGeen',  'click', () => { gekozen.clear(); ververselectie(); });
+
+on('kiesWeg', 'click', async () => {
+  const ids = [...gekozen];
+  if (!ids.length) return;
+  const knop = $('kiesWeg');
+  knop.disabled = true;
+  knop.textContent = `Discarding ${ids.length}…`;
+  try {
+    await post('api/plays/dismiss', {ids});
+    gekozen.clear();
+    await laadWachtrij();
+  } catch (e) {
+    zet('kiesAantal', 'Discarding failed — brain not reachable.');
+  } finally {
+    knop.disabled = false;
+    knop.textContent = 'Discard';
+  }
+});
+
+async function laadWachtrij() {
+  let q, k;
+  try {
+    q = await json('api/plays?status=onbekend');
+    k = await json('api/plays?limit=20');
+  } catch (e) {
+    $('queue').innerHTML = '<p class="err" style="margin:0">Brain not reachable.</p>';
+    return;
+  }
+
+  inBeeld = q.plays.map(p => p.id);
+  $('queue').innerHTML = q.plays.length
+    ? q.plays.map(wachtRegel).join('')
+    : '<p class="hint" style="margin:0">Nothing to link. Everything was recognised.</p>';
+  ververselectie();
+
+  const klaar = k.plays.filter(p => p.status !== 'onbekend' && p.status !== 'weggegooid');
+  $('known').innerHTML = klaar.length
+    ? klaar.map(kenRegel).join('')
+    : '<p class="hint" style="margin:0">Nothing recognised yet.</p>';
+  tellingen();
+}
+
+function wachtRegel(p) {
+  const gok = p.artist ? ` · guessed: ${esc(p.artist)} — ${esc(p.title)}` : '';
+  return `<div class="item" id="play-${p.id}">
+    <input type="checkbox" class="vink" data-kies="${p.id}"
+           aria-label="select this recording"${gekozen.has(p.id) ? ' checked' : ''}>
+    <div class="thumb">?</div>
+    <div class="body">
+      <div class="t">Unknown record</div>
+      <div class="s">${esc(p.at)}${gok}</div>
+      ${p.clip ? `<audio controls preload="none" src="${esc(p.clip)}"></audio>` : ''}
+      <div class="row" style="margin-top:.6rem">
+        <input class="grow" placeholder="Search your shelf…" data-zoek="${p.id}">
+        <button class="sec mini" data-discogs="${p.id}">All of Discogs</button>
+        <button class="sec mini" data-hand="${p.id}">By hand</button>
+        <button class="sec mini" data-weg="${p.id}">Discard</button>
+      </div>
+      <div class="hits" id="hits-${p.id}"></div>
+    </div></div>`;
+}
+
+function kenRegel(p) {
+  const hoes = p.releaseCover || p.cover;
+  const naam = p.releaseArtist ? `${p.releaseArtist} — ${p.releaseTitle}`
+                               : `${p.artist || '?'} — ${p.album || p.title || ''}`;
+  return `<div class="item">
+    ${hoes ? `<img class="thumb" src="${esc(hoes)}" alt="">` : '<div class="thumb">&#9834;</div>'}
+    <div class="body"><div class="t">${esc(naam)}</div>
+      <div class="s">${esc(p.at)} · ${esc(p.status)}${p.engine ? ' · ' + esc(p.engine) : ''}</div></div>
+    <button class="sec mini" data-los="${p.id}">Not correct</button></div>`;
+}
+
+function toonHits(playId, releases, waar) {
+  $('hits-' + playId).innerHTML = releases.length
+    ? `<p class="hint" style="margin:0 0 .3rem">Found ${waar}:</p>` +
+      releases.slice(0, 8).map(r => `<div class="hit">
+        <img src="${esc(r.cover || '')}" alt="">
+        <div class="n">${esc(r.title)}<small>${esc(r.artist)}${r.year ? ' · ' + esc(r.year) : ''}</small></div>
+        <button class="sec mini" data-koppel="${playId}:${r.id}">Link</button>
+      </div>`).join('')
+    : `<p class="hint" style="margin:0">Nothing found ${waar}.</p>`;
+}
+
+// Eén handler voor de hele wachtrij in plaats van inline onclick-attributen.
+// De lijst wordt na elke actie opnieuw opgebouwd; een handler die aan een
+// weggegooid element hangt doet dan niets meer.
+let zoekTimer = null;
+$('t-queue').addEventListener('input', e => {
+  const id = e.target.dataset.zoek;
+  if (id === undefined) return;
+  const q = e.target.value;
+  clearTimeout(zoekTimer);
+  zoekTimer = setTimeout(async () => {
+    const d = await json('api/collection?q=' + encodeURIComponent(q));
+    toonHits(id, d.releases, 'on your shelf');
+  }, 250);
+});
+
+$('t-queue').addEventListener('click', async e => {
+  const d = e.target.dataset || {};
+
+  if (d.kies) {
+    // Bij een klik op een selectievakje staat `checked` al goed.
+    const id = +d.kies;
+    if (e.target.checked) gekozen.add(id); else gekozen.delete(id);
+    ververselectie();
+  } else if (d.koppel) {
+    const [playId, releaseId] = d.koppel.split(':');
+    await post(`api/plays/${playId}/link`, {releaseId: +releaseId});
+    laadWachtrij();
+  } else if (d.discogs) {
+    const veld = document.querySelector(`#play-${d.discogs} input[data-zoek]`);
+    const q = (veld && veld.value.trim()) || '';
+    if (!q) { $('hits-' + d.discogs).innerHTML =
+      '<p class="hint" style="margin:0">Type what to search for first.</p>'; return; }
+    const r = await json('api/discogs/search?q=' + encodeURIComponent(q));
+    if (r.error) $('hits-' + d.discogs).innerHTML = `<p class="err">${esc(r.error)}</p>`;
+    else toonHits(d.discogs, r.releases, 'on Discogs');
+  } else if (d.hand) {
+    handmatig(d.hand);
+  } else if (d.weg) {
+    await fetch(`api/plays/${d.weg}/dismiss`, {method: 'POST'});
+    laadWachtrij();
+  } else if (d.los) {
+    await fetch(`api/plays/${d.los}/unlink`, {method: 'POST'});
+    laadWachtrij();
+  } else if (d.opslaan) {
+    const doos = $('hand-' + d.opslaan);
+    const titel = doos.querySelector('[data-titel]').value.trim();
+    if (!titel) return;
+    const fd = new FormData();
+    fd.append('artist', doos.querySelector('[data-artiest]').value.trim());
+    fd.append('title', titel);
+    const bestand = doos.querySelector('[data-hoes]').files[0];
+    if (bestand) fd.append('cover', bestand);
+    await fetch(`api/plays/${d.opslaan}/manual`, {method: 'POST', body: fd});
+    laadWachtrij();
+  }
+});
+
+// Zelf invoeren wat Discogs niet kent. Drie prompt()-vensters achter elkaar
+// waren dit eerder; op een telefoon is dat drie keer een systeemdialoog waarin
+// je niets terug kunt zien van wat je al hebt getypt.
+function handmatig(playId) {
+  $('hits-' + playId).innerHTML = `<div id="hand-${playId}">
+    <label>Artist</label><input data-artiest>
+    <label>Album title</label><input data-titel>
+    <label>Cover (optional)</label><input type="file" accept="image/*" data-hoes>
+    <div class="row" style="margin-top:.75rem">
+      <button class="mini" data-opslaan="${playId}">Add and link</button>
+    </div></div>`;
+}
+
+// ===========================================================================
+// COLLECTION — Discogs en je eigen kast
+// ===========================================================================
+TABS.coll = { open() { laadCollectie(); laadInstellingen(); schaalGlas(); } };
+
+async function laadCollectie() {
+  const q = $('collQ').value;
+  let d;
+  // De hele kast en niet de eerste veertig: anders klopt de sprongindex niet en
+  // kom je met 549 albums niet verder dan de B.
+  try { d = await json('api/collection?q=' + encodeURIComponent(q) + '&limit=5000'); }
+  catch (e) { zet('collInfo', 'Brain not reachable.'); return; }
+  zet('collInfo', `${d.total} releases on your shelf` +
+                  (q ? `, ${d.releases.length} matching.` : '.'));
+  vulKast(d.releases);
+  $('collGrid').innerHTML = d.releases.map(r => `<div class="tile">
+      <img src="${esc(r.cover || '')}" alt="" loading="lazy">
+      <b>${esc(r.title)}</b><span>${esc(r.artist)}</span></div>`).join('')
+    || '<p class="hint" style="margin:0">Nothing synced yet.</p>';
+}
+
+on('collGo', 'click', laadCollectie);
+on('collQ', 'keydown', e => { if (e.key === 'Enter') laadCollectie(); });
+
+// ---- door de kast bladeren -------------------------------------------------
+// De ring loopt over 300 graden met de opening onderaan, zodat de titel daar
+// leesbaar blijft. De letters draaien mee met de rand: op een rond scherm leest
+// dat beter dan rechtop gezette letters langs een boog.
+const RING_SPAN = 300, RING_START = -150, RING_R = 205;
+const BALK_R = 222, BALK_OMTREK = 2 * Math.PI * BALK_R;
+
+let kast = [], kastIdx = 0;
+
+function kastLetter(i) {
+  const naam = (kast[i].artist || kast[i].title || '?').trim().toUpperCase();
+  const c = naam[0] || '#';
+  return /[A-Z]/.test(c) ? c : '#';
+}
+
+function vulKast(releases) {
+  kast = releases || [];
+  kastIdx = 0;
+  tekenLetters();
+  tekenKast();
+}
+
+// De letterring verandert alleen als de lijst verandert, dus die tekenen we
+// apart — niet bij elke stap opnieuw.
+function tekenLetters() {
+  if (!kast.length) { $('kLetters').innerHTML = ''; return; }
+  const eerste = new Map();
+  kast.forEach((_, i) => { const l = kastLetter(i); if (!eerste.has(l)) eerste.set(l, i); });
+  const items = [...eerste.entries()];
+  const stap = items.length > 1 ? RING_SPAN / (items.length - 1) : 0;
+  $('kLetters').innerHTML = items.map(([letter, i], n) =>
+    `<b data-spring="${i}" data-letter="${letter}"
+        style="transform:rotate(${RING_START + n * stap}deg) translateY(-${RING_R}px)"
+     >${letter}</b>`).join('');
+}
+
+function tekenKast() {
+  if (!kast.length) {
+    $('kRij').innerHTML = '';
+    zet('kTitel', 'Nothing synced yet');
+    zet('kArtiest', '');
+    return;
+  }
+  const n = kast.length;
+  const omheen = [-1, 0, 1].map(d => ((kastIdx + d) % n + n) % n);
+  $('kRij').innerHTML = omheen.map((i, plek) =>
+    `<div class="kHoes${plek === 1 ? ' nu' : ''}" data-naar="${i}"
+          style="background-image:url(${esc(kast[i].cover || '')})"></div>`).join('');
+  zet('kTitel', kast[kastIdx].title);
+  zet('kArtiest', kast[kastIdx].artist);
+
+  // Waar je bent in het geheel, als kort boogje langs de rand.
+  const deel = n > 1 ? kastIdx / (n - 1) : 0;
+  const duim = Math.max(BALK_OMTREK * 0.03, 18);
+  const balk = $('kBalkVul');
+  balk.setAttribute('stroke-dasharray', `${duim} ${BALK_OMTREK - duim}`);
+  balk.setAttribute('stroke-dashoffset', -(deel * (BALK_OMTREK - duim)));
+
+  const hier = kastLetter(kastIdx);
+  for (const b of $('kLetters').children)
+    b.classList.toggle('nu', b.dataset.letter === hier);
+}
+
+function kastGa(stappen) {
+  if (!kast.length) return;
+  const n = kast.length;
+  kastIdx = ((kastIdx + stappen) % n + n) % n;
+  tekenKast();
+}
+
+// Een muiswiel of trackpad geeft veel meer tikken dan een knop met detents ooit
+// kan. Daarom opsparen tot een hele stap, en hoogstens drie per gebeurtenis —
+// anders schiet één veeg dwars door je kast heen.
+const WIEL_PER_STAP = 45;
+let wielRest = 0;
+
+on('kastGlas', 'wheel', e => {
+  e.preventDefault();
+  wielRest += e.deltaY;
+  let gedaan = 0;
+  while (Math.abs(wielRest) >= WIEL_PER_STAP && gedaan < 3) {
+    kastGa(wielRest > 0 ? 1 : -1);
+    wielRest -= Math.sign(wielRest) * WIEL_PER_STAP;
+    gedaan++;
+  }
+  // Restant begrenzen in plaats van weggooien: weggooien voelt als verloren
+  // invoer, onbeperkt opsparen laat een veeg naijlen.
+  wielRest = Math.sign(wielRest) * Math.min(Math.abs(wielRest), WIEL_PER_STAP);
+});
+
+// Slepen, want dit ding gebruik je vooral op een telefoon. Horizontaal én
+// verticaal: op een rond scherm heeft geen van beide voorrang.
+const SLEEP_PER_STAP = 26;
+let sleepVan = null, sleepRest = 0, versleept = 0;
+
+on('kastGlas', 'pointerdown', e => {
+  sleepVan = {x: e.clientX, y: e.clientY};
+  sleepRest = 0; versleept = 0;
+  $('kastGlas').setPointerCapture?.(e.pointerId);
+});
+
+on('kastGlas', 'pointermove', e => {
+  if (!sleepVan) return;
+  const dx = e.clientX - sleepVan.x, dy = e.clientY - sleepVan.y;
+  sleepVan = {x: e.clientX, y: e.clientY};
+  const weg = Math.abs(dx) > Math.abs(dy) ? -dx : -dy;
+  versleept += Math.abs(dx) + Math.abs(dy);
+  sleepRest += weg;
+  while (Math.abs(sleepRest) >= SLEEP_PER_STAP) {
+    kastGa(sleepRest > 0 ? 1 : -1);
+    sleepRest -= Math.sign(sleepRest) * SLEEP_PER_STAP;
+  }
+});
+
+const sleepKlaar = () => { sleepVan = null; };
+on('kastGlas', 'pointerup', sleepKlaar);
+on('kastGlas', 'pointercancel', sleepKlaar);
+
+on('kastGlas', 'click', e => {
+  // Een sleep eindigt ook in een klik; die mag niet ook nog eens ergens heen
+  // springen. Vijf pixels speling voor een onvaste vinger.
+  if (versleept > 5) { versleept = 0; return; }
+  const d = e.target.dataset || {};
+  if (d.spring !== undefined) { kastIdx = +d.spring; tekenKast(); }
+  else if (d.naar !== undefined) { kastIdx = +d.naar; tekenKast(); }
+});
+
+on('dSave', 'click', async () => {
+  await post('api/settings', {discogsUser: $('dUser').value,
+                              discogsToken: $('dToken').value});
+  $('dToken').value = '';
+  zet('dInfo', 'Saved.');
+  laadInstellingen();
+});
+
+on('dSync', 'click', async () => {
+  const b = $('dSync');
+  b.disabled = true;
+  zet('dInfo', 'Fetching… this takes a while with a large shelf.');
+  const d = await json('api/discogs/sync', {method: 'POST'});
+  zet('dInfo', d.error ? d.error : `${d.count} releases fetched, ${d.total} in total.`);
+  b.disabled = false;
+  laadCollectie(); tellingen();
+});
+
+// ===========================================================================
+// PANEL — de instellingen van het CrowPanel, via de doorgeefpoort
+// ===========================================================================
+let CODES = [], MAXI = 8, ingangen = [], favoriet = -1;
+
+const P_TEKST = ['avrHost', 'breinHost', 'wifiSsid'];
+const P_GETAL = ['avrPort', 'brightness', 'dimAfterS', 'halfDbPerClick', 'accelFactor',
+                 'accelWindowMs', 'volMaxDb', 'longPressMs', 'doublePressMs'];
+
+TABS.panel = {elke: 2000, open: laadPaneel, tik: paneelStaat};
+
+async function laadPaneel() {
+  let S;
+  try {
+    CODES = await json('paneel/api/inputs');
+    S = await json('paneel/api/settings');
+  } catch (e) {
+    zet('kMsg', 'Panel not reachable.');
+    $('kMsg').className = 'msg err';
+    return;
+  }
+  MAXI = S.maxInputs || 8;
+  for (const k of P_TEKST.concat(P_GETAL)) if ($(k)) $(k).value = S[k];
+  $('encDivider').value = String(S.encDivider || 4);
+  $('rotated').value = S.rotated ? '1' : '0';
+  $('offWithAmp').value = S.offWithAmp ? '1' : '0';
+  ingangen = (S.inputs || []).map(b => ({code: b.code, label: b.label}));
+  favoriet = S.favouriteInput;
+  tekenIngangen();
+  schuifLabels();
+}
+
+function tekenIngangen() {
+  $('ilist').innerHTML = ingangen.map((b, i) => `<div class="irow">
+    <span>${i + 1}</span>
+    <select data-code="${i}">${CODES.map(c =>
+      `<option${c === b.code ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
+    <input value="${esc(b.label)}" data-label="${i}">
+    <button data-del="${i}" title="remove">&times;</button></div>`).join('');
+  $('addInput').style.display = ingangen.length >= MAXI ? 'none' : '';
+  tekenFavoriet();
+}
+
+function tekenFavoriet() {
+  $('favouriteInput').innerHTML = '<option value="-1">none</option>' +
+    ingangen.map((b, i) => `<option value="${i}"${i === favoriet ? ' selected' : ''}
+      >${esc(b.label || b.code)}</option>`).join('');
+}
+
+$('t-panel').addEventListener('input', e => {
+  const d = e.target.dataset || {};
+  if (d.code !== undefined)  { ingangen[d.code].code = e.target.value; tekenFavoriet(); }
+  if (d.label !== undefined) { ingangen[d.label].label = e.target.value; tekenFavoriet(); }
+});
+
+$('t-panel').addEventListener('click', e => {
+  const i = (e.target.dataset || {}).del;
+  if (i === undefined) return;
+  ingangen.splice(+i, 1);
+  favoriet = -1;
+  tekenIngangen();
+});
+
+on('favouriteInput', 'change', e => { favoriet = parseInt(e.target.value, 10); });
+on('addInput', 'click', () => {
+  if (ingangen.length >= MAXI) return;
+  ingangen.push({code: CODES[0], label: CODES[0]});
+  tekenIngangen();
+});
+
+async function paneelStaat() {
+  let s;
+  try { s = await json('paneel/api/state'); }
+  catch (e) {
+    zet('kConn', 'panel offline');
+    $('kConn').className = 'pill bad';
+    return;
+  }
+  zet('kVol', s.haveVolume ? s.volDb.toFixed(1) + ' dB' : '--');
+  zet('kInp', s.inputLabel || '-');
+  zet('kConn', s.connected ? 'receiver' : 'no receiver');
+  $('kConn').className = 'pill ' + (s.connected ? 'go' : 'bad');
+  zet('kPwr', s.powered ? 'on' : 'standby');
+  $('kPwr').className = 'pill' + (s.powered ? ' go' : '');
+  zet('kMute', s.muted ? 'muted' : 'sound');
+  $('kMute').className = 'pill' + (s.muted ? ' bad' : '');
+  zet('kRssi', s.ap ? 'setup AP' : s.rssi + ' dBm');
+  $('kRssi').className = 'pill' + (!s.ap && s.rssi < -72 ? ' bad' : '');
+}
+
+function paneelBericht(tekst, goed) {
+  zet('kMsg', tekst);
+  $('kMsg').className = 'msg ' + (goed ? 'ok' : 'err');
+}
+
+on('kSave', 'click', async () => {
+  const b = {inputs: ingangen, favouriteInput: parseInt($('favouriteInput').value, 10),
+             encDivider: parseInt($('encDivider').value, 10),
+             rotated: $('rotated').value === '1',
+             offWithAmp: $('offWithAmp').value === '1'};
+  for (const k of P_TEKST) b[k] = $(k).value;
+  b.wifiPass = $('wifiPass').value;
+  for (const k of P_GETAL) b[k] = parseInt($(k).value, 10);
+  const r = await post('paneel/api/settings', b);
+  if (!r.ok) { paneelBericht('Error: ' + r.error, false); return; }
+  $('wifiPass').value = '';
+  paneelBericht(r.wifiChanged ? 'Saved. Restart needed for the new Wi-Fi.' : 'Saved.', true);
+});
+
+on('kTest', 'click', async () => {
+  if (!ingangen.length) { paneelBericht('No inputs configured.', false); return; }
+  const c = ingangen[0].code;
+  const r = await json('paneel/api/command?cmd=SI' + encodeURIComponent(c), {method: 'POST'});
+  paneelBericht(r.ok ? 'SI' + c + ' sent.' : 'No connection to the receiver.', r.ok);
+});
+
+on('kReboot', 'click', async () => {
+  await fetch('paneel/api/reboot', {method: 'POST'});
+  paneelBericht('Restarting…', true);
+});
+
+// Schuifregelaars: de waarde ernaast in gewone taal, en de helderheid meteen
+// naar het paneel zodat je ziet wat je instelt in plaats van op te moeten slaan.
+const SCHUIVEN = {
+  brightness:     ['oBright', v => Math.round(v / 255 * 100) + '%'],
+  dimAfterS:      ['oDim',    v => +v === 0 ? 'never' : v + ' s'],
+  halfDbPerClick: ['oStep',   v => (v / 2).toFixed(1) + ' dB'],
+  accelFactor:    ['oAccel',  v => '×' + v],
+  accelWindowMs:  ['oWin',    v => v + ' ms'],
+  volMaxDb:       ['oMax',    v => v + ' dB'],
+};
+
+function schuifLabels() {
+  for (const [id, [uit, opmaak]] of Object.entries(SCHUIVEN))
+    if ($(id) && $(uit)) zet(uit, opmaak($(id).value));
+}
+
+let helderTimer = null;
+for (const id of Object.keys(SCHUIVEN)) {
+  on(id, 'input', () => {
+    schuifLabels();
+    if (id !== 'brightness') return;
+    clearTimeout(helderTimer);
+    helderTimer = setTimeout(() => post('paneel/api/settings',
+                                        {brightness: +$(id).value}), 120);
+  });
+}
+
+// ===========================================================================
+// SYSTEM — Apple TV, de Pi zelf, en wat het apparaat inmiddels kent
+// ===========================================================================
+TABS.sys = {elke: 5000, open() { atvScan(); laadInstellingen(); }, tik: systeemTik};
+
+async function systeemTik() {
+  try {
+    const s = await json('status');
+    const p = s.pi || {};
+    zet('sTemp', p.tempC == null ? '–' : p.tempC + ' °C');
+    $('sTemp').style.color = p.heet ? 'var(--warn)' : '';
+    zet('sFan', p.fanRpm ? p.fanRpm + ' rpm' : '–');
+    zet('sThrot', p.geknepen ? 'yes' : 'no');
+    zet('sMic', s.apparaat || '–');
+    zet('sPoll', s.paneelVragen + (s.paneelVan ? ` · ${s.paneelVan}` : ''));
+  } catch (e) { /* de pagina blijft staan met wat er stond */ }
+  atvTik();
+}
+
+async function atvTik() {
+  let s;
+  try { s = await json('appletv/status'); } catch (e) { return; }
+  $('atvWeg').hidden = !s.gekoppeld;
+  $('atvKies').hidden = s.gekoppeld;
+  if (!s.gekoppeld) { zet('atvSt', 'Not paired yet.'); return; }
+  const wat = (s.artiest || s.titel)
+    ? `${s.artiest}${s.artiest && s.titel ? ' — ' : ''}${s.titel}`
+    : (s.verbonden ? 'connected, nothing playing' : 'not reachable');
+  zet('atvSt', `${s.naam}: ${wat}${s.app ? ' (' + s.app + ')' : ''}${s.fout ? ' — ' + s.fout : ''}`);
+}
+
+async function atvScan() {
+  const st = await json('appletv/status');
+  if (st.gekoppeld) { atvTik(); return; }
+  zet('atvSt', 'Searching…');
+  const d = await json('appletv/scan');
+  $('atvLijst').innerHTML = d.apparaten
+    .map(a => `<option value="${esc(a.id)}">${esc(a.naam)} — ${esc(a.adres)}</option>`).join('');
+  zet('atvSt', d.apparaten.length ? 'Choose a device and pair.' : 'No Apple TV found.');
+}
+
+on('atvScan', 'click', atvScan);
+
+on('atvPair', 'click', async () => {
+  const r = await post('appletv/pair', {id: $('atvLijst').value});
+  if (!r.ok) { zet('atvSt', r.fout); return; }
+  $('atvPinBox').hidden = false;
+  $('atvKies').hidden = true;
+  zet('atvVraag', `Enter the PIN shown on ${r.naam} (${r.protocol})`);
+  $('atvCode').value = '';
+  $('atvCode').focus();
+});
+
+on('atvOk', 'click', async () => {
+  const r = await post('appletv/pin', {pin: $('atvCode').value});
+  if (!r.ok) { zet('atvVraag', r.fout); return; }
+  if (r.klaar) { $('atvPinBox').hidden = true; atvTik(); return; }
+  zet('atvVraag', `Now the PIN for ${r.protocol}`);
+  $('atvCode').value = '';
+  $('atvCode').focus();
+});
+
+on('atvWeg', 'click', async () => {
+  await fetch('appletv/vergeet', {method: 'POST'});
+  $('atvPinBox').hidden = true;
+  atvScan();
+});
+
+on('aSave', 'click', async () => {
+  const t = $('aToken').value.trim();
+  if (!t) { zet('aInfo', 'Enter a token first.'); return; }
+  await post('api/settings', {auddToken: t});
+  $('aToken').value = '';
+  laadInstellingen();
+});
+
+on('aClear', 'click', async () => {
+  await post('api/settings', {auddToken: null});
+  $('aToken').value = '';
+  laadInstellingen();
+});
+
+// ---------------------------------------------------------------------------
+// Gedeeld: /api/settings voedt zowel het Discogs-blok als de tellers.
+// ---------------------------------------------------------------------------
+async function laadInstellingen() {
+  let s;
+  try { s = await json('api/settings'); } catch (e) { return; }
+
+  if ($('dUser')) $('dUser').value = s.discogsUser || '';
+  zet('dInfo', `${s.collectionCount} releases stored` +
+               (s.discogsTokenSet ? '.' : ' — no token set yet.'));
+
+  zet('sHash', (s.localHashes || 0).toLocaleString('en'));
+  zet('sRel', s.localReleases || 0);
+  zet('sLook', s.lookups || 0);
+  const c = s.counts || {};
+  zet('sPlays', Object.entries(c).map(([k, v]) => `${v} ${k}`).join(' · ') || '–');
+  zet('aInfo', s.auddTokenSet
+    ? 'Token set — AudD joins in on every recording.'
+    : 'No token — only Shazam takes part.');
+
+  tellingen(s);
+}
+
+async function tellingen(s) {
+  if (!s) { try { s = await json('api/settings'); } catch (e) { return; } }
+  zet('nColl', s.collectionCount || '');
+  zet('nQueue', (s.counts || {}).onbekend || '');
+}
+
+// ---------------------------------------------------------------------------
+tellingen();
+toon('now');
+</script>
+</body></html>

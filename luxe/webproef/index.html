@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wat draait er?</title>
+<style>
+:root{--bg:#111114;--fg:#f0f0f2;--dim:#8a8a94;--line:#2a2a32;--acc:#0a84ff}
+@media(prefers-color-scheme:light){:root{--bg:#f4f4f6;--fg:#16161a;--dim:#6b6b73;--line:#dcdce2}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+ background:var(--bg);color:var(--fg);
+ font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{width:min(620px,94vw);text-align:center;padding:2rem 0}
+h1{font-size:1.1rem;font-weight:600;color:var(--dim);margin:0 0 1.6rem;
+ letter-spacing:.02em}
+
+.pair{display:flex;gap:1.5rem;justify-content:center;flex-wrap:wrap}
+.card{flex:1 1 240px;max-width:280px}
+.engine{font-size:.72rem;font-weight:700;letter-spacing:.1em;color:var(--dim);
+ margin-bottom:.7rem}
+
+/* De hoes als platenlabel - rond, zoals het op het uiteindelijke scherm komt */
+.disc{width:200px;height:200px;margin:0 auto 1rem;border-radius:50%;
+ background:var(--line);position:relative;overflow:hidden;
+ display:flex;align-items:center;justify-content:center;
+ box-shadow:0 6px 28px rgba(0,0,0,.35)}
+.disc img{width:100%;height:100%;object-fit:cover}
+.disc::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;
+ background:var(--bg);box-shadow:0 0 0 1px rgba(0,0,0,.25) inset}
+.disc.empty{color:var(--dim);font-size:2rem}
+.disc.empty span{position:relative;z-index:1}
+.disc.busy{animation:spin 3s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.title{font-size:1.05rem;font-weight:650;margin:0 0 .1rem;line-height:1.3}
+.artist{font-size:.92rem;color:var(--dim);margin:0 0 .4rem}
+.meta{font-size:.78rem;color:var(--dim);margin:0}
+.time{font-size:.72rem;color:var(--dim);margin:.5rem 0 0;font-variant-numeric:tabular-nums}
+
+button{margin-top:1.8rem;padding:.85rem 2rem;border:0;border-radius:99px;
+ background:var(--acc);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+
+.meter{height:4px;background:var(--line);border-radius:2px;overflow:hidden;
+ margin:1.2rem auto 0;width:220px;opacity:0;transition:opacity .2s}
+.meter.on{opacity:1}
+.meter i{display:block;height:100%;width:0%;background:var(--acc);
+ transition:width .1s linear}
+.status{font-size:.85rem;color:var(--dim);margin-top:.8rem;min-height:1.4em}
+.err{color:#ff6b6b}
+.note{font-size:.78rem;color:var(--dim);margin-top:1.4rem;line-height:1.5}
+code{background:var(--line);padding:.1rem .35rem;border-radius:4px;font-size:.9em}
+</style>
+</head>
+<body>
+<main>
+  <h1>WAT DRAAIT ER?</h1>
+
+  <div class="pair" id="pair"></div>
+
+  <button id="go">Luisteren</button>
+  <div class="meter" id="meter"><i id="bar"></i></div>
+  <div class="status" id="status">Zet muziek op en druk op de knop.</div>
+  <div class="note" id="note"></div>
+</main>
+
+<script>
+const SECONDS = 8;
+const ENGINES = ['Shazam', 'AudD'];
+const $ = id => document.getElementById(id);
+
+function say(text, isError) {
+  $('status').textContent = text;
+  $('status').className = 'status' + (isError ? ' err' : '');
+}
+
+function card(engine, body) {
+  return `<div class="card"><div class="engine">${engine}</div>${body}</div>`;
+}
+
+function placeholder(icon, busy) {
+  $('pair').innerHTML = ENGINES.map(e => card(e,
+    `<div class="disc empty${busy ? ' busy' : ''}"><span>${icon}</span></div>
+     <p class="title">&nbsp;</p><p class="artist">&nbsp;</p>
+     <p class="meta">&nbsp;</p><p class="time">&nbsp;</p>`)).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+}
+
+function render(results) {
+  $('pair').innerHTML = results.map(r => {
+    if (!r.matched) {
+      const why = r.error ? esc(r.error) : 'niets herkend';
+      return card(r.engine,
+        `<div class="disc empty"><span>?</span></div>
+         <p class="title">&nbsp;</p><p class="artist" style="color:var(--dim)">${why}</p>
+         <p class="meta">&nbsp;</p><p class="time">${r.seconds ?? '-'}s</p>`);
+    }
+    const bits = [r.album, r.released, r.label].filter(Boolean).map(esc);
+    const disc = r.cover
+      ? `<div class="disc"><img src="${esc(r.cover)}" alt=""></div>`
+      : `<div class="disc empty"><span>♪</span></div>`;
+    return card(r.engine,
+      `${disc}
+       <p class="title">${esc(r.title || '')}</p>
+       <p class="artist">${esc(r.artist || '')}</p>
+       <p class="meta">${bits.join(' · ') || '&nbsp;'}</p>
+       <p class="time">${r.seconds}s</p>`);
+  }).join('');
+}
+
+// De browser levert Float32-samples; hier maken we er een gewone 16-bits WAV
+// van. Dat scheelt aan de serverkant elke afhankelijkheid van ffmpeg.
+function toWav(samples, rate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const str = (offset, s) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
+
+  str(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
+  str(8, 'WAVEfmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  str(36, 'data'); view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function capture() {
+  // Alle "slimme" verwerking uit: ruisonderdrukking en automatische
+  // versterking knippen precies de details weg waar herkenning op leunt.
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+  });
+
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(4096, 1, 1);
+  const chunks = [];
+
+  node.onaudioprocess = e => {
+    const input = e.inputBuffer.getChannelData(0);
+    chunks.push(new Float32Array(input));
+    let peak = 0;
+    for (let i = 0; i < input.length; i++) peak = Math.max(peak, Math.abs(input[i]));
+    $('bar').style.width = Math.min(100, peak * 160) + '%';
+  };
+
+  source.connect(node);
+  node.connect(ctx.destination);
+
+  const started = Date.now();
+  await new Promise(resolve => {
+    const tick = setInterval(() => {
+      const left = SECONDS - (Date.now() - started) / 1000;
+      if (left <= 0) { clearInterval(tick); resolve(); }
+      else say(`Luisteren... nog ${Math.ceil(left)} s`);
+    }, 200);
+  });
+
+  node.disconnect(); source.disconnect();
+  stream.getTracks().forEach(t => t.stop());
+  await ctx.close();
+
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const all = new Float32Array(total);
+  let at = 0;
+  for (const c of chunks) { all.set(c, at); at += c.length; }
+
+  let peak = 0;
+  for (let i = 0; i < all.length; i++) peak = Math.max(peak, Math.abs(all[i]));
+  return { wav: toWav(all, ctx.sampleRate), peak };
+}
+
+$('go').onclick = async () => {
+  $('go').disabled = true;
+  $('meter').classList.add('on');
+  placeholder('♪', true);
+
+  try {
+    const { wav, peak } = await capture();
+    $('meter').classList.remove('on');
+    $('bar').style.width = '0%';
+
+    if (peak < 0.003) {
+      placeholder('!', false);
+      say('Er kwam vrijwel geen geluid binnen. Staat de muziek aan, en hard genoeg?', true);
+      return;
+    }
+
+    say('Opzoeken bij allebei...');
+    const res = await fetch('/api/recognize', { method: 'POST', body: wav });
+    const data = await res.json();
+
+    if (data.error) { placeholder('!', false); say(data.error, true); return; }
+
+    render(data.results);
+    const hits = data.results.filter(r => r.matched).map(r => r.engine);
+    say(hits.length ? `Treffer bij: ${hits.join(' en ')}.` : 'Geen van beide herkende dit.');
+  } catch (err) {
+    placeholder('!', false);
+    say(err.name === 'NotAllowedError'
+      ? 'Geen toegang tot de microfoon. Sta het toe in het venster van je browser.'
+      : String(err), true);
+  } finally {
+    $('go').disabled = false;
+  }
+};
+
+(async () => {
+  placeholder('♪', false);
+  try {
+    const cfg = await (await fetch('/api/config')).json();
+    if (!cfg.auddConfigured) {
+      $('note').innerHTML =
+        'AudD heeft nog geen sleutel, dus alleen Shazam doet mee. ' +
+        'Haal een proefsleutel op bij audd.io en zet hem in ' +
+        '<code>audd_token.txt</code> naast <code>server.py</code>, ' +
+        'of in de omgevingsvariabele <code>AUDD_TOKEN</code>.';
+    }
+  } catch (e) { /* server nog niet klaar */ }
+})();
+</script>
+</body>
+</html>

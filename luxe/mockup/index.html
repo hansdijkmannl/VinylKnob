@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarantzKnob — interface-mockup</title>
+<style>
+:root{
+  --bg:#0d0d10; --fg:#f2f2f4; --dim:#8b8b96; --line:#26262e;
+  --accent:#e8a33d;          /* wordt per hoes overschreven */
+}
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none}
+body{margin:0;min-height:100vh;background:#1a1a1f;color:var(--fg);
+ display:flex;align-items:center;justify-content:center;gap:3rem;flex-wrap:wrap;
+ padding:2rem;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+
+/* ---- het apparaat ---- */
+.device{flex:0 0 auto;text-align:center}
+.bezel{width:420px;height:420px;border-radius:50%;position:relative;
+ background:linear-gradient(145deg,#3a3a42,#1b1b20);
+ padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.6),inset 0 2px 3px rgba(255,255,255,.12)}
+/* de fysieke knopring: de ribbels laten zien waar je draait */
+.bezel::before{content:"";position:absolute;inset:6px;border-radius:50%;
+ background:repeating-conic-gradient(rgba(255,255,255,.055) 0 1.1deg, transparent 1.1deg 2.6deg);
+ pointer-events:none}
+.screen{width:100%;height:100%;border-radius:50%;overflow:hidden;position:relative;
+ background:var(--bg);cursor:ns-resize}
+
+.layer{position:absolute;inset:0;display:flex;flex-direction:column;
+ align-items:center;justify-content:center;text-align:center;
+ opacity:0;pointer-events:none;transition:opacity .18s}
+.layer.on{opacity:1;pointer-events:auto}
+
+/* ---- hoes als platenlabel ---- */
+.art{position:absolute;inset:0;border-radius:50%}
+.art::after{content:"";position:absolute;left:50%;top:50%;width:26px;height:26px;
+ margin:-13px 0 0 -13px;border-radius:50%;background:var(--bg);
+ box-shadow:0 0 0 1px rgba(0,0,0,.5) inset, 0 0 0 40px rgba(0,0,0,.16)}
+ /* Licht genoeg om de hoes te laten zien, donker genoeg voor leesbare tekst.
+    Het contrast komt uit de tekstschaduw, niet uit dit vlak. */
+.scrim{position:absolute;inset:0;border-radius:50%;
+ background:radial-gradient(circle at 50% 50%, rgba(0,0,0,.40) 18%, rgba(0,0,0,.18) 55%, rgba(0,0,0,.45) 100%)}
+
+/* ---- volumeboog langs de rand ---- */
+/* De boog, het dB-getal en de teksten liggen boven de hoes en zouden anders
+   elke klik opvangen. Alleen de scrim en de ingangsnaam zijn aanraakbaar. */
+.ring,.big,.flag,.title,.artist,.head{pointer-events:none}
+.ring{position:absolute;inset:0;transform:rotate(135deg)}
+.ring circle{fill:none;stroke-linecap:round}
+.track{stroke:rgba(255,255,255,.09);stroke-width:9}
+.fill{stroke:var(--accent);stroke-width:9;transition:stroke-dashoffset .12s, opacity .3s}
+
+/* ---- nu aan het spelen ---- */
+.big{position:absolute;font-size:3.1rem;font-weight:700;letter-spacing:-.02em;
+ line-height:1;font-variant-numeric:tabular-nums;text-shadow:0 2px 18px rgba(0,0,0,.85);
+ opacity:0;transition:opacity .22s}
+/* Het volumegetal verschijnt alleen tijdens het draaien; daarna is de hoes
+   weer het beeld. Anders staat er permanent een cijfer over je platenlabel. */
+.screen.turning .big{opacity:1}
+.screen.turning .title,.screen.turning .artist{opacity:0}
+.screen.turning .art::after{opacity:0}
+.title,.artist{transition:opacity .22s}
+.art::after{transition:opacity .22s}
+.big small{font-size:1rem;font-weight:600;color:var(--dim);margin-left:.25rem}
+.title{font-size:1.15rem;font-weight:650;margin:.9rem 2.6rem .1rem;line-height:1.25;
+ text-shadow:0 1px 3px rgba(0,0,0,.9),0 2px 12px rgba(0,0,0,.75)}
+.artist{font-size:.95rem;color:#d8d8de;margin:0 2.6rem;
+ text-shadow:0 1px 3px rgba(0,0,0,.9),0 2px 10px rgba(0,0,0,.7)}
+.src{position:absolute;bottom:34px;font-size:.72rem;letter-spacing:.14em;
+ color:var(--dim);font-weight:700;padding:.35rem .8rem;border-radius:99px;
+ background:rgba(255,255,255,.07);cursor:pointer}
+.flag{position:absolute;top:34px;font-size:.68rem;letter-spacing:.14em;font-weight:700;
+ padding:.25rem .7rem;border-radius:99px;background:var(--accent);color:#12121a}
+.hidden{display:none}
+
+/* ---- ingangenkiezer ---- */
+.head{font-size:.68rem;letter-spacing:.16em;color:var(--dim);font-weight:700;
+ margin-bottom:.9rem}
+.opt{font-size:1.12rem;font-weight:600;padding:.28rem 0;color:var(--dim);
+ cursor:pointer;transition:color .12s,transform .12s}
+.opt.sel{color:var(--fg);transform:scale(1.16);font-weight:700}
+.opt.sel::before{content:"";display:inline-block;width:6px;height:6px;
+ border-radius:50%;background:var(--accent);margin-right:.5rem;vertical-align:middle}
+
+/* ---- collectie ---- */
+.shelf{display:flex;align-items:center;gap:14px;height:150px}
+.sleeve{width:78px;height:78px;border-radius:8px;flex:0 0 auto;opacity:.45;
+ transform:scale(.8);transition:.16s;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.sleeve.sel{opacity:1;transform:scale(1.36);border-radius:10px}
+
+/* ---- qr ---- */
+.qr{width:132px;height:132px;background:#fff;padding:8px;border-radius:8px}
+.qr canvas{width:100%;height:100%;image-rendering:pixelated}
+.ip{font-size:1.05rem;font-weight:700;margin-top:.8rem;font-variant-numeric:tabular-nums}
+.host{font-size:.78rem;color:var(--dim)}
+
+/* ---- bediening eronder ---- */
+.controls{margin-top:1.6rem;display:flex;gap:.6rem;justify-content:center}
+button{padding:.6rem 1.1rem;border:1px solid var(--line);border-radius:8px;
+ background:#24242c;color:var(--fg);font:inherit;cursor:pointer}
+button:active{background:#31313b}
+
+/* ---- uitleg ---- */
+.docs{flex:1 1 320px;max-width:420px}
+.docs h1{font-size:1.15rem;margin:0 0 .3rem}
+.docs p.lead{color:var(--dim);margin:0 0 1.4rem;font-size:.9rem}
+.docs h2{font-size:.7rem;letter-spacing:.14em;color:var(--dim);margin:1.5rem 0 .5rem}
+dl{margin:0;font-size:.88rem}
+dt{font-weight:650;margin-top:.55rem}
+dd{margin:0;color:var(--dim)}
+.now{margin-top:1.4rem;padding:.7rem .9rem;border:1px solid var(--line);
+ border-radius:8px;font-size:.82rem;color:var(--dim);background:#1f1f26}
+kbd{background:#2c2c36;border:1px solid var(--line);border-bottom-width:2px;
+ border-radius:5px;padding:.05rem .35rem;font:inherit;font-size:.85em}
+</style>
+</head>
+<body>
+
+<div class="device">
+  <div class="bezel">
+    <div class="screen" id="screen">
+
+      <!-- 1. nu aan het spelen -->
+      <div class="layer on" id="lyNow">
+        <div class="art" id="art"></div>
+        <div class="scrim"></div>
+        <svg class="ring" viewBox="0 0 480 480">
+          <circle class="track" cx="240" cy="240" r="228"
+                  stroke-dasharray="1074 1432" />
+          <circle class="fill" id="arc" cx="240" cy="240" r="228"
+                  stroke-dasharray="1074 1432" stroke-dashoffset="500" />
+        </svg>
+        <div class="flag hidden" id="flag">MUTE</div>
+        <div class="big" id="vol">-38.5<small>dB</small></div>
+        <div class="title" id="title" style="position:relative">Nachtwerk</div>
+        <div class="artist" id="artist" style="position:relative">Vier Seizoenen</div>
+        <div class="src" id="src">PLATENSPELER</div>
+      </div>
+
+      <!-- 2. ingang kiezen -->
+      <div class="layer" id="lyInputs">
+        <div class="head">INGANG</div>
+        <div id="optList"></div>
+      </div>
+
+      <!-- 3. collectie -->
+      <div class="layer" id="lyBrowse">
+        <div class="head">PLATENKAST</div>
+        <div class="shelf" id="shelf"></div>
+        <div class="title" id="bTitle" style="margin-top:0">—</div>
+        <div class="artist" id="bArtist">—</div>
+      </div>
+
+      <!-- 4. koppelen -->
+      <div class="layer" id="lyQr">
+        <div class="head">ONBEKENDE PLAAT</div>
+        <div class="qr"><canvas id="qr" width="29" height="29"></canvas></div>
+        <div class="ip">192.168.1.61</div>
+        <div class="host">marantzknob.local</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="bTurnDown">◀ draaien</button>
+    <button id="bPress">drukken</button>
+    <button id="bHold">vasthouden</button>
+    <button id="bTurnUp">draaien ▶</button>
+  </div>
+</div>
+
+<div class="docs">
+  <h1>Interface-mockup</h1>
+  <p class="lead">Scroll met je muiswiel óver het scherm om aan de knop te
+  draaien. Klik op het scherm voor een korte druk. De knoppen eronder doen
+  hetzelfde.</p>
+
+  <h2>DE KNOP</h2>
+  <dl>
+    <dt>draaien</dt><dd>volume — altijd, nooit iets anders</dd>
+    <dt>kort drukken</dt><dd>mute aan/uit</dd>
+    <dt>dubbel drukken</dt><dd>direct naar de platenspeler</dd>
+    <dt>vasthouden</dt><dd>versterker aan/uit</dd>
+  </dl>
+
+  <h2>HET SCHERM</h2>
+  <dl>
+    <dt>tik op de ingangsnaam</dt><dd>ingang kiezen; draaien loopt door de lijst</dd>
+    <dt>tik op de hoes</dt><dd>de platenkast doorbladeren</dd>
+    <dt>tik om te bevestigen</dt><dd>of doe niets: na 4 s valt hij terug</dd>
+  </dl>
+
+  <div class="now" id="log">Draai eens aan de knop.</div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Nepgegevens. Hoezen zijn gegenereerde verlopen, geen echte albumhoezen.
+// ---------------------------------------------------------------------------
+const ALBUMS = [
+  {t:'Nachtwerk',      a:'Vier Seizoenen', c:['#c2451f','#f0a63c'], k:'#e8a33d'},
+  {t:'Laagland',       a:'Anna Doorn',     c:['#123b6b','#2f9fd0'], k:'#3fa9d8'},
+  {t:'Zoutwater',      a:'De Kapiteins',   c:['#1d5c3c','#8fc84a'], k:'#8fc84a'},
+  {t:'Tussenuur',      a:'Bram Vos Trio',  c:['#5b1d54','#d05fa0'], k:'#d05fa0'},
+  {t:'Hoogspanning',   a:'Kabelbaan',      c:['#6b2b12','#e0762c'], k:'#e0762c'},
+  {t:'Winterlicht',    a:'Sanne Hart',     c:['#2b2b52','#7b7fd4'], k:'#7b7fd4'},
+];
+const INPUTS = ['Platenspeler','CD','TV','Bluetooth','Netwerk'];
+
+const S = {
+  view:'now', vol:-38.5, muted:false, on:true,
+  album:0, input:0, pick:0, browse:0, timer:null, hold:null
+};
+
+const $ = id => document.getElementById(id);
+const gradient = a => `linear-gradient(140deg, ${a.c[0]}, ${a.c[1]})`;
+const log = t => $('log').textContent = t;
+
+// ---------------------------------------------------------------------------
+function drawArc() {
+  // 270 graden sweep; -80..0 dB over de hele boog
+  const span = 1074;
+  const frac = Math.min(1, Math.max(0, (S.vol + 80) / 80));
+  $('arc').setAttribute('stroke-dashoffset', span * (1 - frac));
+  $('arc').style.opacity = S.muted ? .25 : 1;
+}
+
+function render() {
+  const a = ALBUMS[S.album];
+  document.documentElement.style.setProperty('--accent', a.k);
+
+  ['lyNow','lyInputs','lyBrowse','lyQr'].forEach(id => $(id).classList.remove('on'));
+  $({now:'lyNow', inputs:'lyInputs', browse:'lyBrowse', qr:'lyQr'}[S.view]).classList.add('on');
+
+  $('art').style.background = gradient(a);
+  $('vol').innerHTML = (S.on ? S.vol.toFixed(1) : '—') + '<small>dB</small>';
+  $('title').textContent = S.on ? a.t : 'Uit';
+  $('artist').textContent = S.on ? a.a : '';
+  $('src').textContent = INPUTS[S.input].toUpperCase();
+  $('flag').classList.toggle('hidden', !S.muted);
+  drawArc();
+
+  $('optList').innerHTML = INPUTS.map((n,i) =>
+    `<div class="opt ${i===S.pick?'sel':''}" data-i="${i}">${n}</div>`).join('');
+
+  // Drie hoesjes rond de gekozen plaat
+  const near = [-1,0,1].map(d => (S.browse + d + ALBUMS.length) % ALBUMS.length);
+  $('shelf').innerHTML = near.map((idx,pos) =>
+    `<div class="sleeve ${pos===1?'sel':''}" data-i="${idx}"
+          style="background:${gradient(ALBUMS[idx])}"></div>`).join('');
+  $('bTitle').textContent = ALBUMS[S.browse].t;
+  $('bArtist').textContent = ALBUMS[S.browse].a;
+}
+
+function backToNow(ms = 4000) {
+  clearTimeout(S.timer);
+  S.timer = setTimeout(() => { S.view = 'now'; render(); log('Vanzelf terug naar het volume.'); }, ms);
+}
+
+// ---------------------------------------------------------------------------
+// Draaien
+// ---------------------------------------------------------------------------
+let turnFade = null;
+function turn(dir) {
+  if (S.view === 'now') {
+    if (S.muted) { S.muted = false; log('Draaien heft de mute op.'); }
+    S.vol = Math.min(-5, Math.max(-80, S.vol + dir * 0.5));
+    // Getal tonen zolang je draait, daarna terug naar de hoes
+    $('screen').classList.add('turning');
+    clearTimeout(turnFade);
+    turnFade = setTimeout(() => $('screen').classList.remove('turning'), 1600);
+    log(`Volume ${S.vol.toFixed(1)} dB — de boog staat waar je vingers liggen.`);
+  } else if (S.view === 'inputs') {
+    S.pick = (S.pick + dir + INPUTS.length) % INPUTS.length;
+    log(`Ingang: ${INPUTS[S.pick]} — tik of wacht om te kiezen.`);
+    backToNow();
+  } else if (S.view === 'browse') {
+    S.browse = (S.browse + dir + ALBUMS.length) % ALBUMS.length;
+    log(`${ALBUMS[S.browse].a} — ${ALBUMS[S.browse].t}`);
+    backToNow(6000);
+  }
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Drukken
+// ---------------------------------------------------------------------------
+let lastPress = 0;
+function press() {
+  const now = Date.now();
+  const isDouble = now - lastPress < 350;
+  lastPress = now;
+
+  if (isDouble) {
+    S.input = 0; S.view = 'now'; S.muted = false;
+    log('Dubbel drukken: meteen naar de platenspeler.');
+    render(); return;
+  }
+
+  if (S.view === 'inputs') {
+    S.input = S.pick; S.view = 'now';
+    log(`Ingang gekozen: ${INPUTS[S.input]}.`);
+  } else if (S.view === 'browse') {
+    S.album = S.browse; S.view = 'now';
+    log(`Gekozen: ${ALBUMS[S.album].t}. Nu nog zelf opzetten.`);
+  } else if (S.view === 'qr') {
+    S.view = 'now'; log('Weggeklikt. De QR komt terug als er iets te koppelen is.');
+  } else {
+    S.muted = !S.muted;
+    log(S.muted ? 'Mute. De boog dimt.' : 'Mute uit.');
+  }
+  clearTimeout(S.timer);
+  render();
+}
+
+function hold() {
+  S.on = !S.on;
+  S.view = 'now';
+  log(S.on ? 'Versterker aan.' : 'Versterker uit — vasthouden zet hem weer aan.');
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Bediening
+// ---------------------------------------------------------------------------
+$('screen').addEventListener('wheel', e => {
+  e.preventDefault();
+  turn(e.deltaY < 0 ? 1 : -1);
+}, {passive:false});
+
+$('screen').addEventListener('click', e => {
+  const t = e.target;
+  if (t.id === 'src') {
+    S.view = 'inputs'; S.pick = S.input;
+    log('Ingang kiezen: draai door de lijst, tik om te kiezen.');
+    render(); backToNow(); return;
+  }
+  if (t.classList.contains('opt'))    { S.pick = +t.dataset.i; press(); return; }
+  if (t.classList.contains('sleeve')) { S.browse = +t.dataset.i; render(); return; }
+  if (S.view === 'now' && (t.classList.contains('art') || t.classList.contains('scrim')
+                           || t.id === 'lyNow')) {
+    S.view = 'browse'; S.browse = S.album;
+    log('Platenkast: draai erdoorheen, tik om te kiezen.');
+    render(); backToNow(6000); return;
+  }
+  press();
+});
+
+$('bTurnUp').onclick   = () => turn(1);
+$('bTurnDown').onclick = () => turn(-1);
+$('bPress').onclick    = press;
+$('bHold').onclick     = hold;
+
+// Nep-QR: alleen om de verhouding te beoordelen, geen echte code
+(function fakeQr(){
+  const ctx = $('qr').getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,29,29);
+  ctx.fillStyle = '#000';
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let y=0;y<29;y++) for (let x=0;x<29;x++) if (rnd() > .52) ctx.fillRect(x,y,1,1);
+  [[0,0],[22,0],[0,22]].forEach(([ox,oy]) => {
+    ctx.fillStyle='#fff'; ctx.fillRect(ox,oy,7,7);
+    ctx.fillStyle='#000'; ctx.fillRect(ox,oy,7,1); ctx.fillRect(ox,oy+6,7,1);
+    ctx.fillRect(ox,oy,1,7); ctx.fillRect(ox+6,oy,1,7); ctx.fillRect(ox+2,oy+2,3,3);
+  });
+})();
+
+// Vasthouden op de knop zelf
+let holdTimer = null;
+$('bHold').addEventListener('mousedown', () => holdTimer = setTimeout(hold, 0));
+render();
+</script>
+</body>
+</html>
