@@ -1,79 +1,75 @@
-# Opbouw, stap voor stap
+# Building it, step by step
 
-Alle onderdelen zijn binnen. Dit is de volgorde waarin je ze in gebruik neemt,
-met per stap wat je moet zien en wat je doet als dat niet zo is.
+The order to bring the parts up in, with what you should see at each step and
+what to do when you do not.
 
-Bedrading staat in [bedrading.svg](bedrading.svg). Achtergrond bij de keuzes in
-[PLAN.md](PLAN.md) en [BOM.md](BOM.md).
+Wiring is in [bedrading.svg](bedrading.svg). The reasoning behind the choices is
+in [PLAN.md](PLAN.md) and [BOM.md](BOM.md).
 
 ---
 
-## Stap 0 — Laat de versterker los
+## Step 0 — Let go of the amplifier
 
-De SR7015 accepteert **één telnet-sessie tegelijk**. Zolang het brein op je Mac
-verbonden is, komt het CrowPanel er niet in. Dat is de meest verwarrende fout
-die je kunt maken, want het paneel meldt gewoon "geen receiver".
+The receiver accepts **one telnet session at a time**. If anything else is
+connected, the panel cannot get in — and it will simply report "no receiver",
+which is the most confusing way this can fail.
 
-Controleer:
+If you have been running the brain on a laptop, check:
 
 ```bash
 curl -s http://127.0.0.1:8790/api/avr/state
 ```
 
-Staat daar `"connected": true`, verbreek dan eerst:
+If that says `"connected": true`, disconnect first:
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/avr/disconnect
 ```
 
-Vanaf nu is het **CrowPanel** de eigenaar van die verbinding. De webinterface op
-je Mac blijft werken voor herkenning en Discogs; druk daar alleen niet meer op
-"verbind".
+From here on the **panel** owns that connection. The web interface keeps working
+for recognition and Discogs; just do not press "connect" there again.
 
 ---
 
-## Stap 1 — Het CrowPanel flashen
+## Step 1 — Flash the panel
 
-PlatformIO staat sinds vandaag in `~/.platformio-venv`. Kortere vorm:
-zet `export PATH="$HOME/bin:$PATH"` in je `~/.zshrc`, dan volstaat `pio`.
+**1a. Find the cable.** The panel has no USB-C. Power and data share the
+`USB-5V-IN` connector: a **4-pin JST MX1.25** (`GND · D+ · D− · VCC`). Elecrow
+normally supplies a USB-A cable for it — you need that one.
 
-**1a. Zoek de kabel.** Het paneel heeft géén USB-C. Voeding en data lopen over de
-connector `USB-5V-IN`: een **JST MX1.25 met 4 polen** (`GND · D+ · D− · VCC`).
-Elecrow levert daar normaal een USB-A-kabel bij — die heb je nodig.
+**1b. Put it in flash mode.** There is no auto-reset: `RESET` and `GPIO0` are on
+the 12-pin FPC, not on that 4-pin connector.
 
-**1b. In flash-modus zetten.** Er is geen automatische reset: `RESET` en `GPIO0`
-liggen op de 12-pins FPC, niet op die 4-polige connector.
+1. Hold the **BOOT** button down
+2. Plug the cable into your computer
+3. Release BOOT
 
-1. Houd de **BOOT**-knop ingedrukt
-2. Steek de kabel in je Mac
-3. Laat BOOT los
-
-Controleer dat hij zich meldt:
+Check that it announces itself:
 
 ```bash
-ls /dev/cu.usbmodem*
+ls /dev/cu.usbmodem*        # macOS
+ls /dev/ttyACM*             # Linux
 ```
 
-Zie je niets, dan is het bijna altijd de kabel of de BOOT-timing. Probeer
-opnieuw en houd BOOT iets langer vast.
+Nothing there is almost always the cable or the BOOT timing. Try again and hold
+BOOT a little longer.
 
-**1c. Flashen.**
+**1c. Flash.**
 
 ```bash
-cd /Volumes/Opslag/Apps/MarantzKnob/luxe/crowpanel && ~/.platformio-venv/bin/pio run -t upload
+cd luxe/crowpanel && pio run -t upload
 ```
 
-**1d. Druk daarna op RESET.** Na het uploaden staat de chip nog in de
-ROM-bootloader; pas na een reset draait je firmware. De poortnaam kan daarbij
-veranderen.
+**1d. Press RESET.** After uploading, the chip is still in the ROM bootloader;
+your firmware only runs after a reset. The port name may change when it does.
 
-**1e. Meekijken.**
+**1e. Watch it come up.**
 
 ```bash
-cd /Volumes/Opslag/Apps/MarantzKnob/luxe/crowpanel && ~/.platformio-venv/bin/pio device monitor
+cd luxe/crowpanel && pio device monitor
 ```
 
-Je hoort te zien:
+You should see:
 
 ```
 MarantzKnob — CrowPanel
@@ -81,70 +77,67 @@ MarantzKnob — CrowPanel
 Setup-accesspoint "MarantzKnob-setup" op 192.168.4.1
 ```
 
-Staat er `[bord] GEEN aanraakchip op 0x15`, dan is de PCF8574 niet gevonden of
-liep de resetvolgorde mis — het scherm staat daar los van. Blijft het scherm
-zwart maar is de rest goed, zie de foutzoeklijst in
+If it says there is no touch chip at 0x15, the PCF8574 was not found or the
+reset sequence went wrong — the display is separate from that. A black screen
+with everything else healthy is covered in
 [crowpanel/README.md](crowpanel/README.md).
 
 ---
 
-## Stap 2 — De knop voelen
+## Step 2 — Feel the knob
 
-Dit is de vraag die vanaf het begin openstaat en die je nu in één minuut
-beantwoordt: **draait die ingebouwde encoder met klikjes?**
+One minute, and it answers the question the whole design rests on: **does that
+built-in encoder have detents?**
 
-Vrijwel zeker van wel, en dat is precies wat je niet wilde — de volumeknop van
-de Marantz doet het ook niet. Valt het tegen, dan is `encDivider` in de
-instellingen de knop om het te temmen: die bepaalt hoeveel
-quadratuur-overgangen één stap zijn.
+Almost certainly yes, which is exactly what you did not want — a real amplifier's
+volume knob does not. If it bothers you, `encDivider` in the settings is the way
+to tame it: it decides how many quadrature transitions make one step.
 
-Doe dit vóór je aan de Pi begint. Het is het enige dat de hele route nog kan
-veranderen.
-
----
-
-## Stap 3 — Het CrowPanel instellen
-
-Het paneel heeft geen toetsenbord, dus dit gaat via een webpagina.
-
-1. Verbind je telefoon of Mac met het wifi-netwerk **MarantzKnob-setup**
-2. Ga naar <http://192.168.4.1>
-3. Vul in: je eigen wifi, het IP-adres van je receiver, en de ingangenlijst
-   (PHONO als favoriet)
-4. Opslaan — hij herstart op je eigen netwerk
-
-Daarna staat dezelfde pagina op <http://marantzpaneel.local> — of gewoon op het
-IP dat in de monitor verschijnt. **Niet** `marantzknob`: zo heet de Pi.
-
-**Nu testen tegen de versterker.** Draai aan de knop: het volume hoort mee te
-gaan. Kort drukken is mute, lang drukken is aan/uit, tikken op de ingangsnaam
-opent de ingangenlijst.
-
-Werkt het niet, loop dan stap 0 nog eens na — negen van de tien keer houdt er
-nog iets anders die telnet-sessie vast.
+Do this before you start on the Pi. It is the only thing that could still change
+the whole approach.
 
 ---
 
-## Stap 4 — De SD-kaart voor de Pi
+## Step 3 — Configure the panel
 
-Raspberry Pi Imager staat al in je Applications.
+The panel has no keyboard, so this goes through a web page.
 
-- **Raspberry Pi OS Lite (64-bit)** — geen desktop, die kost alleen geheugen en
-  de Pi krijgt nooit een scherm
-- In het tandwielmenu:
+1. Connect your phone or laptop to the Wi-Fi network **MarantzKnob-setup**
+2. Open <http://192.168.4.1>
+3. Fill in your own Wi-Fi, your receiver's IP address, and the list of inputs
+   (with PHONO as the favourite)
+4. Save — it restarts onto your network
+
+After that the same page lives at <http://marantzpaneel.local>, or at whatever
+address the monitor shows. **Not** `marantzknob` — that is the Pi.
+
+**Now test it against the amplifier.** Turn the knob: the volume should follow.
+Short press is mute, long press is on/off, tapping the input name opens the
+input list.
+
+If it does nothing, go back through step 0. Nine times out of ten something else
+is still holding that telnet session.
+
+---
+
+## Step 4 — The SD card
+
+Raspberry Pi Imager, **Raspberry Pi OS Lite (64-bit)** — no desktop; it only
+costs memory and this machine never gets a screen.
+
+In the gear menu:
 
 | | |
 |---|---|
-| hostnaam | `marantzknob` (het paneel heet `marantzpaneel`) |
-| SSH | aan, met je publieke sleutel |
-| wifi | je eigen netwerk |
-| gebruiker | je eigen naam, niet `pi` |
+| hostname | `marantzknob` (the panel is `marantzpaneel`) |
+| SSH | on, with your public key |
+| Wi-Fi | your own network |
+| user | your own name, not `pi` |
 
-Die hostnaam maakt alles hierna bereikbaar op `marantzknob.local`, ook als de
-router een ander IP uitdeelt.
+That hostname makes everything below reachable at `marantzknob.local`, even when
+the router hands out a different address.
 
-Kaart erin, koellichaam erop, 27 W-adapter in de USB-C van de Pi. Wacht een
-minuut en probeer:
+Card in, heatsink on, 27 W adapter into the Pi's USB-C. Wait a minute, then:
 
 ```bash
 ssh marantzknob.local
@@ -152,110 +145,110 @@ ssh marantzknob.local
 
 ---
 
-## Stap 5 — De Pi inrichten
+## Step 5 — Set up the Pi
 
-Vanaf je Mac:
-
-```bash
-rsync -a --exclude '.venv' --exclude '._*' --exclude 'data' --exclude '*.stl' /Volumes/Opslag/Apps/MarantzKnob/ admin@<ip-van-de-pi>:marantzknob/
-```
-
-Dan op de Pi. Let op de `-t`: het script gebruikt `sudo` en moet dus om je
-wachtwoord kunnen vragen.
+From your computer:
 
 ```bash
-ssh -t admin@<ip-van-de-pi> 'cd ~/marantzknob/luxe/pi && ./installeer.sh'
+rsync -a --exclude '.venv' --exclude '._*' --exclude 'data' --exclude '*.stl' \
+  ./ marantzknob.local:marantzknob/
 ```
 
-De map staat in je home en niet in `/opt`, zodat het kopiëren zelf geen root
-nodig heeft. Het script leidt alle paden af van zijn eigen plek, dus het werkt
-vanaf elke locatie.
+Then on the Pi. Note the `-t`: the script uses `sudo` and needs to be able to
+ask for your password.
 
-Dat duurt een paar minuten: pakketten, een virtuele omgeving, twee
-systemd-diensten, en het beperken van schrijfacties naar de SD-kaart (logs naar
-RAM, swap uit). Het script mag je zo vaak draaien als je wilt.
+```bash
+ssh -t marantzknob.local 'cd ~/marantzknob/luxe/pi && ./installeer.sh'
+```
+
+It lives in your home directory rather than `/opt` so that copying does not need
+root. The script derives every path from its own location, so it works from
+anywhere.
+
+That takes a few minutes: packages, a virtualenv, two systemd services, and
+reducing writes to the SD card (logs to RAM, swap off). Run it as often as you
+like; it is idempotent.
 
 ---
 
-## Stap 6 — De microfoon controleren
+## Step 6 — Check the microphone
 
-Steek de dasspeldmicrofoon in een **USB-A**-poort van de Pi en draai:
+Plug the microphone into a **USB-A** port on the Pi and run:
 
 ```bash
-ssh admin@<ip-van-de-pi> marantzknob/luxe/pi/microfoon.sh
+ssh marantzknob.local marantzknob/luxe/pi/microfoon.sh
 ```
 
-Dit is de vijfminutencontrole uit [BOM.md](BOM.md), maar dan uitgevoerd: hij
-zoekt de kaart, zet **Auto Gain Control** uit, neemt vijf seconden op en zegt of
-daar signaal in zit.
+This is the five-minute check from [BOM.md](BOM.md), performed rather than
+described: it finds the card, turns **Auto Gain Control** off, records five
+seconds and says whether there is signal in it.
 
-Twee uitkomsten betekenen dat je de verkeerde microfoon hebt:
+Two outcomes mean you have the wrong microphone:
 
-- **geen enkele regelaar** — dan zit de firmware zelf aan het signaal en kun je
-  er niets aan veranderen;
-- **piek onder 0,002** — stil, dus verkeerd apparaat of gedempt.
+- **no controls at all** — the firmware is doing something to the signal and you
+  cannot stop it;
+- **peak below 0.002** — silent, so wrong device or muted.
 
-Een *laag* niveau is juist geen probleem. De vingerafdrukker werkt met een
-relatieve drempel; wat herkenning sloopt is een pompende AGC, niet een zachte
-opname.
+A *low* level is fine. Fingerprinting works on a relative threshold; what ruins
+recognition is a pumping AGC, not a quiet recording.
 
 ---
 
-## Stap 7 — Kijken of de Pi loopt
+## Step 7 — See whether the Pi runs
 
 ```bash
-ssh admin@<ip-van-de-pi> 'journalctl -u marantzknob-brein -u marantzknob-luister -f'
+ssh marantzknob.local 'journalctl -u marantzknob-brein -u marantzknob-luister -f'
 ```
 
-| Wat | Waar |
+| | |
 |---|---|
-| webinterface | <http://marantzknob.local:8790> |
-| niveaus van de oren | <http://marantzknob.local:8791/status> |
-| nu meteen luisteren | `curl -X POST http://marantzknob.local:8791/luister` |
+| web interface | <http://marantzknob.local> |
+| raw levels | <http://marantzknob.local/status> |
+| listen right now | `curl -X POST http://marantzknob.local/luister` |
 
-Vul in de webinterface je Discogs-token in en synchroniseer de collectie — die
-gaat niet mee met `rsync`. Wil je je opgebouwde vingerafdrukken behouden,
-kopieer dan eerst `luxe/brein/data/brein.db` los naar de Pi en herstart de
-dienst.
+In the web interface, enter your Discogs token and sync the collection — the
+database does not travel with `rsync`. To keep fingerprints you built up
+elsewhere, copy `luxe/brein/data/brein.db` across separately and restart the
+service.
 
-**Afstellen zonder gokken:** zet een plaat op en kijk op `/status` waar
-`niveauDb` heen gaat ten opzichte van `drempelDb`. De schroefjes staan in
+**Tuning without guessing:** put a record on and watch `/status` to see where
+`niveauDb` goes relative to `drempelDb`. The adjustments live in
 `marantzknob-luister.service`.
 
 ---
 
-## Stap 8 — Het CrowPanel op de Pi
+## Step 8 — Move the panel onto the Pi
 
-Tot nu toe hing het paneel aan je Mac. Verhuis de USB-kabel naar een USB-A-poort
-van de Pi. Alles blijft werken: het paneel praat over wifi met de versterker, de
-Pi over wifi met Shazam en Discogs.
+Until now the panel hung off your computer. Move the USB cable to a USB-A port
+on the Pi. Everything keeps working: the panel talks to the receiver over Wi-Fi,
+the Pi talks to Shazam and Discogs over Wi-Fi.
 
-Let op: de twee praten nog **niet** met elkaar. De Pi luistert zelfstandig en
-het paneel weet daar niets van. Dat koppelstuk — het paneel dat om een
-opzoeking vraagt, en de QR-code als er iets te koppelen valt — is het volgende
-werk. Zie [PLAN.md](PLAN.md), fase 5.
+Now they find each other. The panel polls the Pi every four seconds for what is
+playing, and the Pi learns the panel's address from those same requests — there
+is nothing to configure. Set `breinHost` in the panel's settings to the Pi's
+address and the sleeve appears.
 
 ---
 
-## Als er iets niet lukt
+## When something does not work
 
-| Symptoom | Meestal |
+| Symptom | Usually |
 |---|---|
-| paneel zegt "geen receiver" | er houdt nog iets anders de telnet-sessie vast (stap 0) |
-| `/dev/cu.usbmodem*` verschijnt niet | BOOT niet lang genoeg vastgehouden, of de verkeerde kabel |
-| na uploaden gebeurt er niets | druk op RESET; de chip staat nog in de bootloader |
-| scherm blijft zwart, monitor spuwt `ESP-ROM` | bootlus — zie hieronder |
-| scherm zwart, monitor wel goed | zie [crowpanel/README.md](crowpanel/README.md) |
-| verkeerde kleuren op het scherm | Arduino_GFX niet op v1.3.1 — `pio pkg list` |
-| `marantzknob.local` niet vindbaar | avahi nog niet op; probeer het IP uit je router |
-| een ingang doet niets, andere wel | die bron staat op `DEL` in de receiver — zie [crowpanel/README.md](crowpanel/README.md) |
+| panel says "geen receiver" | something else still holds the telnet session (step 0) |
+| no serial port appears | BOOT not held long enough, or the wrong cable |
+| nothing happens after uploading | press RESET; the chip is still in the bootloader |
+| black screen, monitor spews `ESP-ROM` | boot loop — see the appendix |
+| black screen, monitor otherwise fine | see [crowpanel/README.md](crowpanel/README.md) |
+| wrong colours on the screen | Arduino_GFX is not on v1.3.1 — check `pio pkg list` |
+| `marantzknob.local` not found | avahi not up yet; try the IP from your router |
+| one input does nothing, others work | that source is set to `DEL` in the receiver |
 
 ---
 
-## Bijlage — de bootlus van 1 augustus
+## Appendix — the boot loop
 
-Bij de eerste keer flashen bleef het scherm zwart. In de monitor stond, veertig
-keer per seconde:
+The first time this was flashed the screen stayed black, and the monitor printed
+this forty times a second:
 
 ```
 ESP-ROM:esp32s3-20210327
@@ -264,26 +257,25 @@ Saved PC:0x403cdb0a
 entry 0x403c98d0
 ```
 
-Geen enkele regel van de firmware zelf. Dat is dus geen schermprobleem: het
-bordje herstartte al voordat er code van mij draaide.
+Not one line of the firmware itself. So it was not a display problem: the board
+was restarting before any of my code ran.
 
-Hoe het gevonden is, in stappen die elk iets uitsloten:
+How it was found, each step ruling something out:
 
-1. **De kale seriële firmware** (zonder scherm, LVGL of achtergrondverlichting)
-   liep in dezelfde lus → niet het scherm, en ook geen stroomtekort.
-2. **Een bouwsel zonder PSRAM** liep er ook in → niet de `memory_type`.
-3. **De flash volledig wissen** hielp niet → geen restant van Elecrow's
-   fabrieksimage.
-4. **Elecrow's eigen fabrieksimage flashen** wérkte meteen → het bord, de
-   voeding en de flash zijn in orde, dus het zat in mijn bouwconfiguratie.
-5. De flash-header van beide images vergelijken bracht het aan het licht:
-   die van mij zei **8 MB** terwijl er een partitietabel voor **16 MB** onder
-   hing.
+1. **The bare serial firmware** (no display, no LVGL, no backlight) looped the
+   same way → not the screen, and not a power shortfall either.
+2. **A build without PSRAM** looped too → not `memory_type`.
+3. **Erasing the flash completely** did not help → no leftover of Elecrow's
+   factory image.
+4. **Flashing Elecrow's own factory image** worked immediately → the board, the
+   power and the flash are all fine, so it was in my build configuration.
+5. Comparing the flash headers of both images showed it: mine said **8 MB**
+   while a partition table for **16 MB** sat underneath.
 
-De oorzaak: `board_build.flash_size` doet niets. De bootloader leest zijn
-flashgrootte uit **`board_upload.flash_size`**, en die stond op de
-bordstandaard van 8 MB. De bootloader vond dan partities voorbij het einde van
-wat hij dacht te hebben, en herstartte.
+The cause: `board_build.flash_size` does nothing. The bootloader reads its flash
+size from **`board_upload.flash_size`**, which was still on the board default of
+8 MB. It then found partitions past the end of what it believed it had, and
+restarted.
 
 ```ini
 board_upload.flash_size = 16MB
@@ -291,11 +283,10 @@ board_upload.maximum_size = 16777216
 board_build.partitions = default_16MB.csv
 ```
 
-De werkelijke flash is nagemeten met esptool: manufacturer `ba`, device `4018`,
-16 MB, quad volgens eFuse. En de chip is een echte S3R8 — `Embedded PSRAM 8MB
-(AP_3v3)` — dus `memory_type = qio_opi` klopte al.
+The actual flash was verified with esptool: manufacturer `ba`, device `4018`,
+16 MB, quad according to the eFuse. And the chip really is an S3R8 — `Embedded
+PSRAM 8MB (AP_3v3)` — so `memory_type = qio_opi` was already right.
 
-Handig om te onthouden voor de volgende keer: **de bootloader logt naar UART0
-(GPIO43/44), niet naar USB.** Over de USB-kabel zie je daarom alleen de
-ROM-regels en nooit de reden. Wil je die reden wel zien, hang dan een
-USB-serieeladapter aan de UART-connector.
+Worth remembering: **the bootloader logs to UART0 (GPIO43/44), not to USB.** So
+over the USB cable you only ever see the ROM lines and never the reason. To see
+the reason, hang a USB-serial adapter on the UART connector.
