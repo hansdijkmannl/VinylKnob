@@ -112,10 +112,37 @@ void uiDrawStats(uint32_t &totalMs, uint32_t &passes) {
   passes  = drawCount;
 }
 
+// Blend two RGB565 pixels, f in 0..31.
+//
+// The usual trick: red and blue sit far enough apart in the word to be
+// interpolated in one go without spilling into each other, so this is two
+// multiplies instead of six, and no unpacking to bytes and back.
+static inline uint16_t blend565(uint16_t a, uint16_t b, int32_t f) {
+  const int32_t arb = a & 0xF81F, agr = a & 0x07E0;
+  const int32_t brb = b & 0xF81F, bgr = b & 0x07E0;
+  const int32_t rb = (arb + (((brb - arb) * f) >> 5)) & 0xF81F;
+  const int32_t g  = (agr + (((bgr - agr) * f) >> 5)) & 0x07E0;
+  return (uint16_t)(rb | g);
+}
+
 static void flushRotated(lv_color_t *px) {
   // Counter-rotate every destination pixel to find where it came from. The
   // centre is the centre of the glass, because that is what the mount turned
   // around.
+  //
+  // Interpolated between the two rows, and nearest along them.
+  //
+  // Taking the nearest pixel outright is a multiply cheaper and looks it: at
+  // three degrees the source row only changes every twentieth pixel, so a line
+  // of text picks up a visible staircase and the stems of the letters come out
+  // one pixel wide in one place and two in the next.
+  //
+  // Full bilinear fixes that and costs 241 ms a frame against 132 — four
+  // frames a second, on the one device whose knob must not feel slow. Nearly
+  // all of that buys something invisible: at a few degrees the source advances
+  // 0.9986 pixels per step along a row, so over a whole row the sampling slips
+  // by two thirds of a pixel and a single column is doubled somewhere. The
+  // staircase is entirely in the other direction. So one blend, not three.
   const int32_t cx = SCREEN_W / 2, cy = SCREEN_H / 2;
   const uint16_t *src = (const uint16_t *)px;
 
@@ -126,10 +153,15 @@ static void flushRotated(lv_color_t *px) {
 
     for (int32_t dx = 0; dx < SCREEN_W; dx++) {
       const int32_t ix = sx >> 16, iy = sy >> 16;
-      // Outside the source is black. On a round screen those pixels sit in the
-      // corners, behind the bezel, so nobody ever sees this branch.
-      rowBuf[dx] = (ix < 0 || ix >= SCREEN_W || iy < 0 || iy >= SCREEN_H)
-                   ? 0 : src[iy * SCREEN_W + ix];
+      // One short of the bottom, because the sample reaches into the next row.
+      // Outside is black; on a round screen that sits in the corners behind the
+      // bezel, where nobody ever sees it.
+      if (ix < 0 || ix >= SCREEN_W || iy < 0 || iy >= SCREEN_H - 1) {
+        rowBuf[dx] = 0;
+      } else {
+        const uint16_t *r0 = src + iy * SCREEN_W + ix;
+        rowBuf[dx] = blend565(r0[0], r0[SCREEN_W], (sy >> 11) & 0x1F);
+      }
       sx += rotCos;
       sy -= rotSin;
     }
