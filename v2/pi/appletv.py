@@ -42,9 +42,15 @@ REQUIRED = (Protocol.AirPlay, Protocol.Companion)
 
 def _load() -> dict:
     try:
-        return json.loads(CREDENTIALS.read_text())
+        stored = json.loads(CREDENTIALS.read_text())
     except Exception:                                       # noqa: BLE001
         return {}
+    # The device name used to be stored under "naam". Read it either way, so a
+    # pairing made before the rename keeps working; it is written back as
+    # "name" on the next save.
+    if "naam" in stored:
+        stored["name"] = stored.pop("naam")
+    return stored
 
 
 def _save(data: dict) -> None:
@@ -79,9 +85,9 @@ class AppleTV:
                 continue
             out.append({
                 "id": str(a.identifier),
-                "naam": a.name,
+                "name": a.name,
                 "model": str(a.device_info),
-                "adres": str(a.address),
+                "address": str(a.address),
             })
         return out
 
@@ -90,7 +96,7 @@ class AppleTV:
         found = await pyatv.scan(asyncio.get_event_loop(), timeout=5,
                                     identifier=identifier)
         if not found:
-            return {"ok": False, "fout": "device not found"}
+            return {"ok": False, "error": "device not found"}
 
         self.pairing_name = found[0].name
         self._conf = found[0]
@@ -101,27 +107,27 @@ class AppleTV:
     async def _next_protocol(self) -> dict:
         """Each protocol wants its own PIN; this walks through them."""
         if not self._remaining:
-            _save({"id": str(self._conf.identifier), "naam": self.pairing_name,
+            _save({"id": str(self._conf.identifier), "name": self.pairing_name,
                      **self._collected})
             await self.connect()
-            return {"ok": True, "klaar": True, "naam": self.pairing_name}
+            return {"ok": True, "done": True, "name": self.pairing_name}
 
         protocol = self._remaining[0]
         self.pairing = await pyatv.pair(self._conf, protocol,
                                                asyncio.get_event_loop())
         await self.pairing.begin()
-        return {"ok": True, "klaar": False, "protocol": protocol.name,
-                "naam": self.pairing_name,
-                "resterend": len(self._remaining)}
+        return {"ok": True, "done": False, "protocol": protocol.name,
+                "name": self.pairing_name,
+                "remaining": len(self._remaining)}
 
     async def pair_pin(self, pin: str) -> dict:
         if not self.pairing:
-            return {"ok": False, "fout": "no pairing in progress"}
+            return {"ok": False, "error": "no pairing in progress"}
         self.pairing.pin(pin)
         try:
             await self.pairing.finish()
         except Exception as e:                              # noqa: BLE001
-            return {"ok": False, "fout": f"{type(e).__name__}: {e}"}
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
         protocol = self._remaining.pop(0)
         if not hasattr(self, "_collected"):
@@ -162,7 +168,7 @@ class AppleTV:
                 return False
             conf = found[0]
             for name, key in g.items():
-                if name in ("id", "naam"):
+                if name in ("id", "name"):
                     continue
                 conf.set_credentials(Protocol[name], key)
             self.device = await pyatv.connect(conf, asyncio.get_event_loop())

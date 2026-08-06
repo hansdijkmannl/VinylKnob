@@ -177,9 +177,9 @@ uint16_t shelfReleaseId(int index) {
 }
 
 char shelfLetterAt(int index) {
-  const char *naam = shelfArtist(index);
-  if (!naam[0]) naam = shelfTitle(index);
-  const char c = toupper((unsigned char)naam[0]);
+  const char *name = shelfArtist(index);
+  if (!name[0]) name = shelfTitle(index);
+  const char c = toupper((unsigned char)name[0]);
   return (c >= 'A' && c <= 'Z') ? c : '#';
 }
 

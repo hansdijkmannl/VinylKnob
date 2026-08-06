@@ -200,7 +200,7 @@ class Ears:
         while True:
             proc = await self.start_arecord()
             try:
-                await self.lus(proc)
+                await self.audio_loop(proc)
             except (asyncio.IncompleteReadError, ConnectionResetError):
                 print("[listen] microphone dropped out, retrying in 5 s", flush=True)
             except Exception as e:                              # noqa: BLE001
@@ -211,7 +211,7 @@ class Ears:
                 await proc.wait()
             await asyncio.sleep(5)
 
-    async def lus(self, proc) -> None:
+    async def audio_loop(self, proc) -> None:
         while True:
             block = await proc.stdout.readexactly(BYTES_PER_BLOCK)
             self.clock += BLOCK_S
@@ -752,7 +752,7 @@ async def atv_status(_request):
     g = atv.paired()
     return web.json_response({
         "paired": bool(g),
-        "name": (g or {}).get("naam", ""),
+        "name": (g or {}).get("name", ""),
         "connected": atv.device is not None,
         "playing": atv.playing_now,
         "artist": atv.artist,
@@ -796,8 +796,9 @@ async def api_status(_request):
 async def watch_amplifier() -> None:
     """Track whether the amplifier is on, away from the audio loop.
 
-    Separate, and not inside lus(): that reads a block every tenth of a second
-    and no network request belongs in between. Ten seconds is ample — nobody
+    Separate, and not inside audio_loop(): that reads a block every tenth of a
+    second and no network request belongs in between. Ten seconds is ample —
+    nobody
     switches the amplifier on and off between two sides.
     """
     while True:

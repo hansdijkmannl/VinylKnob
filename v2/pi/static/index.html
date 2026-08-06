@@ -526,20 +526,20 @@ button.danger{background:var(--warn);color:#fff}
   <h2>Apple TV</h2>
   <div class="card">
     <p class="hint" id="atvSt" style="margin:0">…</p>
-    <div id="atvKies" hidden>
-      <label for="atvLijst">Device</label>
-      <select id="atvLijst"></select>
+    <div id="atvChoose" hidden>
+      <label for="atvList">Device</label>
+      <select id="atvList"></select>
       <div class="row" style="margin-top:.75rem">
         <button class="sec" id="atvScan">Search again</button>
         <button id="atvPair">Pair</button>
       </div>
     </div>
     <div id="atvPinBox" hidden>
-      <label for="atvCode" id="atvVraag">PIN</label>
+      <label for="atvCode" id="atvAsk">PIN</label>
       <input id="atvCode" inputmode="numeric" placeholder="PIN from the TV">
       <div class="row" style="margin-top:.75rem"><button id="atvOk">Confirm</button></div>
     </div>
-    <div class="row" style="margin-top:.75rem"><button class="sec" id="atvWeg" hidden>Forget this device</button></div>
+    <div class="row" style="margin-top:.75rem"><button class="sec" id="atvForget" hidden>Forget this device</button></div>
     <p class="hint">Pairing asks for two PIN codes, one per protocol — so &ldquo;Confirm&rdquo;
     sometimes asks again instead of finishing. Netflix hides its metadata; Apple TV+ and
     Music do not.</p>
@@ -979,11 +979,11 @@ function queueRow(p) {
 
 function knownRow(p) {
   const sleeve = p.releaseCover || p.cover;
-  const tabName = p.releaseArtist ? `${p.releaseArtist} — ${p.releaseTitle}`
-                               : `${p.artist || '?'} — ${p.album || p.title || ''}`;
+  const label = p.releaseArtist ? `${p.releaseArtist} — ${p.releaseTitle}`
+                                : `${p.artist || '?'} — ${p.album || p.title || ''}`;
   return `<div class="item">
     ${sleeve ? `<img class="thumb" src="${esc(sleeve)}" alt="">` : '<div class="thumb">&#9834;</div>'}
-    <div class="body"><div class="t">${esc(tabName)}</div>
+    <div class="body"><div class="t">${esc(label)}</div>
       <div class="s">${esc(p.at)} · ${esc(p.status)}${p.engine ? ' · ' + esc(p.engine) : ''}</div></div>
     <button class="sec mini" data-unlink="${p.id}">Not correct</button></div>`;
 }
@@ -1103,8 +1103,8 @@ const BAR_R = 222, BAR_CIRCUMFERENCE = 2 * Math.PI * BAR_R;
 let shelf = [], shelfIdx = 0;
 
 function shelfLetterAt(i) {
-  const tabName = (shelf[i].artist || shelf[i].title || '?').trim().toUpperCase();
-  const c = tabName[0] || '#';
+  const name = (shelf[i].artist || shelf[i].title || '?').trim().toUpperCase();
+  const c = name[0] || '#';
   return /[A-Z]/.test(c) ? c : '#';
 }
 
@@ -1408,13 +1408,13 @@ async function systemTick() {
 async function atvTick() {
   let s;
   try { s = await json('appletv/status'); } catch (e) { return; }
-  $('atvWeg').hidden = !s.paired;
-  $('atvKies').hidden = s.paired;
+  $('atvForget').hidden = !s.paired;
+  $('atvChoose').hidden = s.paired;
   if (!s.paired) { setText('atvSt', 'Not paired yet.'); return; }
-  const wat = (s.artist || s.title)
+  const what = (s.artist || s.title)
     ? `${s.artist}${s.artist && s.title ? ' — ' : ''}${s.title}`
     : (s.connected ? 'connected, nothing playing' : 'not reachable');
-  setText('atvSt', `${s.tabName}: ${wat}${s.app ? ' (' + s.app + ')' : ''}${s.error ? ' — ' + s.error : ''}`);
+  setText('atvSt', `${s.name}: ${what}${s.app ? ' (' + s.app + ')' : ''}${s.error ? ' — ' + s.error : ''}`);
 }
 
 async function atvScan() {
@@ -1422,33 +1422,33 @@ async function atvScan() {
   if (st.paired) { atvTick(); return; }
   setText('atvSt', 'Searching…');
   const d = await json('appletv/scan');
-  $('atvLijst').innerHTML = d.devices
-    .map(a => `<option value="${esc(a.id)}">${esc(a.tabName)} — ${esc(a.address)}</option>`).join('');
+  $('atvList').innerHTML = d.devices
+    .map(a => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.address)}</option>`).join('');
   setText('atvSt', d.devices.length ? 'Choose a device and pair.' : 'No Apple TV found.');
 }
 
 on('atvScan', 'click', atvScan);
 
 on('atvPair', 'click', async () => {
-  const r = await post('appletv/pair', {id: $('atvLijst').value});
+  const r = await post('appletv/pair', {id: $('atvList').value});
   if (!r.ok) { setText('atvSt', r.error); return; }
   $('atvPinBox').hidden = false;
-  $('atvKies').hidden = true;
-  setText('atvVraag', `Enter the PIN shown on ${r.tabName} (${r.protocol})`);
+  $('atvChoose').hidden = true;
+  setText('atvAsk', `Enter the PIN shown on ${r.name} (${r.protocol})`);
   $('atvCode').value = '';
   $('atvCode').focus();
 });
 
 on('atvOk', 'click', async () => {
   const r = await post('appletv/pin', {pin: $('atvCode').value});
-  if (!r.ok) { setText('atvVraag', r.error); return; }
+  if (!r.ok) { setText('atvAsk', r.error); return; }
   if (r.done) { $('atvPinBox').hidden = true; atvTick(); return; }
-  setText('atvVraag', `Now the PIN for ${r.protocol}`);
+  setText('atvAsk', `Now the PIN for ${r.protocol}`);
   $('atvCode').value = '';
   $('atvCode').focus();
 });
 
-on('atvWeg', 'click', async () => {
+on('atvForget', 'click', async () => {
   await fetch('appletv/forget', {method: 'POST'});
   $('atvPinBox').hidden = true;
   atvScan();
