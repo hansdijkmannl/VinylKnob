@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>MarantzKnob</title>
+<title>VinylKnob</title>
 <!--
   One page for the whole device.
 
@@ -230,7 +230,7 @@ button.danger{background:var(--warn);color:#fff}
 </defs></svg>
 
 <header>
-  <h1>MarantzKnob</h1>
+  <h1>VinylKnob</h1>
   <nav id="tabs">
     <button data-t="now" class="on">Now</button>
     <button data-t="queue">Queue <b id="nQueue"></b></button>
@@ -787,7 +787,7 @@ function drawGlass(s, np, panelbox, volMax) {
   // The wording is copied from ui_lvgl.cpp on purpose: this is a mirror, and a
   // mirror that paraphrases is not one.
   const message = !panelbox ? ['Panel offline', 'not reachable on the network']
-    : panelbox.ap ? ['No Wi-Fi yet', `Connect to MarantzKnob-setup\nand open ${panelbox.ip || '192.168.4.1'}`]
+    : panelbox.ap ? ['No Wi-Fi yet', `Connect to VinylKnob-setup\nand open ${panelbox.ip || '192.168.4.1'}`]
     : !panelbox.connected ? ['No receiver', 'Is Network Control set to "Always On"?']
     : null;
 

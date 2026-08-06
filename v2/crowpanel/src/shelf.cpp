@@ -272,6 +272,20 @@ static Thumb *findThumb(int album) {
 // with the shelf narrowed those are different numbers.
 static int visibleAt(int slot) { return realIndex(wrap(current + slot - 1)); }
 
+// Which of the three positions actually holds a different record.
+//
+// The shelf is a carousel and wraps, which is right for hundreds of albums and
+// wrong for two: the same sleeve would stand to the left and the right of
+// itself. That reads as a bug, and worse, it makes a choice between two records
+// look like a choice between three.
+bool shelfSlotVisible(int slot) {
+  if (!loaded || slot < 0 || slot > 2) return false;
+  const int n = shelfCount();
+  if (n >= 3) return true;
+  if (n <= 1) return slot == 1;     // the one you have, in the middle
+  return slot != 0;                 // two: the middle and the one to its right
+}
+
 const lv_img_dsc_t *shelfArtworkAt(int slot) {
   if (!loaded || slot < 0 || slot > 2) return nullptr;
   Thumb *p = findThumb(visibleAt(slot));
@@ -288,10 +302,10 @@ static Thumb *freeSlot() {
   for (int i = 0; i < CACHE_N; i++) {
     if (!cache[i].px) continue;
     if (!cache[i].vol) return &cache[i];
-    bool inBeeld = false;
+    bool onScreen = false;
     for (int slot = 0; slot < 3; slot++)
-      if (cache[i].album == visibleAt(slot)) inBeeld = true;
-    if (inBeeld) continue;
+      if (cache[i].album == visibleAt(slot)) onScreen = true;
+    if (onScreen) continue;
     if (!best || cache[i].usedAt < best->usedAt) best = &cache[i];
   }
   return best;

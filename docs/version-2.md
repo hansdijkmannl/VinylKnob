@@ -499,7 +499,7 @@ who wants to type it on a laptop.
 
 Two choices in that:
 
-**Encode the IP address, show the hostname as text.** `marantzknob.local` is
+**Encode the IP address, show the hostname as text.** `vinylknob.local` is
 nicer and does not change, but not every phone resolves mDNS reliably. The
 address always works. Give it a DHCP reservation in your router and it is stable
 too.

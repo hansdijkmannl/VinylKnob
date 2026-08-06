@@ -3,8 +3,8 @@
 # Set the brain and the ears up on a fresh Raspberry Pi OS Lite (64-bit).
 # Running it more than once is fine; it only overwrites what has to differ.
 #
-#   git clone <this repo> ~/marantzknob        (or rsync from your machine)
-#   cd ~/marantzknob/v2/pi && ./install.sh
+#   git clone <this repo> ~/vinylknob        (or rsync from your machine)
+#   cd ~/vinylknob/v2/pi && ./install.sh
 #
 set -euo pipefail
 
@@ -12,7 +12,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WHO="${SUDO_USER:-$USER}"
 VENV="$ROOT/.venv"
 
-echo "==> MarantzKnob at $ROOT, as user $WHO"
+echo "==> VinylKnob at $ROOT, as user $WHO"
 
 # ---------------------------------------------------------------------------
 # 1. System packages
@@ -41,7 +41,11 @@ if [ ! -d "$VENV" ]; then
 fi
 "$VENV/bin/pip" install --quiet --upgrade pip
 echo "==> Python packages"
+# Two lists, one virtualenv: the brain's recogniser and the ears' Apple TV
+# client. pyatv used to be missing here and was only ever installed by hand,
+# which nobody noticed until the venv was rebuilt and the ears would not start.
 "$VENV/bin/pip" install --quiet -r "$ROOT/v2/brain/requirements.txt"
+"$VENV/bin/pip" install --quiet -r "$ROOT/v2/pi/requirements.txt"
 
 # Python 3.13 removed the audioop module from the standard library, and pydub —
 # which shazamio leans on — imports it in three of its files. Raspberry Pi OS on
@@ -77,17 +81,17 @@ echo "==> Sound comes from the receiver's line feed; run ./line.sh to check it"
 # 4. Services
 # ---------------------------------------------------------------------------
 echo "==> systemd"
-for unit in marantzknob-brain marantzknob-listen marantzknob-sync; do
+for unit in vinylknob-brain vinylknob-listen vinylknob-sync; do
     sed -e "s|__ROOT__|$ROOT|g" \
         -e "s|__USER__|$WHO|g" \
         "$ROOT/v2/pi/$unit.service" | sudo tee "/etc/systemd/system/$unit.service" >/dev/null
 done
 sudo systemctl daemon-reload
-sudo systemctl enable --now marantzknob-brain marantzknob-listen
+sudo systemctl enable --now vinylknob-brain vinylknob-listen
 
 # The timer separately: it belongs to the .service but is enabled on its own.
-sudo install -m 644 "$ROOT/v2/pi/marantzknob-sync.timer" /etc/systemd/system/
-sudo systemctl enable --now marantzknob-sync.timer
+sudo install -m 644 "$ROOT/v2/pi/vinylknob-sync.timer" /etc/systemd/system/
+sudo systemctl enable --now vinylknob-sync.timer
 
 # ---------------------------------------------------------------------------
 # 5. Sparing the SD card
@@ -97,7 +101,7 @@ sudo systemctl enable --now marantzknob-sync.timer
 echo "==> Limiting wear"
 sudo mkdir -p /etc/systemd/journald.conf.d
 printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=32M\n' \
-    | sudo tee /etc/systemd/journald.conf.d/marantzknob.conf >/dev/null
+    | sudo tee /etc/systemd/journald.conf.d/vinylknob.conf >/dev/null
 sudo systemctl restart systemd-journald
 if [ -f /etc/dphys-swapfile ]; then
     sudo dphys-swapfile swapoff 2>/dev/null || true
@@ -108,6 +112,6 @@ echo
 echo "==> Done."
 echo "    Web interface : http://$(hostname).local"
 echo "    Raw levels    : http://$(hostname).local/status"
-echo "    Logs          : journalctl -u marantzknob-brain -u marantzknob-listen -f"
+echo "    Logs          : journalctl -u vinylknob-brain -u vinylknob-listen -f"
 echo
 echo "    Put a record on and run ./line.sh to see which input carries it."

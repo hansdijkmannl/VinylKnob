@@ -30,7 +30,7 @@ BOOTAPP="$(find "$HOME/.platformio/packages/framework-arduinoespressif32" \
 
 # Where the project lives on the Pi. The installer puts it in your home
 # directory; override if you moved it.
-REMOTE="${KNOB_PI_PATH:-marantzknob}"
+REMOTE="${KNOB_PI_PATH:-vinylknob}"
 
 echo "==> Building"
 cd "$HERE" && "$PIO" run -e crowpanel
@@ -39,6 +39,12 @@ echo "==> Copying to $TARGET"
 ssh "$TARGET" 'mkdir -p ~/panel-firmware'
 scp -q "$BUILD/bootloader.bin" "$BUILD/partitions.bin" "$BUILD/firmware.bin" \
        "$BOOTAPP" "$TARGET:panel-firmware/"
+
+# esptool lives in the Pi's virtualenv, and it is the one thing there that is
+# not needed to *run* anything — so a rebuilt venv comes back without it and
+# flashing stops working for no obvious reason. Put it there rather than say so.
+ssh "$TARGET" "~/$REMOTE/.venv/bin/python -c 'import esptool' 2>/dev/null || \
+  ~/$REMOTE/.venv/bin/pip install --quiet esptool"
 
 echo "==> Flashing over /dev/ttyACM0"
 ssh "$TARGET" "~/$REMOTE/.venv/bin/python -m esptool --chip esp32s3 \

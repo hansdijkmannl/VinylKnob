@@ -31,13 +31,13 @@ echo "== receiver $AVR =="
 # stream someone else is holding — which reads as "no signal anywhere" and
 # sends you looking for a fault that is not there.
 STOPPED=""
-if systemctl is-active --quiet marantzknob-listen 2>/dev/null; then
+if systemctl is-active --quiet vinylknob-listen 2>/dev/null; then
     echo "   (pausing the ears; they hold the one connection the receiver allows)"
-    sudo systemctl stop marantzknob-listen
+    sudo systemctl stop vinylknob-listen
     STOPPED=yes
 fi
 restore() {
-    if [ -n "$STOPPED" ]; then sudo systemctl start marantzknob-listen; fi
+    if [ -n "$STOPPED" ]; then sudo systemctl start vinylknob-listen; fi
 }
 trap restore EXIT
 
@@ -89,7 +89,7 @@ PY
 done
 
 echo
-echo "Put the one with signal in LINE_INPUT in marantzknob-listen.service."
+echo "Put the one with signal in LINE_INPUT in vinylknob-listen.service."
 echo "Nothing above -60 dBFS with a record playing? Then the receiver is not on"
 echo "the turntable, or that input is not one it digitises — only the analog"
 echo "inputs are, so anything arriving over HDMI stays silent here."

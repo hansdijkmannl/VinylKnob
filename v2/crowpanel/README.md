@@ -30,7 +30,7 @@ firmware already on the board has broken the USB stack.
 
 ## First boot
 
-With no Wi-Fi stored the panel starts its own access point, **MarantzKnob-setup**.
+With no Wi-Fi stored the panel starts its own access point, **VinylKnob-setup**.
 Connect to it, open <http://192.168.4.1>, and fill in your network, your
 receiver's address, and the list of inputs you actually use. It restarts onto
 your network.

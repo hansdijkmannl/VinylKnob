@@ -41,6 +41,8 @@ SHELF = [
     ("7", "Moby", "Reprise"),
     ("8", "The Greatest Showman Cast", "The Greatest Showman (Original Motion Picture Soundtrack)"),
     ("9", "Robbie Williams", "Greatest Hits"),   # the same record a second time
+    ("10", "Katie Melua", "Piece By Piece"),
+    ("11", "Katie Melua", "Live At The O² Arena"),
 ]
 
 # Only for the records a tracklist was actually fetched for. A shelf is never
@@ -52,6 +54,8 @@ TRACKLISTS = {
     "3": ["Let Me Entertain You", "Angels", "Old Before I Die"],
     "9": ["Let Me Entertain You", "Angels", "Somethin' Stupid"],
     "5": ["Time", "Chevaliers De Sangreal"],
+    "10": ["Thank You, Stars", "Nine Million Bicycles", "Spider's Web"],
+    "11": ["Thank You, Stars", "Nine Million Bicycles"],
     "6": ["Now We Are Free", "Honor Him"],
 }
 
@@ -134,6 +138,24 @@ DECISIONS = [
      None, ["Greatest Hits", "Life Thru A Lens"],
      "the same two, whichever of them the service happens to name: the "
      "question does not change because the guess did"),
+
+    ("Katie Melua", "Thank You, Stars (Live at The O2 Arena)",
+     "Thank You, Stars (Live) [Bonus Track]",
+     None, ["Piece By Piece", "Live At The O² Arena"],
+     "the live record, and the reason for the bare title. Your sleeves say "
+     "'Thank You, Stars'; the service heard it at the O² and puts the venue "
+     "in the name. Compared whole that is a different song and the whole side "
+     "matched nothing"),
+
+    ("Katie Melua", "Spider's Web - Remastered 2011", "Piece By Piece",
+     "Piece By Piece", [],
+     "same idea with the other spelling the services use: a dash and an "
+     "opinion about the pressing. On one record, so nothing is asked"),
+
+    ("Katie Melua", "Nine Million Bicycles", "Piece By Piece",
+     None, ["Piece By Piece", "Live At The O² Arena"],
+     "and a plainly-named track still finds both, unchanged: the bare form is "
+     "an extra way in, not a replacement"),
 ]
 
 

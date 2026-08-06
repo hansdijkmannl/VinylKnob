@@ -32,7 +32,7 @@ static/index.html. It lives here rather than with the brain because the line
 feed, the Apple TV and the proxy to the panel are all here; the brain supplies
 only its API, passed through under /api/.
 
-Runs as a systemd service — see marantzknob-listen.service.
+Runs as a systemd service — see vinylknob-listen.service.
 """
 
 from __future__ import annotations
@@ -500,10 +500,20 @@ class Ears:
             # be learnt, and until now that was quietly impossible.
             self.open_play_id = None if rel else body.get("playId")
             self.release_id = rel["id"] if rel else None
-            self.cover_url = hit.get("cover") or None
             self.artist = hit.get("artist") or (rel["artist"] if rel else "")
             self.title = hit.get("title") or ""
-            self.album = (rel["title"] if rel else "") or hit.get("album") or ""
+            # With a choice open, the album and the sleeve the service handed
+            # over are the very thing we decided not to trust — it named one
+            # record and the song is on two of yours. Putting that sleeve on the
+            # screen answers the question with the guess we just rejected, and
+            # it looks settled, so nobody ever goes and picks. Name the track
+            # instead and let the panel say it is asking.
+            if self.choices:
+                self.cover_url = None
+                self.album = ""
+            else:
+                self.cover_url = hit.get("cover") or None
+                self.album = (rel["title"] if rel else "") or hit.get("album") or ""
 
         if body.get("matched") and rel:
             self.last = f"{rel['artist']} — {rel['title']}"

@@ -23,7 +23,7 @@
   </defs>
 
   <rect width="1060" height="826" fill="#fbfaf7"/>
-  <text x="40" y="46" class="title">MarantzKnob — wiring</text>
+  <text x="40" y="46" class="title">VinylKnob — wiring</text>
   <text x="40" y="70" class="sub">The CrowPanel has no USB-C. Everything runs through 4-pin JST MX1.25 connectors.</text>
 
   <!-- wall socket -->

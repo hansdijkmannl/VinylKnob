@@ -28,7 +28,7 @@ static const char *KNOWN_INPUTS[] = {
 static const char PAGE_HTML[] PROGMEM = R"HTML(
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MarantzKnob</title>
+<title>VinylKnob</title>
 <style>
 :root{--bg:#f6f6f7;--fg:#1a1a1c;--card:#fff;--line:#dcdce0;--dim:#6b6b73;--acc:#0a6cff}
 @media(prefers-color-scheme:dark){:root{--bg:#16161a;--fg:#e8e8ea;--card:#1f1f25;--line:#33333c;--dim:#9a9aa4}}
@@ -67,7 +67,7 @@ dt{font-weight:600;margin-top:.5rem}
 dd{margin:0;color:var(--dim)}
 #msg{margin-top:.8rem;font-size:.85rem;min-height:1.2em}
 </style></head><body><main>
-<h1>MarantzKnob</h1>
+<h1>VinylKnob</h1>
 
 <div class="card st">
   <span class="vol" id="vol">--</span>

@@ -18,7 +18,7 @@ import pathlib
 import aiohttp
 
 BASE = "https://api.discogs.com"
-USER_AGENT = "MarantzKnob/0.1 +https://github.com/local/marantzknob"
+USER_AGENT = "VinylKnob/0.1 +https://github.com/local/vinylknob"
 PER_PAGE = 100
 PAUSE = 1.1          # seconds between pages, comfortably inside 60/min
 

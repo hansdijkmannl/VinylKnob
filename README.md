@@ -1,4 +1,4 @@
-# MarantzKnob
+# VinylKnob
 
 A physical volume knob for a Denon or Marantz receiver that also tells you which
 record is playing.
@@ -97,7 +97,7 @@ only recognition needs it.
 
 2. **Flash the panel** — see [v2/crowpanel/README.md](v2/crowpanel/README.md).
    Needs PlatformIO. It boots into its own access point called
-   `MarantzKnob-setup`; connect to it, fill in your network and your receiver's
+   `VinylKnob-setup`; connect to it, fill in your network and your receiver's
    address, save.
 3. **Set up the Pi** — `v2/pi/install.sh` does the lot: packages, virtualenv,
    both services. It prints the address to open when it is done.

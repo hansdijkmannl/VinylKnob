@@ -56,7 +56,7 @@ void uiRender(const UiState &s) {
       Serial.printf("  %d/%d  %s\n", s.pickIndex + 1, s.pickCount, s.pickLabel);
       break;
     case Screen::Pairing:
-      Serial.printf("  QR -> http://%s   (%s.local)\n", s.ip, "marantzknob");
+      Serial.printf("  QR -> http://%s   (%s.local)\n", s.ip, "vinylknob");
       break;
     case Screen::Setup:
       Serial.println(F("  connect to the access point and set up Wi-Fi"));

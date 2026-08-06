@@ -1,5 +1,5 @@
 [Unit]
-Description=MarantzKnob brain - recognition, Discogs and the web interface
+Description=VinylKnob brain - recognition, Discogs and the web interface
 After=network-online.target
 Wants=network-online.target
 

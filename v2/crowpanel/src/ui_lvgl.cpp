@@ -586,7 +586,7 @@ void uiBegin() {
   lblMsgText = makeLabel(lyMsg, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0,  10);
 
   lv_obj_clear_flag(lyMsg, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text(lblMsgHead, "MarantzKnob");
+  lv_label_set_text(lblMsgHead, "VinylKnob");
   lv_label_set_text(lblMsgText, "starting up...");
   lv_timer_handler();
 }
@@ -670,7 +670,17 @@ void uiRender(const UiState &s) {
       // the image and a label above it adds nothing. With a logo, no name
       // either: the logo *is* the name, and saying the same thing twice only
       // costs room on a screen that has none.
-      if (showText && s.sourceApp[0] && !s.artworkIsLogo) {
+      if (s.choiceCount > 1) {
+        // The track was recognised and it is on more than one of your records.
+        // Say so where the source name would go, because the alternative is a
+        // screen that looks settled: you would never know it was asking, and
+        // the answer would never come. The sleeve is deliberately absent for
+        // the same reason — any one of them would be a guess.
+        lv_label_set_text_fmt(lblSource, "ON %d OF YOURS - TAP TO PICK",
+                              (int)s.choiceCount);
+        lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_ACCENT), 0);
+        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+      } else if (showText && s.sourceApp[0] && !s.artworkIsLogo) {
         lv_label_set_text(lblSource, s.sourceApp);
         lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(lblSource, lv_color_hex(artworkAccent()), 0);
@@ -711,7 +721,7 @@ void uiRender(const UiState &s) {
       // remembers permanently, and silently jumping back to the volume is too
       // little acknowledgement of that.
       if (s.justLinked) {
-        lv_label_set_text(lblSource, "GEKOPPELD");
+        lv_label_set_text(lblSource, "LINKED");
         lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_ACCENT), 0);
         lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
       }
@@ -783,6 +793,11 @@ void uiRender(const UiState &s) {
 
       const int here = shelfIndex();
       for (int slot = 0; slot < 3; slot++) {
+        if (!shelfSlotVisible(slot)) {
+          lv_obj_add_flag(shelfSlot[slot], LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(shelfThumb[slot], LV_OBJ_FLAG_HIDDEN);
+          continue;
+        }
         lv_obj_clear_flag(shelfSlot[slot], LV_OBJ_FLAG_HIDDEN);
         const lv_img_dsc_t *image = shelfArtworkAt(slot);
         if (image) {

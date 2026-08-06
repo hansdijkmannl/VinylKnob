@@ -15,20 +15,20 @@ Set these in the gear menu before writing:
 
 | | |
 |---|---|
-| hostname | `marantzknob` |
+| hostname | `vinylknob` |
 | SSH | on, with your public key |
 | Wi-Fi | your network (or just use ethernet) |
 | user | your own name, not `pi` |
 
 That hostname matters: everything below is then reachable at
-`marantzknob.local` even when the router hands out a different address.
+`vinylknob.local` even when the router hands out a different address.
 
 ### 2. Copy it over and install
 
 ```bash
-rsync -av --exclude '.venv' --exclude '._*' ./ marantzknob.local:marantzknob/
-ssh marantzknob.local
-cd marantzknob/v2/pi && ./install.sh
+rsync -av --exclude '.venv' --exclude '._*' ./ vinylknob.local:vinylknob/
+ssh vinylknob.local
+cd vinylknob/v2/pi && ./install.sh
 ```
 
 The script is idempotent — running it again is always safe. It installs
@@ -56,7 +56,7 @@ offers, then measures three seconds of each so the turntable one stands out:
   cd              3.1s  peak 0.0001   -92.5 dBFS
 ```
 
-Put that name in `LINE_INPUT` in `marantzknob-listen.service`; `phono` is the
+Put that name in `LINE_INPUT` in `vinylknob-listen.service`; `phono` is the
 default and right on most receivers.
 
 The script pauses the ears while it runs. The receiver serves one client at a
@@ -66,14 +66,14 @@ reading is a scrap of somebody else's stream.
 ### 4. See whether it runs
 
 ```bash
-journalctl -u marantzknob-brain -u marantzknob-listen -f
+journalctl -u vinylknob-brain -u vinylknob-listen -f
 ```
 
 | | |
 |---|---|
-| web interface | <http://marantzknob.local> |
-| raw levels as JSON | <http://marantzknob.local/status> |
-| listen right now | `curl -X POST http://marantzknob.local/listen` |
+| web interface | <http://vinylknob.local> |
+| raw levels as JSON | <http://vinylknob.local/status> |
+| listen right now | `curl -X POST http://vinylknob.local/listen` |
 
 `/status` gives you `niveauDb`, `ruisvloerDb` and `drempelDb` — level, noise
 floor and threshold. That is how you tune without guessing: put a record on,
@@ -172,7 +172,7 @@ sound, and all the thresholds run on that. It looks like a detail and is not:
 with `time.time()`, a stall in the stream could skip a side or ask again in the
 middle of one.
 
-Tuning lives in `marantzknob-listen.service`:
+Tuning lives in `vinylknob-listen.service`:
 
 | | Default | For |
 |---|---|---|
@@ -187,7 +187,7 @@ Tuning lives in `marantzknob-listen.service`:
 | `MAX_RETRIES` | 3 | give up after this many failures in a row |
 | `COVER_HOLD_SECONDS` | 300 | how long the sleeve stays after the last sound |
 
-Then `systemctl daemon-reload && systemctl restart marantzknob-listen`.
+Then `systemctl daemon-reload && systemctl restart vinylknob-listen`.
 
 `MAX_RETRIES` is worth understanding. Without a limit the retry loop runs for as
 long as there is any sound at all, and a talking video on the television once

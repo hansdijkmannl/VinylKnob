@@ -49,10 +49,13 @@ CREATE TABLE IF NOT EXISTS tracks (
     release_id  INTEGER NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
     position    INTEGER NOT NULL,
     title       TEXT NOT NULL,
-    norm        TEXT NOT NULL
+    norm        TEXT NOT NULL,
+    bare        TEXT NOT NULL DEFAULT ''   -- without "(Live at ...)" and the like
 );
 CREATE INDEX IF NOT EXISTS idx_tracks_norm    ON tracks(norm);
 CREATE INDEX IF NOT EXISTS idx_tracks_release ON tracks(release_id);
+-- The index on `bare` is made in _migrate, not here: this script runs first and
+-- on a database from before that column existed there would be nothing to index.
 
 -- Every listen. Recognised or not, all of it lands here.
 CREATE TABLE IF NOT EXISTS plays (
@@ -133,6 +136,43 @@ def _normalise(text: str) -> str:
     return " ".join(w for w in words if w not in skip)
 
 
+def _bare(text: str) -> str:
+    """A title with its qualifiers taken off, normalised.
+
+    A live record is where this earns its keep. Your sleeve says "Thank You,
+    Stars"; Shazam heard the same song at Wembley and calls it "Thank You, Stars
+    (Live at The O2 Arena)". Compared whole those are two different songs, and a
+    live album full of them matches nothing on your own shelf — which is exactly
+    what happened with Katie Melua at the O², where the plainly-titled tracks
+    found their records and the ones with the venue in brackets did not.
+
+    So everything in brackets comes off, and a trailing " - Live" or
+    " - Remastered 2011" with it: those are a pressing's opinion about a
+    recording, not the name of the song. What is left is compared separately, so
+    an exact title still wins first and this only catches what it would
+    otherwise have missed.
+
+    Nothing is returned when a title is *only* a qualifier — "(Intro)" — because
+    an empty string would quietly match every other such track on the shelf.
+    """
+    out, depth = [], 0
+    for c in text or "":
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            out.append(c)
+    plain = "".join(out)
+    # " - Live", " - Remastered", " - 2011 Remaster": everything after a dash
+    # that stands on its own, which is how the streaming services write it.
+    cut = plain.find(" - ")
+    if cut > 0:
+        plain = plain[:cut]
+    bare = _normalise(plain)
+    return bare if bare and bare != _normalise(text) else ""
+
+
 class Store:
     def __init__(self, path: str | None = None):
         DATA.mkdir(exist_ok=True)
@@ -183,6 +223,19 @@ class Store:
             self.db.execute("UPDATE plays SET status = ? WHERE status = ?", (new, old))
         self.db.execute("UPDATE plays SET engine = 'local' WHERE engine = 'lokaal'")
         self.db.execute("DELETE FROM settings WHERE key = 'screen_spin'")
+
+        # The bare title arrived after the tracklists did, so an existing shelf
+        # has the column and nothing in it. Filling it is one pass over a few
+        # thousand rows; skipped entirely once anything is in there.
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(tracks)")}
+        if "bare" not in cols:
+            self.db.execute("ALTER TABLE tracks ADD COLUMN bare TEXT NOT NULL DEFAULT ''")
+        self.db.execute("CREATE INDEX IF NOT EXISTS idx_tracks_bare ON tracks(bare)")
+        if self.db.execute("SELECT COUNT(*) c FROM tracks WHERE bare != ''").fetchone()["c"] == 0:
+            rows = list(self.db.execute("SELECT rowid, title FROM tracks"))
+            self.db.executemany("UPDATE tracks SET bare = ? WHERE rowid = ?",
+                                [(_bare(r["title"]), r["rowid"]) for r in rows])
+
         self.db.commit()
 
     def close(self) -> None:
@@ -350,8 +403,9 @@ class Store:
     def set_tracks(self, release_id: int, titles: list[str]) -> None:
         self.db.execute("DELETE FROM tracks WHERE release_id = ?", (release_id,))
         self.db.executemany(
-            "INSERT INTO tracks (release_id, position, title, norm) VALUES (?, ?, ?, ?)",
-            [(release_id, i, t, _normalise(t)) for i, t in enumerate(titles)])
+            "INSERT INTO tracks (release_id, position, title, norm, bare) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(release_id, i, t, _normalise(t), _bare(t)) for i, t in enumerate(titles)])
         self.db.commit()
 
     def releases_without_tracks(self, limit: int = 50) -> list:
@@ -382,9 +436,16 @@ class Store:
         want = _normalise(track)
         if not want:
             return []
+        # Exact title, or the same song with a pressing's qualifier taken off
+        # either side of the comparison. Both go in one query so the ordering by
+        # year still holds across the two.
+        loose = _bare(track)
         rows = self.db.execute(
             "SELECT DISTINCT r.* FROM releases r JOIN tracks t ON t.release_id = r.id "
-            "WHERE t.norm = ? ORDER BY r.year, r.id", (want,))
+            "WHERE t.norm = ? OR (t.bare != '' AND t.bare = ?) "
+            "   OR (? != '' AND t.norm = ?) OR (? != '' AND t.bare = ?) "
+            "ORDER BY r.year, r.id",
+            (want, want, loose, loose, loose, loose))
         want_artist = set(_normalise(artist).split())
         out, seen = [], set()
         for row in rows:

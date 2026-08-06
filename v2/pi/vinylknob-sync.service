@@ -1,7 +1,7 @@
 [Unit]
-Description=MarantzKnob - update the Discogs collection
-After=marantzknob-brain.service
-Requires=marantzknob-brain.service
+Description=VinylKnob - update the Discogs collection
+After=vinylknob-brain.service
+Requires=vinylknob-brain.service
 
 [Service]
 Type=oneshot

@@ -131,9 +131,9 @@
 #define IDLE_RETURN_MS         6000
 
 #define MAX_INPUTS             8
-#define AP_SSID                "MarantzKnob-setup"
-// Deliberately not "marantzknob": that is the Pi, which runs avahi and serves
+#define AP_SSID                "VinylKnob-setup"
+// Deliberately not "vinylknob": that is the Pi, which runs avahi and serves
 // the web interface you open daily. Two devices announcing the same name to the
 // router gives you a DNS that resolves to the panel one time and the Pi the
 // next.
-#define MDNS_NAME              "marantzpanel"
+#define MDNS_NAME              "vinylpanel"

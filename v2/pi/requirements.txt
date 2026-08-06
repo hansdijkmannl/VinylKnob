@@ -1,0 +1,3 @@
+# The ears. The brain's own list is in ../brain/requirements.txt; both go into
+# the same virtualenv, because they run on the same Pi and share aiohttp.
+pyatv

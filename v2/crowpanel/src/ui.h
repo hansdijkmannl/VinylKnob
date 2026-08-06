@@ -76,6 +76,10 @@ struct UiState {
   // whole shelf. The heading says so and the letter ring goes away — jumping by
   // letter through four records is the same as turning.
   bool     shelfNarrowed  = false;
+  // A track that is on more than one of your records, waiting for you to say
+  // which. The now-playing screen has to show that it is asking, or the answer
+  // never comes: a sleeve that looks settled is one nobody goes and corrects.
+  uint8_t  choiceCount    = 0;
   bool     justLinked     = false;   // just linked; confirm briefly
 
   // network

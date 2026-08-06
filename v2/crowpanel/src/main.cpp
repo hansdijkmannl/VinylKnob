@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// MarantzKnob — firmware for the Elecrow CrowPanel 2.1" Rotary Display.
+// VinylKnob — firmware for the Elecrow CrowPanel 2.1" Rotary Display.
 //
 // Telnet to the receiver, volume on the knob, inputs and the record shelf on
 // the screen. The Pi alongside adds recognition and artwork.
@@ -239,6 +239,7 @@ static void refreshUi() {
   ui.shelfLetter = (millis() < letterUntil) ? shelfLetterAt(shelfIndex()) : 0;
   ui.shelfLinkable = brainState.canLink;
   ui.shelfNarrowed = shelfNarrowed();
+  ui.choiceCount   = userPicked ? 0 : brainState.choiceCount;
   ui.justLinked    = millis() < linkedUntil;
   ui.haveArtwork   = brainState.haveArtwork;
   ui.artworkIsLogo = brainState.artworkIsLogo;
@@ -553,7 +554,7 @@ static void maintainWifi() {
 void setup() {
   Serial.begin(115200);
   delay(300);
-  Serial.println(F("\nMarantzKnob — CrowPanel"));
+  Serial.println(F("\nVinylKnob — CrowPanel"));
 
   settingsLoad();
 
@@ -578,6 +579,41 @@ void setup() {
   // credentials in setup mode: the panel has no keyboard and the knob cannot
   // type. Taken unchanged from version 1.
   webBegin();
+}
+
+// The song is on more than one of your records: show that, without being asked.
+//
+// A question you have to go looking for is a question that never gets answered.
+// The first version put a line on the volume screen and left the shelf a tap
+// away, and the tap is exactly the step nobody takes — you glance at the screen,
+// see a name, and carry on. So the shelf opens on those two or three sleeves by
+// itself. One turn and one press, and the record has learnt this side.
+//
+// Only from the volume screen: it may not take the display away from you while
+// you are choosing an input or setting up Wi-Fi, and it may not light up a dark
+// room. Only once per question, remembered by which records were offered — else
+// it would reopen every four seconds for the rest of the side, including after
+// you had deliberately walked away from it. enterBrowse() gives the screen a
+// timeout of its own, so an unanswered question fades back to the volume rather
+// than sitting there all evening.
+static uint16_t askedChoices[SHELF_FILTER_MAX];
+static uint8_t  askedCount = 0;
+
+static void askIfNeeded() {
+  if (brainState.choiceCount < 2) {
+    // The question has been withdrawn — answered, or the side is over. Forget
+    // it, so putting the same record on tomorrow asks again.
+    askedCount = 0;
+    return;
+  }
+  if (ui.screen != Screen::Volume) return;
+  if (brainState.choiceCount == askedCount &&
+      memcmp(askedChoices, brainState.choices,
+             (size_t)askedCount * sizeof(uint16_t)) == 0) return;
+
+  askedCount = brainState.choiceCount;
+  memcpy(askedChoices, brainState.choices, (size_t)askedCount * sizeof(uint16_t));
+  enterBrowse();
 }
 
 void loop() {
@@ -620,6 +656,8 @@ void loop() {
     else                     artworkClear();
     refreshUi();
   }
+
+  askIfNeeded();
 
   // Try again when a sleeve is waiting but nothing is here. Fetching used to
   // hang solely on the moment of change, and if that one moment failed the

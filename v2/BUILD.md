@@ -72,9 +72,9 @@ cd v2/crowpanel && pio device monitor
 You should see:
 
 ```
-MarantzKnob — CrowPanel
+VinylKnob — CrowPanel
 [board] touch chip found
-Setup access point "MarantzKnob-setup" at 192.168.4.1
+Setup access point "VinylKnob-setup" at 192.168.4.1
 ```
 
 If it says there is no touch chip at 0x15, the PCF8574 was not found or the
@@ -102,14 +102,14 @@ the whole approach.
 
 The panel has no keyboard, so this goes through a web page.
 
-1. Connect your phone or laptop to the Wi-Fi network **MarantzKnob-setup**
+1. Connect your phone or laptop to the Wi-Fi network **VinylKnob-setup**
 2. Open <http://192.168.4.1>
 3. Fill in your own Wi-Fi, your receiver's IP address, and the list of inputs
    (with PHONO as the favourite)
 4. Save — it restarts onto your network
 
-After that the same page lives at <http://marantzpanel.local>, or at whatever
-address the monitor shows. **Not** `marantzknob` — that is the Pi.
+After that the same page lives at <http://vinylpanel.local>, or at whatever
+address the monitor shows. **Not** `vinylknob` — that is the Pi.
 
 **If it ends up crooked in its mount**, there is a *Fine angle* next to
 Orientation, in tenths of a degree. It turns the finished picture, text and all,
@@ -137,18 +137,18 @@ In the gear menu:
 
 | | |
 |---|---|
-| hostname | `marantzknob` (the panel is `marantzpanel`) |
+| hostname | `vinylknob` (the panel is `vinylpanel`) |
 | SSH | on, with your public key |
 | Wi-Fi | your own network |
 | user | your own name, not `pi` |
 
-That hostname makes everything below reachable at `marantzknob.local`, even when
+That hostname makes everything below reachable at `vinylknob.local`, even when
 the router hands out a different address.
 
 Card in, heatsink on, 27 W adapter into the Pi's USB-C. Wait a minute, then:
 
 ```bash
-ssh marantzknob.local
+ssh vinylknob.local
 ```
 
 ---
@@ -159,14 +159,14 @@ From your computer:
 
 ```bash
 rsync -a --exclude '.venv' --exclude '._*' --exclude 'data' --exclude '*.stl' \
-  ./ marantzknob.local:marantzknob/
+  ./ vinylknob.local:vinylknob/
 ```
 
 Then on the Pi. Note the `-t`: the script uses `sudo` and needs to be able to
 ask for your password.
 
 ```bash
-ssh -t marantzknob.local 'cd ~/marantzknob/v2/pi && ./install.sh'
+ssh -t vinylknob.local 'cd ~/vinylknob/v2/pi && ./install.sh'
 ```
 
 It lives in your home directory rather than `/opt` so that copying does not need
@@ -186,7 +186,7 @@ and serves each one over HTTP; the Pi listens to the turntable input. Put a
 record on and run:
 
 ```bash
-ssh marantzknob.local marantzknob/v2/pi/line.sh
+ssh vinylknob.local vinylknob/v2/pi/line.sh
 ```
 
 It asks the receiver which inputs it offers and measures three seconds of each,
@@ -198,7 +198,7 @@ so the one with your turntable on it stands out from the rest:
   tuner           3.1s  peak 0.0001   -92.5 dBFS
 ```
 
-Put the name of that one in `LINE_INPUT` in `marantzknob-listen.service`. The
+Put the name of that one in `LINE_INPUT` in `vinylknob-listen.service`. The
 default is `phono`, which is right on most receivers.
 
 The script pauses the ears while it runs, because the receiver serves **one**
@@ -235,14 +235,14 @@ here. Apple TV+, Music and most others do not.
 ## Step 7 — See whether the Pi runs
 
 ```bash
-ssh marantzknob.local 'journalctl -u marantzknob-brain -u marantzknob-listen -f'
+ssh vinylknob.local 'journalctl -u vinylknob-brain -u vinylknob-listen -f'
 ```
 
 | | |
 |---|---|
-| web interface | <http://marantzknob.local> |
-| raw levels | <http://marantzknob.local/status> |
-| listen right now | `curl -X POST http://marantzknob.local/listen` |
+| web interface | <http://vinylknob.local> |
+| raw levels | <http://vinylknob.local/status> |
+| listen right now | `curl -X POST http://vinylknob.local/listen` |
 
 In the web interface, enter your Discogs token and sync the collection — the
 database does not travel with `rsync`. To keep fingerprints you built up
@@ -251,7 +251,7 @@ service.
 
 **Tuning without guessing:** put a record on and watch `/status` to see where
 `niveauDb` goes relative to `drempelDb`. The adjustments live in
-`marantzknob-listen.service`.
+`vinylknob-listen.service`.
 
 ---
 
@@ -278,7 +278,7 @@ address and the sleeve appears.
 | black screen, monitor spews `ESP-ROM` | boot loop — see the appendix |
 | black screen, monitor otherwise fine | see [crowpanel/README.md](crowpanel/README.md) |
 | wrong colours on the screen | Arduino_GFX is not on v1.3.1 — check `pio pkg list` |
-| `marantzknob.local` not found | avahi not up yet; try the IP from your router |
+| `vinylknob.local` not found | avahi not up yet; try the IP from your router |
 | one input does nothing, others work | that source is set to `DEL` in the receiver |
 
 ---

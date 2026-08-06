@@ -42,6 +42,7 @@ int  shelfCount();
 // back. Everything below then counts in the narrowed list.
 void shelfNarrow(const uint16_t *ids, int n);
 bool shelfNarrowed();
+bool shelfSlotVisible(int slot);
 
 // Where we are, and moving. Wraps around at both ends.
 int  shelfIndex();

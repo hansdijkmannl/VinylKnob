@@ -1,7 +1,7 @@
 [Unit]
-Description=MarantzKnob ears - listens on the receiver's line feed and asks the brain for a lookup
-After=marantzknob-brain.service sound.target
-Wants=marantzknob-brain.service
+Description=VinylKnob ears - listens on the receiver's line feed and asks the brain for a lookup
+After=vinylknob-brain.service sound.target
+Wants=vinylknob-brain.service
 
 [Service]
 Type=simple

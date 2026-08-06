@@ -1,5 +1,5 @@
 [Unit]
-Description=MarantzKnob - update the Discogs collection daily
+Description=VinylKnob - update the Discogs collection daily
 
 [Timer]
 # At night, with jitter so that not everyone hits Discogs at the same moment.
