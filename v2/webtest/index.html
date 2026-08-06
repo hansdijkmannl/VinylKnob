@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Wat draait er?</title>
+<title>What is playing?</title>
 <style>
 :root{--bg:#111114;--fg:#f0f0f2;--dim:#8a8a94;--line:#2a2a32;--acc:#0a84ff}
 @media(prefers-color-scheme:light){:root{--bg:#f4f4f6;--fg:#16161a;--dim:#6b6b73;--line:#dcdce2}}
@@ -20,7 +20,7 @@ h1{font-size:1.1rem;font-weight:600;color:var(--dim);margin:0 0 1.6rem;
 .engine{font-size:.72rem;font-weight:700;letter-spacing:.1em;color:var(--dim);
  margin-bottom:.7rem}
 
-/* De hoes als platenlabel - rond, zoals het op het uiteindelijke scherm komt */
+/* The sleeve as a record label - round, the way it ends up on the screen */
 .disc{width:200px;height:200px;margin:0 auto 1rem;border-radius:50%;
  background:var(--line);position:relative;overflow:hidden;
  display:flex;align-items:center;justify-content:center;
@@ -55,13 +55,13 @@ code{background:var(--line);padding:.1rem .35rem;border-radius:4px;font-size:.9e
 </head>
 <body>
 <main>
-  <h1>WAT DRAAIT ER?</h1>
+  <h1>WHAT IS PLAYING?</h1>
 
   <div class="pair" id="pair"></div>
 
-  <button id="go">Luisteren</button>
+  <button id="go">Listen</button>
   <div class="meter" id="meter"><i id="bar"></i></div>
-  <div class="status" id="status">Zet muziek op en druk op de knop.</div>
+  <div class="status" id="status">Put music on and press the button.</div>
   <div class="note" id="note"></div>
 </main>
 
@@ -112,8 +112,8 @@ function render(results) {
   }).join('');
 }
 
-// De browser levert Float32-samples; hier maken we er een gewone 16-bits WAV
-// van. Dat scheelt aan de serverkant elke afhankelijkheid van ffmpeg.
+// The browser hands over Float32 samples; here we turn them into a plain
+// 16-bit WAV. That saves every dependency on ffmpeg at the server end.
 function toWav(samples, rate) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
@@ -135,8 +135,8 @@ function toWav(samples, rate) {
 }
 
 async function capture() {
-  // Alle "slimme" verwerking uit: ruisonderdrukking en automatische
-  // versterking knippen precies de details weg waar herkenning op leunt.
+  // All the "clever" processing off: noise suppression and automatic gain cut
+  // away exactly the detail recognition leans on.
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
   });
@@ -162,7 +162,7 @@ async function capture() {
     const tick = setInterval(() => {
       const left = SECONDS - (Date.now() - started) / 1000;
       if (left <= 0) { clearInterval(tick); resolve(); }
-      else say(`Luisteren... nog ${Math.ceil(left)} s`);
+      else say(`Listening... ${Math.ceil(left)} s to go`);
     }, 200);
   });
 
@@ -192,11 +192,11 @@ $('go').onclick = async () => {
 
     if (peak < 0.003) {
       placeholder('!', false);
-      say('Er kwam vrijwel geen geluid binnen. Staat de muziek aan, en hard genoeg?', true);
+      say('Almost no sound came in. Is the music on, and loud enough?', true);
       return;
     }
 
-    say('Opzoeken bij allebei...');
+    say('Looking it up with both...');
     const res = await fetch('/api/recognize', { method: 'POST', body: wav });
     const data = await res.json();
 
@@ -204,11 +204,11 @@ $('go').onclick = async () => {
 
     render(data.results);
     const hits = data.results.filter(r => r.matched).map(r => r.engine);
-    say(hits.length ? `Treffer bij: ${hits.join(' en ')}.` : 'Geen van beide herkende dit.');
+    say(hits.length ? `Hit from: ${hits.join(' and ')}.` : 'Neither of them recognised this.');
   } catch (err) {
     placeholder('!', false);
     say(err.name === 'NotAllowedError'
-      ? 'Geen toegang tot de microfoon. Sta het toe in het venster van je browser.'
+      ? 'No access to the microphone. Allow it in your browser\'s prompt.'
       : String(err), true);
   } finally {
     $('go').disabled = false;
@@ -221,12 +221,12 @@ $('go').onclick = async () => {
     const cfg = await (await fetch('/api/config')).json();
     if (!cfg.auddConfigured) {
       $('note').innerHTML =
-        'AudD heeft nog geen sleutel, dus alleen Shazam doet mee. ' +
-        'Haal een proefsleutel op bij audd.io en zet hem in ' +
+        'AudD has no key yet, so only Shazam takes part. ' +
+        'Get a trial key at audd.io and put it in ' +
         '<code>audd_token.txt</code> naast <code>server.py</code>, ' +
-        'of in de omgevingsvariabele <code>AUDD_TOKEN</code>.';
+        'or in the environment variable <code>AUDD_TOKEN</code>.';
     }
-  } catch (e) { /* server nog niet klaar */ }
+  } catch (e) { /* server not ready yet */ }
 })();
 </script>
 </body>

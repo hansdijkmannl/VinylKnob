@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
 """
-Muziekherkenning uitproberen - klein webinterfaceje.
+Trying music recognition out - a small web interface.
 
-De browser doet de microfoon (dan regelt macOS de toestemming netjes via een
-pop-up), dit servertje doet de herkenning. Dezelfde opname gaat naar **twee**
-motoren tegelijk, zodat je ze rechtstreeks kunt vergelijken:
+The browser handles the microphone (so macOS asks permission properly, with a
+pop-up) and this little server does the recognition. The same recording goes to
+**two** engines at once, so you can compare them directly:
 
-  shazamio   open-source client voor Shazam, geen sleutel nodig, alleen Python
-  AudD       commerciele API die een rauwe audio-upload slikt - en dus ook
-             vanaf een ESP32 aan te roepen is
+  shazamio   open-source client for Shazam, no key needed, Python only
+  AudD       commercial API that swallows a raw audio upload - and so can be
+             called from an ESP32 as well
 
-Die vergelijking is de hele reden dat dit bestaat. Draait AudD net zo goed, dan
-kan het uiteindelijke apparaat het zonder computer af en volstaat een
-ESP32-bordje. Valt AudD tegen, dan is dat een argument om er een Raspberry Pi
-bij te zetten die shazamio kan draaien.
+That comparison is the whole reason this exists. If AudD does just as well, the
+final device can manage without a computer and an ESP32 board is enough. If AudD
+disappoints, that is an argument for putting a Raspberry Pi next to it that can
+run shazamio.
 
-    /usr/bin/python3 -m venv .venv          # let op: Apple's Python 3.9
+    /usr/bin/python3 -m venv .venv          # note: Apple's Python 3.9
     .venv/bin/pip install -r requirements.txt
     .venv/bin/python server.py
 
-Daarna http://localhost:8770 openen.
+Then open http://localhost:8770.
 
-AudD vraagt een sleutel. Haal er zelf een op bij audd.io (er is een gratis
-proefniveau) en zet hem in een bestand `audd_token.txt` naast dit script, of in
-de omgevingsvariabele AUDD_TOKEN. Zonder sleutel werkt alleen shazamio en zegt
-de pagina dat erbij.
+AudD asks for a key. Get one yourself at audd.io (there is a free tier) and put
+it in a file `audd_token.txt` next to this script, or in the environment
+variable AUDD_TOKEN. Without a key only shazamio works, and the page says so.
 
-Waarom Apple's Python 3.9 en niet je nieuwere: shazamio leunt op een
-Rust-extensie die op Python 3.14 segfault, en op pydub dat de `audioop`-module
-nodig heeft die sinds 3.13 uit Python is gesloopt. Op 3.9 werkt alles zonder
-kunstgrepen.
+Why Apple's Python 3.9 and not your newer one: shazamio leans on a Rust
+extension that segfaults on Python 3.14, and on pydub, which needs the `audioop`
+module that was taken out of Python in 3.13. On 3.9 everything works without
+contortions.
 """
 
 import asyncio
@@ -61,7 +60,7 @@ def blank(engine):
 
 
 # ---------------------------------------------------------------------------
-# Motor 1: shazamio
+# Engine 1: shazamio
 # ---------------------------------------------------------------------------
 def simplify_shazam(result):
     track = (result or {}).get("track")
@@ -79,7 +78,7 @@ def simplify_shazam(result):
         "released": None,
         "label": None,
     }
-    # Album, jaar en label zitten weggestopt in de metadata van de eerste sectie.
+    # Album, year and label are tucked away in the first section's metadata.
     for section in track.get("sections") or []:
         for item in section.get("metadata") or []:
             key = (item.get("title") or "").lower()
@@ -105,14 +104,14 @@ async def recognise_shazam(audio):
 
 
 # ---------------------------------------------------------------------------
-# Motor 2: AudD
+# Engine 2: AudD
 # ---------------------------------------------------------------------------
 def simplify_audd(payload):
     result = (payload or {}).get("result")
     if not result:
         return blank("AudD")
 
-    # De hoes zit bij de streamingdiensten, niet in het hoofdantwoord.
+    # The sleeve comes from the streaming services, not the main answer.
     cover = None
     apple = (result.get("apple_music") or {}).get("artwork") or {}
     if apple.get("url"):
@@ -137,7 +136,7 @@ def simplify_audd(payload):
 async def recognise_audd(audio, token):
     if not token:
         out = blank("AudD")
-        out["error"] = "geen sleutel ingesteld"
+        out["error"] = "no key configured"
         return out
 
     started = time.time()
@@ -169,9 +168,9 @@ async def recognise_audd(audio, token):
 async def handle_recognize(request):
     audio = await request.read()
     if len(audio) < 1000:
-        return web.json_response({"error": "geen audio ontvangen"}, status=400)
+        return web.json_response({"error": "no audio received"}, status=400)
 
-    # Allebei tegelijk, op dezelfde opname. Dat is het hele punt.
+    # Both at once, on the same recording. That is the whole point.
     shazam, audd = await asyncio.gather(
         recognise_shazam(audio),
         recognise_audd(audio, audd_token()),
@@ -193,11 +192,11 @@ def main():
     app.router.add_get("/api/config", handle_config)
     app.router.add_post("/api/recognize", handle_recognize)
 
-    print(f"\n  Open http://localhost:{PORT} in je browser.")
-    print("  De browser vraagt zelf toestemming voor de microfoon.")
-    print("  AudD-sleutel: " + ("gevonden" if audd_token()
-                                else "niet ingesteld, alleen Shazam actief"))
-    print("  Ctrl-C stopt.\n")
+    print(f"\n  Open http://localhost:{PORT} in your browser.")
+    print("  The browser asks for microphone permission itself.")
+    print("  AudD key: " + ("found" if audd_token()
+                            else "not configured, only Shazam active"))
+    print("  Ctrl-C stops.\n")
     web.run_app(app, host="127.0.0.1", port=PORT, print=None)
 
 

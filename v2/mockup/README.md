@@ -1,61 +1,59 @@
-# Interface-mockup
+# Interface mockup
 
-Werkende schets van hoe het CrowPanel eruit gaat zien en aanvoelt. Geen code
-voor het apparaat — dit is er om de bediening te beoordelen voordat er een
-regel LVGL geschreven wordt.
+A working sketch of how the CrowPanel will look and feel. Not code for the
+device — this exists to judge the controls before a line of LVGL gets written.
 
 ```bash
-open /Volumes/Opslag/Apps/MarantzKnob/v2/mockup/index.html
+open v2/mockup/index.html
 ```
 
-Scroll met je muiswiel over het ronde scherm om aan de knop te draaien, klik
-erop voor een korte druk. De knoppen eronder doen hetzelfde.
+Scroll your mouse wheel over the round screen to turn the knob, click on it for
+a short press. The buttons underneath do the same.
 
-## Het bedieningsmodel
+## The control model
 
-Met rotatie, druk én touch hoeft niets modaal te zijn. Dat is de kern van dit
-ontwerp: **draaien is altijd volume**, in elk scherm, zonder uitzondering.
+With rotation, press *and* touch, nothing has to be modal. That is the heart of
+this design: **turning is always volume**, on every screen, without exception.
 
-| De knop | |
+| The knob | |
 |---|---|
-| draaien | volume — altijd, nooit iets anders |
-| kort drukken | mute aan/uit |
-| dubbel drukken | direct naar de platenspeler |
-| vasthouden | versterker aan/uit |
+| turn | volume — always, never anything else |
+| short press | mute on/off |
+| double press | straight to the turntable |
+| hold | amplifier on/off |
 
-| Het scherm | |
+| The screen | |
 |---|---|
-| tik op de ingangsnaam | ingangenlijst; draaien loopt erdoorheen |
-| tik op de hoes | de platenkast doorbladeren |
-| tik om te bevestigen | of doe niets: na een paar seconden valt hij terug |
+| tap the input name | input list; turning steps through it |
+| tap the sleeve | browse the record shelf |
+| tap to confirm | or do nothing: after a few seconds it falls back |
 
-Alles wat je zonder kijken wil doen zit op de knop. Alles waarvoor je toch naar
-het scherm kijkt, zit op het scherm.
+Everything you want to do without looking is on the knob. Everything you look at
+the screen for anyway is on the screen.
 
-## Wat de vormgeving probeert
+## What the design is trying to do
 
-**De hoes is het beeld, niet een cijfer.** Het volumegetal verschijnt alleen
-terwijl je draait en verdwijnt na anderhalve seconde weer. Anders staat er
-permanent een getal over je platenlabel.
+**The sleeve is the picture, not a number.** The volume figure appears only
+while you turn and disappears again after a second and a half. Otherwise there
+is a number permanently sitting over your record label.
 
-**De boog ligt op de rand**, precies waar je vingers de knopring vastpakken.
-Daarmee is de boog de standaanwijzer, en heb je geen absolute potmeter nodig om
-te zien hoe hard het staat.
+**The arc lies on the rim**, exactly where your fingers take hold of the knob
+ring. That makes the arc the position indicator, and you need no absolute
+potentiometer to see how loud it is.
 
-**De hoes wordt rond bijgesneden**, met een spindelgaatje in het midden. Op een
-rond scherm leest dat als opzet in plaats van als een crop.
+**The sleeve is cropped round**, with a spindle hole in the middle. On a round
+screen that reads as intent rather than as a crop.
 
-**De accentkleur komt uit de hoes.** In de mockup zit die kleur in de nepdata;
-in het echt haal je de dominante kleur uit de afbeelding. Kost weinig rekenwerk
-en het apparaat ziet er bij elke plaat anders uit.
+**The accent colour comes from the sleeve.** In the mockup that colour is in the
+fake data; in reality you take the dominant colour from the image. It costs
+little computation and the device looks different for every record.
 
-**Terugvallen in plaats van bevestigen.** Elk keuzescherm keert vanzelf terug
-naar het volume. Er is nergens een "annuleren".
+**Falling back instead of confirming.** Every choice screen returns to the
+volume on its own. There is no "cancel" anywhere.
 
-## Wat er niet klopt aan de mockup
+## What is wrong with the mockup
 
-- De hoezen zijn gegenereerde kleurverlopen, geen echte albumhoezen.
-- De QR-code is nep; alleen de verhouding klopt.
-- Het bezel is een tekening. Hoe die knop in het echt draait is nog steeds het
-  enige dat je niet op een scherm kunt beoordelen — daarvoor moet het bordje
-  besteld worden.
+- The sleeves are generated colour gradients, not real album artwork.
+- The QR code is fake; only the proportions are right.
+- The bezel is a drawing. How that knob really turns is still the one thing you
+  cannot judge on a screen — for that the board has to be ordered.

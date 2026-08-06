@@ -1,9 +1,9 @@
 """
-Opslag en matchen. SQLite, want de hele platenkast past erin.
+Storage and matching. SQLite, because the whole record shelf fits in it.
 
-Een kant van 20 minuten levert bij volle dichtheid ruim 600.000 hashes op.
-Vierhonderd albums, twee kanten: een half miljard rijen. Dat past niet, dus er
-moet gesnoeid worden - zie `enroll` en `experiment_window.py`.
+A 20-minute side yields over 600,000 hashes at full density. Four hundred
+albums, two sides each: half a billion rows. That does not fit, so it has to be
+pruned - see `enroll` and `experiment_window.py`.
 """
 
 from __future__ import annotations
@@ -37,13 +37,13 @@ CREATE INDEX IF NOT EXISTS idx_prints_hash ON prints(hash);
 class Match:
     side_id: int
     label: str
-    score: int          # aantal hashes op hetzelfde tijdsverschil
-    total_hits: int     # alle treffers, ook de toevallige
+    score: int          # hashes at the same time difference
+    total_hits: int     # every hit, coincidental ones included
     offset_seconds: float
 
     @property
     def confidence(self) -> float:
-        """Aandeel van de treffers dat op één lijn ligt. Boven ~0,15 is echt."""
+        """Share of the hits that line up. Above ~0.15 it is real."""
         return self.score / self.total_hits if self.total_hits else 0.0
 
 
@@ -56,20 +56,20 @@ class Store:
     def close(self) -> None:
         self.db.close()
 
-    # -- vullen ------------------------------------------------------------
+    # -- filling -----------------------------------------------------------
     def enroll(self, samples: np.ndarray, label: str,
                discogs_id: str | None = None, side: str | None = None,
                seconds: float | None = None, keep_one_in: int = 4) -> int:
-        """Legt een kant vast.
+        """Enrols a side.
 
-        `seconds` knipt de opname af; None legt de hele kant vast. `keep_one_in`
-        dunt de hashes uit: bij 8 wordt er nog maar een op de acht bewaard.
+        `seconds` cuts the recording off; None enrols the whole side.
+        `keep_one_in` thins the hashes out: at 8 only one in eight is kept.
 
-        Die twee knoppen regelen dezelfde afweging vanaf twee kanten. Een korte
-        opname vastleggen is goedkoop maar dekt alleen het begin van de kant -
-        staat de naald ergens in het midden, dan is er niets om mee te matchen.
-        Uitdunnen houdt de hele kant herkenbaar en betaalt met trefkans. Zie
-        `experiment_window.py` voor de meting waarop de keuze rust.
+        Those two knobs work the same trade-off from opposite ends. Enrolling a
+        short recording is cheap but only covers the start of the side - with
+        the needle somewhere in the middle there is nothing to match against.
+        Thinning out keeps the whole side recognisable and pays in hit rate. See
+        `experiment_window.py` for the measurement the choice rests on.
         """
         if seconds is not None:
             from fingerprint import SAMPLE_RATE
@@ -88,7 +88,7 @@ class Store:
         return side_id
 
     def forget(self, side_id: int) -> None:
-        """Verkeerd gekoppeld? Weg ermee - dit is de 'dit klopt niet'-knop."""
+        """Linked to the wrong thing? Out with it - this is the 'that is wrong' button."""
         self.db.execute("DELETE FROM prints WHERE side_id = ?", (side_id,))
         self.db.execute("DELETE FROM sides WHERE id = ?", (side_id,))
         self.db.commit()
@@ -99,16 +99,16 @@ class Store:
     def hash_count(self) -> int:
         return self.db.execute("SELECT COUNT(*) FROM prints").fetchone()[0]
 
-    # -- zoeken ------------------------------------------------------------
+    # -- searching ---------------------------------------------------------
     def identify(self, samples: np.ndarray, top: int = 3) -> list[Match]:
-        """Welke kant is dit?
+        """Which side is this?
 
-        De truc zit in het tijdsverschil. Elke treffer levert een verschil op
-        tussen 'waar het in de database staat' en 'waar het in het fragment
-        staat'. Bij een echte match zijn die verschillen allemaal gelijk, want
-        het fragment ligt gewoon een vast stuk verderop in de opname. Bij toeval
-        liggen ze willekeurig verspreid. We zoeken dus niet het meeste aantal
-        treffers maar de grootste stapel op één en hetzelfde verschil.
+        The trick is in the time difference. Every hit yields a difference
+        between 'where it sits in the database' and 'where it sits in the clip'.
+        On a real match those differences are all the same, because the clip is
+        simply a fixed distance further into the recording. By coincidence they
+        scatter at random. So we are not looking for the most hits but for the
+        biggest pile at one and the same difference.
         """
         query = fingerprint(samples, dt_tolerance=DT_TOLERANCE)
         if not query:
@@ -122,7 +122,7 @@ class Store:
         totals: dict[int, int] = defaultdict(int)
 
         keys = list(by_hash)
-        for i in range(0, len(keys), 900):     # SQLite-limiet op variabelen
+        for i in range(0, len(keys), 900):     # SQLite's limit on variables
             chunk = keys[i:i + 900]
             placeholders = ",".join("?" * len(chunk))
             rows = self.db.execute(
@@ -138,8 +138,8 @@ class Store:
 
         results = []
         for side_id, deltas in aligned.items():
-            # Het venster van drie opvangt de resterende speling van een frame:
-            # anders valt een echte match uiteen over twee naburige bakjes.
+            # The window of three catches the remaining slack of one frame:
+            # otherwise a real match falls apart across two neighbouring buckets.
             delta, score = max(
                 ((d, deltas.get(d - 1, 0) + c + deltas.get(d + 1, 0))
                  for d, c in deltas.items()),

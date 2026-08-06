@@ -1,65 +1,64 @@
-# Webproef — herkenning uitproberen
+# Web test — trying recognition out
 
-Klein webinterfaceje om te zien of muziekherkenning met een microfoon werkt, en
-hoe het eruitziet met hoes en al. Geen hardware nodig, niets te leren of vast te
-leggen: knop indrukken, muziek laten spelen, kijken wat eruit komt.
+A small web interface for seeing whether music recognition with a microphone
+works, and what it looks like with the sleeve and all. No hardware needed,
+nothing to learn or enrol: press a button, let music play, see what comes out.
 
-De browser doet de microfoon (dan regelt macOS de toestemming via een gewone
-pop-up), een klein servertje doet de herkenning. Dezelfde opname gaat naar
-**twee motoren tegelijk**, zodat je ze rechtstreeks kunt vergelijken:
+The browser handles the microphone (so macOS asks permission with an ordinary
+pop-up) and a little server does the recognition. The same recording goes to
+**two engines at once**, so you can compare them directly:
 
 | | |
 |---|---|
-| **shazamio** | open-source client voor Shazam, geen sleutel nodig, maar Python-met-Rust en dus alleen op een computer |
-| **AudD** | commerciele API die een rauwe audio-upload slikt — en dus ook rechtstreeks vanaf een ESP32 aan te roepen is |
+| **shazamio** | open-source client for Shazam, no key needed, but Python-with-Rust and so only on a computer |
+| **AudD** | commercial API that swallows a raw audio upload — and so can be called straight from an ESP32 |
 
-Die vergelijking is de reden dat dit bestaat. Draait AudD net zo goed op jouw
-platen, dan kan het uiteindelijke apparaat het zonder computer af en volstaat
-een ESP32-bordje. Valt AudD tegen, dan is dat een argument om er een Raspberry
-Pi bij te zetten die shazamio kan draaien.
+That comparison is why this exists. If AudD does just as well on your records,
+the final device can manage without a computer and an ESP32 board is enough. If
+AudD disappoints, that is an argument for putting a Raspberry Pi next to it that
+can run shazamio.
 
-## Draaien
+## Running it
 
 ```bash
-cd /Volumes/Opslag/Apps/MarantzKnob/v2/webtest
+cd v2/webtest
 /usr/bin/python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python server.py
 ```
 
-Dan <http://localhost:8770> openen.
+Then open <http://localhost:8770>.
 
-**Voor AudD heb je een sleutel nodig.** Haal er zelf een op bij audd.io — er is
-een gratis proefniveau — en zet hem in een bestand `audd_token.txt` naast
-`server.py`, of in de omgevingsvariabele `AUDD_TOKEN`. Zonder sleutel doet
-alleen Shazam mee en zegt de pagina dat erbij.
+**For AudD you need a key.** Get one yourself at audd.io — there is a free tier
+— and put it in a file `audd_token.txt` next to `server.py`, or in the
+environment variable `AUDD_TOKEN`. Without a key only Shazam takes part, and the
+page says so.
 
-**Let op: `/usr/bin/python3`**, dus Apple's Python 3.9, niet je nieuwere.
-shazamio leunt op een Rust-extensie die op Python 3.14 segfault, en op pydub dat
-de `audioop`-module nodig heeft die sinds Python 3.13 uit de standaardbibliotheek
-is gehaald. Op 3.9 werkt alles zonder kunstgrepen.
+**Note the `/usr/bin/python3`**, so Apple's Python 3.9, not your newer one.
+shazamio leans on a Rust extension that segfaults on Python 3.14, and on pydub,
+which needs the `audioop` module that was taken out of the standard library in
+Python 3.13. On 3.9 everything works without contortions.
 
-## Wat het doet
+## What it does
 
-De browser neemt 8 seconden op, maakt daar een gewone 16-bits WAV van in
-JavaScript en stuurt die naar het servertje. Dat scheelt aan de serverkant elke
-afhankelijkheid van ffmpeg. Terug komen twee resultaten naast elkaar, elk met artiest, titel, album, de
-verstreken tijd en de hoes — rond getoond met een spindelgaatje in het midden,
-zoals het op het uiteindelijke ronde scherm zou staan.
+The browser records 8 seconds, turns that into a plain 16-bit WAV in JavaScript
+and sends it to the little server. That saves every dependency on ffmpeg at the
+server end. Back come two results side by side, each with artist, title, album,
+the elapsed time and the sleeve — shown round with a spindle hole in the middle,
+the way it would look on the final round screen.
 
-Ruisonderdrukking, echo-onderdrukking en automatische versterking staan bewust
-uit. Die "slimme" verwerking knipt precies de details weg waar herkenning op
-leunt.
+Noise suppression, echo cancellation and automatic gain are deliberately off.
+That "clever" processing cuts away exactly the detail recognition leans on.
 
-## Verhouding tot `../recognizer/`
+## How this relates to `../recognizer/`
 
-Twee verschillende dingen, en ze bijten elkaar niet:
+Two different things, and they do not clash:
 
-- **Dit** beantwoordt "werkt herkenning met een microfoon, en ziet het er goed
-  uit?" Het herkent alles, ook platen die je niet bezit, maar het vraagt een
-  internetverbinding en een externe dienst per opzoeking.
-- **`../recognizer/`** is de eigen, lokale fingerprint-database die na de eerste
-  keer geen dienst meer nodig heeft. Dat is wat er uiteindelijk op de Pi draait.
+- **This** answers "does recognition work with a microphone, and does it look
+  right?" It recognises anything, including records you do not own, but it needs
+  an internet connection and an external service per lookup.
+- **`../recognizer/`** is the own, local fingerprint database that needs no
+  service after the first time. That is what ends up running on the Pi.
 
-In het uiteindelijke ontwerp doen ze allebei mee: een dienst als deze voor de
-koude start, daarna de lokale database. Zie [../PLAN.md](../PLAN.md).
+In the final design they both take part: a service like this one for the cold
+start, the local database after that. See [../PLAN.md](../PLAN.md).

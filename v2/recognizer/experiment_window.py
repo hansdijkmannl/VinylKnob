@@ -1,22 +1,22 @@
 """
-Hoeveel van een plaatkant moet je vastleggen?
+How much of a record side do you have to enrol?
 
-De verwarring die dit beantwoordt: Shazam heeft inderdaad maar ~10 seconden
-nodig, maar dat is de lengte van de *opname die je maakt*, niet van wat er in de
-database staat. Shazam heeft het hele nummer vastgelegd. Daarom kun je hem
-midden in een liedje aanzetten.
+The confusion this answers: Shazam does indeed need only ~10 seconds, but that
+is the length of the *recording you make*, not of what is in the database.
+Shazam has the whole track enrolled. That is why you can start it in the middle
+of a song.
 
-Leg je alleen het begin van een kant vast, dan kun je alleen herkennen als de
-naald daar staat. Bij een plaat die je net opzet klopt dat, maar niet als je de
-kamer binnenloopt terwijl track vier speelt.
+Enrol only the beginning of a side and you can only recognise it while the
+needle is there. For a record you have just put on that is true, but not when
+you walk into the room while track four is playing.
 
-Een kant van 20 minuten volledig vastleggen kost bij volle dichtheid ~635.000
-hashes. Vierhonderd albums, twee kanten: een half miljard, oftewel 4 GB in het
-geheugen. Dat past niet op een Pi. Dit script meet de twee manieren om te
-snoeien, met een kant van vijf minuten als proefkonijn:
+Enrolling a 20-minute side in full costs ~635,000 hashes at full density. Four
+hundred albums, two sides each: half a billion, which is 4 GB in memory. That
+does not fit on a Pi. This script measures the two ways of pruning, with a
+five-minute side as the guinea pig:
 
-    venster    alleen het begin vastleggen
-    uitdunnen  de hele kant, maar een op de N hashes bewaren
+    window     enrol only the beginning
+    thinning   the whole side, but keep one hash in N
 
     python experiment_window.py
 """
@@ -31,30 +31,30 @@ from fingerprint import SAMPLE_RATE
 from store import Store
 from test_roundtrip import add_surface_noise, make_side
 
-SIDE_SECONDS = 300.0        # proxy voor een echte kant; 20 min duurt te lang
+SIDE_SECONDS = 300.0        # proxy for a real side; 20 min takes too long
 N_SIDES = 5
 TARGET = 2
 QUERY_SECONDS = 15.0
 
-# Waar de naald staat als we gaan luisteren.
+# Where the needle is when we start listening.
 QUERY_AT = (10.0, 60.0, 200.0)
 
-REAL_SIDE_SECONDS = 1200.0  # 20 minuten, voor het doorrekenen naar de praktijk
+REAL_SIDE_SECONDS = 1200.0  # 20 minutes, for extrapolating to practice
 ALBUMS = 400
-BYTES_PER_HASH = 8          # gepakte int32-hash + offset + kant-id
+BYTES_PER_HASH = 8          # packed int32 hash + offset + side id
 
 
 def main() -> None:
-    print(f"{N_SIDES} kanten van {SIDE_SECONDS:.0f} s aanmaken...")
+    print(f"Making {N_SIDES} sides of {SIDE_SECONDS:.0f} s...")
     music = {i: make_side(4242 + i, seconds=SIDE_SECONDS) for i in range(N_SIDES)}
 
     variants = [
-        ("eerste 45 s",        45.0,  1),
-        ("eerste 90 s",        90.0,  1),
-        ("hele kant",          None,  1),
-        ("hele kant, 1 op 4",  None,  4),
-        ("hele kant, 1 op 8",  None,  8),
-        ("hele kant, 1 op 16", None, 16),
+        ("first 45 s",          45.0,  1),
+        ("first 90 s",          90.0,  1),
+        ("whole side",          None,  1),
+        ("whole side, 1 in 4",  None,  4),
+        ("whole side, 1 in 8",  None,  8),
+        ("whole side, 1 in 16", None, 16),
     ]
 
     print(f"\n{'variant':<20} {'h/s':>6} {'RAM 400 alb':>12}  "
@@ -66,7 +66,7 @@ def main() -> None:
         store = Store(path)
         for i in range(N_SIDES):
             reference = add_surface_noise(music[i], 45.0, seed=600 + i)
-            store.enroll(reference, label=f"Plaat {i}", seconds=seconds,
+            store.enroll(reference, label=f"Record {i}", seconds=seconds,
                          keep_one_in=keep)
 
         covered = seconds if seconds is not None else SIDE_SECONDS
@@ -83,7 +83,7 @@ def main() -> None:
             elapsed = time.time() - t0
 
             if not results or results[0].side_id != TARGET + 1:
-                cells.append(f"{'GEMIST':>12}")
+                cells.append(f"{'MISS':>12}")
                 continue
             best = results[0]
             runner = results[1].score if len(results) > 1 else 0
@@ -91,15 +91,15 @@ def main() -> None:
             flag = "" if (best.score >= 20 and margin >= 4) else "?"
             cells.append(f"{best.score:>6}/{margin:>4.1f}x{flag}".rjust(12))
 
-        # De dekking klopt alleen als het venster de hele kant beslaat.
-        note = "" if seconds is None else f"  (dekt {seconds:.0f} van {SIDE_SECONDS:.0f} s)"
+        # The coverage only holds when the window spans the whole side.
+        note = "" if seconds is None else f"  (covers {seconds:.0f} of {SIDE_SECONDS:.0f} s)"
         print(f"{name:<20} {per_second:>6.0f} {ram:>10.0f} MB  "
               + "  ".join(cells) + note)
         store.close()
 
-    print("\nscore/marge per luisterpositie; GEMIST = verkeerde of geen plaat.")
-    print(f"RAM is doorgerekend naar {ALBUMS} albums met kanten van "
-          f"{REAL_SIDE_SECONDS / 60:.0f} minuten.")
+    print("\nscore/margin per listening position; MISS = wrong record or none.")
+    print(f"RAM is extrapolated to {ALBUMS} albums with sides of "
+          f"{REAL_SIDE_SECONDS / 60:.0f} minutes.")
 
 
 if __name__ == "__main__":

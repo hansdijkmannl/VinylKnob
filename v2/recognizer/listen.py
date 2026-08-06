@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
 """
-Luisteren met de microfoon van je MacBook - de echte proef op de som.
+Listening with your MacBook's microphone - the real test.
 
-Alles tot nu toe is gemeten op synthetisch materiaal. Dit is het gereedschapje
-om te toetsen of het ook op echte muziek en een echte microfoon werkt, zonder
-dat er ook maar iets besteld hoeft te worden.
+Everything so far has been measured on synthetic material. This is the little
+tool for checking whether it also works on real music through a real
+microphone, without having to order a single thing.
 
-    python listen.py proef                begeleide proefsessie - begin hier
-    python listen.py devices              welke microfoons ziet hij
-    python listen.py learn "Naam"         60 s opnemen en vastleggen
-    python listen.py id                   15 s opnemen: wat is dit?
-    python listen.py watch                blijven luisteren, zoals het apparaat
-    python listen.py list                 wat zit er in de database
-    python listen.py forget 3             een verkeerde koppeling weggooien
-    python listen.py selftest             pijplijn testen zonder microfoon
+    python listen.py trial                guided trial session - start here
+    python listen.py devices              which microphones does it see
+    python listen.py learn "Name"         record 60 s and enrol it
+    python listen.py id                   record 15 s: what is this?
+    python listen.py watch                keep listening, as the device does
+    python listen.py list                 what is in the database
+    python listen.py forget 3             throw a wrong link away
+    python listen.py selftest             test the pipeline without a microphone
 
-Een zinnige eerste sessie:
+A sensible first session:
 
-    1. zet een plaat of nummer op
-    2. `learn "Artiest - Album kant A"`
-    3. zet het nummer ergens anders neer, of laat het gewoon doorlopen
-    4. `id`  -> hij moet de goede naam geven, met de juiste tijdpositie
-    5. zet iets heel anders op en `id` opnieuw -> hij moet niets vinden
+    1. put a record or a track on
+    2. `learn "Artist - Album side A"`
+    3. move the track somewhere else, or just let it run on
+    4. `id`  -> it should give the right name, with the right time position
+    5. put something completely different on and `id` again -> it should find
+       nothing
 
-Die laatste stap is de belangrijkste. Iets herkennen is makkelijk; niets
-herkennen wanneer het er niet is, is waar zwakke fingerprinting op stukloopt.
+That last step is the important one. Recognising something is easy; recognising
+nothing when there is nothing there is where weak fingerprinting comes apart.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ from store import Store
 RECORD_RATE = 44100
 DB_PATH = "collection.db"
 
-# Wanneer noemen we een treffer betrouwbaar. Onderbouwing staat in README.md.
+# When do we call a hit reliable. The reasoning is in README.md.
 SURE_SCORE, SURE_MARGIN = 30, 4.0
 MAYBE_SCORE, MAYBE_MARGIN = 12, 2.0
 
@@ -52,11 +53,11 @@ def die(message: str) -> "NoReturn":  # noqa: F821
 
 
 def record(seconds: float, quiet: bool = False, strict: bool = True) -> np.ndarray:
-    """Neemt op van de standaard-microfoon en zet om naar de werkfrequentie."""
+    """Records from the default microphone and converts to the working rate."""
     try:
         import sounddevice as sd
     except ImportError:
-        die("sounddevice ontbreekt. Installeren met:\n"
+        die("sounddevice is missing. Install it with:\n"
             "    pip install sounddevice")
 
     frames = int(seconds * RECORD_RATE)
@@ -70,8 +71,8 @@ def record(seconds: float, quiet: bool = False, strict: bool = True) -> np.ndarr
         time.sleep(0.25)
         if quiet:
             continue
-        # Niveau van de laatste seconde tonen, zodat je ziet dat er iets
-        # binnenkomt voordat je twintig seconden voor niets staat te wachten.
+        # Show the level of the last second, so you can see something is coming
+        # in before you stand there waiting twenty seconds for nothing.
         done = min(int(elapsed * RECORD_RATE), frames)
         window = buffer[max(0, done - RECORD_RATE):done, 0]
         peak = float(np.max(np.abs(window))) if len(window) else 0.0
@@ -87,83 +88,83 @@ def record(seconds: float, quiet: bool = False, strict: bool = True) -> np.ndarr
     audio = buffer[:, 0]
     peak = float(np.max(np.abs(audio)))
     if peak < 3e-3 and strict:
-        die("Er kwam vrijwel geen geluid binnen.\n"
-            "  - staat de muziek aan en hard genoeg?\n"
-            "  - heeft je terminal toegang tot de microfoon?\n"
-            "    Systeeminstellingen > Privacy en beveiliging > Microfoon\n"
-            "  - `python listen.py devices` laat zien wat er gekozen is")
+        die("Almost no sound came in.\n"
+            "  - is the music on, and loud enough?\n"
+            "  - does your terminal have access to the microphone?\n"
+            "    System Settings > Privacy & Security > Microphone\n"
+            "  - `python listen.py devices` shows what has been picked")
 
     return resample_to_working_rate(audio, RECORD_RATE)
 
 
 def verdict(results) -> tuple[str, float]:
-    """Betrouwbaar, twijfelachtig of onbekend."""
+    """Reliable, doubtful or unknown."""
     if not results:
-        return "onbekend", 0.0
+        return "unknown", 0.0
     best = results[0]
     runner_up = results[1].score if len(results) > 1 else 0
     margin = best.score / runner_up if runner_up else float("inf")
 
     if best.score >= SURE_SCORE and margin >= SURE_MARGIN:
-        return "zeker", margin
+        return "certain", margin
     if best.score >= MAYBE_SCORE and margin >= MAYBE_MARGIN:
-        return "twijfel", margin
-    return "onbekend", margin
+        return "doubtful", margin
+    return "unknown", margin
 
 
 def show(results, elapsed: float) -> None:
     level, margin = verdict(results)
 
-    if level == "onbekend":
-        print(f"  Niets herkend.  ({elapsed:.1f}s)")
+    if level == "unknown":
+        print(f"  Nothing recognised.  ({elapsed:.1f}s)")
         if results:
             best = results[0]
-            print(f"    beste gok was {best.label} met score {best.score}, "
-                  f"marge {margin:.1f}x - te zwak")
+            print(f"    best guess was {best.label} with score {best.score}, "
+                  f"margin {margin:.1f}x - too weak")
         return
 
     best = results[0]
-    mark = "==>" if level == "zeker" else " ? "
+    mark = "==>" if level == "certain" else " ? "
     minutes, seconds = divmod(max(best.offset_seconds, 0.0), 60)
     print(f"  {mark} {best.label}")
-    print(f"      naald op {int(minutes)}:{seconds:04.1f}  "
-          f"score {best.score}  marge {margin:.1f}x  ({elapsed:.1f}s)")
-    if level == "twijfel":
-        print("      (zwakke treffer - langer opnemen of opnieuw vastleggen)")
+    print(f"      needle at {int(minutes)}:{seconds:04.1f}  "
+          f"score {best.score}  margin {margin:.1f}x  ({elapsed:.1f}s)")
+    if level == "doubtful":
+        print("      (weak hit - record for longer, or enrol it again)")
 
     for other in results[1:3]:
-        print(f"      ook overwogen: {other.label} (score {other.score})")
+        print(f"      also considered: {other.label} (score {other.score})")
 
 
 # ---------------------------------------------------------------------------
-# Opdrachten
+# Commands
 # ---------------------------------------------------------------------------
 def cmd_devices(_args) -> None:
     try:
         import sounddevice as sd
     except ImportError:
-        die("sounddevice ontbreekt. Installeren met:\n    pip install sounddevice")
+        die("sounddevice is missing. Install it with:\n    pip install sounddevice")
     print(sd.query_devices())
-    print(f"\nStandaard invoer: {sd.default.device[0]}")
+    print(f"\nDefault input: {sd.default.device[0]}")
 
 
 def cmd_learn(args) -> None:
     store = Store(DB_PATH)
-    print(f"Opnemen, {args.seconds:.0f} seconden. Zet de muziek nu aan.")
+    print(f"Recording, {args.seconds:.0f} seconds. Start the music now.")
     audio = record(args.seconds)
     side_id = store.enroll(audio, label=args.label, keep_one_in=args.density)
-    print(f"Vastgelegd als #{side_id}: {args.label} "
-          f"({store.hash_count():,} hashes in totaal)")
+    print(f"Enrolled as #{side_id}: {args.label} "
+          f"({store.hash_count():,} hashes in total)")
     store.close()
 
 
 def cmd_id(args) -> None:
     store = Store(DB_PATH)
     if not store.sides():
-        die("De database is nog leeg. Begin met:\n"
-            '    python listen.py learn "Artiest - Album kant A"')
+        die("The database is still empty. Start with:\n"
+            '    python listen.py learn "Artist - Album side A"')
 
-    print(f"Luisteren, {args.seconds:.0f} seconden...")
+    print(f"Listening, {args.seconds:.0f} seconds...")
     audio = record(args.seconds)
     t0 = time.time()
     results = store.identify(audio)
@@ -174,9 +175,9 @@ def cmd_id(args) -> None:
 def cmd_watch(args) -> None:
     store = Store(DB_PATH)
     if not store.sides():
-        die("De database is nog leeg.")
+        die("The database is still empty.")
 
-    print(f"Luisteren in blokken van {args.seconds:.0f} s. Ctrl-C stopt.\n")
+    print(f"Listening in blocks of {args.seconds:.0f} s. Ctrl-C stops.\n")
     try:
         while True:
             audio = record(args.seconds, quiet=True)
@@ -187,7 +188,7 @@ def cmd_watch(args) -> None:
             print()
             time.sleep(args.interval)
     except KeyboardInterrupt:
-        print("\nGestopt.")
+        print("\nStopped.")
     finally:
         store.close()
 
@@ -196,30 +197,30 @@ def cmd_list(_args) -> None:
     store = Store(DB_PATH)
     sides = store.sides()
     if not sides:
-        print("Nog niets vastgelegd.")
+        print("Nothing enrolled yet.")
     else:
         for side_id, label in sides:
             print(f"  #{side_id:<4} {label}")
-        print(f"\n{len(sides)} kanten, {store.hash_count():,} hashes")
+        print(f"\n{len(sides)} sides, {store.hash_count():,} hashes")
     store.close()
 
 
 def cmd_forget(args) -> None:
     store = Store(DB_PATH)
     store.forget(args.id)
-    print(f"#{args.id} verwijderd.")
+    print(f"#{args.id} removed.")
     store.close()
 
 
 def cmd_selftest(_args) -> None:
-    """Test de hele pijplijn zonder microfoon, zodat je weet of het aan de
-    audio ligt of aan de code."""
+    """Tests the whole pipeline without a microphone, so you know whether it is
+    the audio or the code."""
     import os
     import tempfile
 
     from test_roundtrip import add_surface_noise, make_side
 
-    print("Pijplijn testen zonder microfoon...")
+    print("Testing the pipeline without a microphone...")
     store = Store(os.path.join(tempfile.mkdtemp(), "selftest.db"))
     for i in range(3):
         music = make_side(31337 + i, seconds=60.0)
@@ -231,137 +232,136 @@ def cmd_selftest(_args) -> None:
     results = store.identify(add_surface_noise(excerpt, 30.0, seed=777))
     show(results, 0.0)
     ok = results and results[0].label == "Test 1"
-    print("\nPijplijn in orde." if ok else "\nPijplijn WERKT NIET.")
+    print("\nPipeline in order." if ok else "\nPipeline DOES NOT WORK.")
     store.close()
     raise SystemExit(0 if ok else 1)
 
 
-def cmd_proef(args) -> None:
-    """Begeleide proefsessie: precies de drie stappen die ertoe doen.
+def cmd_trial(args) -> None:
+    """Guided trial session: exactly the three steps that matter.
 
-    Gebruikt een eigen database (proef.db) die telkens wordt leeggegooid, zodat
-    je dit zo vaak kunt herhalen als je wil zonder je echte collectie te
-    vervuilen.
+    Uses a database of its own (trial.db) that is emptied each time, so you can
+    repeat this as often as you like without polluting your real collection.
     """
     import os
 
-    print(__doc__.split("Een zinnige eerste sessie:")[0].strip().splitlines()[0])
-    print("\nPROEFSESSIE\n" + "=" * 60)
-    print("Je hebt nodig: je iPhone met twee verschillende nummers.")
-    print("Leg hem op de afstand waarop het apparaat straks komt te staan.\n")
+    print(__doc__.split("A sensible first session:")[0].strip().splitlines()[0])
+    print("\nTRIAL SESSION\n" + "=" * 60)
+    print("You need: your phone with two different tracks on it.")
+    print("Put it at the distance the device will end up sitting at.\n")
 
-    if os.path.exists("proef.db"):
-        os.remove("proef.db")
-    store = Store("proef.db")
+    if os.path.exists("trial.db"):
+        os.remove("trial.db")
+    store = Store("trial.db")
 
-    # --- 0. hoort hij iets ------------------------------------------------
-    print("Stap 0 - werkt de microfoon?")
-    input("  Zet je muziek aan en druk op Enter... ")
+    # --- 0. does it hear anything -----------------------------------------
+    print("Step 0 - does the microphone work?")
+    input("  Start your music and press Enter... ")
     probe = record(4.0, strict=False)
     level = float(np.max(np.abs(probe)))
     db = 20 * np.log10(level) if level > 1e-6 else -99.0
     if db < -45:
-        die(f"  Veel te zacht ({db:.0f} dBFS).\n"
-            "  - staat de muziek aan, en hard genoeg?\n"
-            "  - heeft je terminal toegang tot de microfoon?\n"
-            "    Systeeminstellingen > Privacy en beveiliging > Microfoon")
-    print(f"  Niveau {db:.0f} dBFS - "
-          + ("prima.\n" if db > -30 else "mag wel wat harder, maar vooruit.\n"))
+        die(f"  Far too quiet ({db:.0f} dBFS).\n"
+            "  - is the music on, and loud enough?\n"
+            "  - does your terminal have access to the microphone?\n"
+            "    System Settings > Privacy & Security > Microphone")
+    print(f"  Level {db:.0f} dBFS - "
+          + ("fine.\n" if db > -30 else "could be louder, but it will do.\n"))
 
-    # --- 1. leren ---------------------------------------------------------
-    print("Stap 1 - dit nummer leren kennen")
-    label = input("  Wat speelt er? (artiest - titel): ").strip() or "Onbekend nummer"
-    print(f"  {args.learn_seconds:.0f} seconden opnemen. Laat het gewoon doorlopen.")
+    # --- 1. learning ------------------------------------------------------
+    print("Step 1 - getting to know this track")
+    label = input("  What is playing? (artist - title): ").strip() or "Unknown track"
+    print(f"  Recording {args.learn_seconds:.0f} seconds. Just let it run on.")
     store.enroll(record(args.learn_seconds), label=label, keep_one_in=1)
-    print(f"  Vastgelegd: {store.hash_count():,} hashes.\n")
+    print(f"  Enrolled: {store.hash_count():,} hashes.\n")
 
     results = []
 
-    # --- 2. herkennen -----------------------------------------------------
-    print("Stap 2 - herkent hij hetzelfde nummer terug?")
-    input("  Laat het nog even doorlopen (of spoel door) en druk op Enter... ")
+    # --- 2. recognising ---------------------------------------------------
+    print("Step 2 - does it recognise the same track again?")
+    input("  Let it run on a while (or skip ahead) and press Enter... ")
     hit = store.identify(record(args.id_seconds))
     show(hit, 0.0)
     level_2, margin_2 = verdict(hit)
-    results.append(("herkent het nummer terug", level_2 == "zeker", level_2, margin_2, hit))
+    results.append(("recognises the track again", level_2 == "certain", level_2, margin_2, hit))
     print()
 
-    # --- 3. niet herkennen ------------------------------------------------
-    print("Stap 3 - houdt hij zijn mond bij iets anders?")
-    print("  Dit is de belangrijkste stap: iets herkennen is makkelijk,")
-    print("  niets herkennen wanneer het er niet is niet.")
-    input("  Zet nu een HEEL ANDER nummer op en druk op Enter... ")
+    # --- 3. not recognising -----------------------------------------------
+    print("Step 3 - does it keep quiet about something else?")
+    print("  This is the most important step: recognising something is easy,")
+    print("  recognising nothing when there is nothing there is not.")
+    input("  Now put a COMPLETELY DIFFERENT track on and press Enter... ")
     miss = store.identify(record(args.id_seconds))
     show(miss, 0.0)
     level_3, margin_3 = verdict(miss)
-    results.append(("zwijgt bij ander nummer", level_3 != "zeker", level_3, margin_3, miss))
+    results.append(("stays quiet on another track", level_3 != "certain", level_3, margin_3, miss))
     print()
 
-    # --- uitslag ----------------------------------------------------------
+    # --- the result -------------------------------------------------------
     print("=" * 60)
-    print("UITSLAG - stuur dit hele blok door\n")
+    print("RESULT - send this whole block on\n")
     for name, ok, level, margin, res in results:
         score = res[0].score if res else 0
-        marge = f"{margin:.1f}x" if margin != float("inf") else "geen concurrent"
-        print(f"  {'GOED' if ok else 'MIS ':<5} {name:<26} "
-              f"uitkomst={level:<9} score={score:<6} marge={marge}")
+        shown = f"{margin:.1f}x" if margin != float("inf") else "no competitor"
+        print(f"  {'GOOD' if ok else 'MISS':<5} {name:<30} "
+              f"outcome={level:<9} score={score:<6} margin={shown}")
 
-    print(f"\n  opnamelengte: leren {args.learn_seconds:.0f} s, "
-          f"herkennen {args.id_seconds:.0f} s")
-    print(f"  microfoonniveau: {db:.0f} dBFS")
+    print(f"\n  recording length: learning {args.learn_seconds:.0f} s, "
+          f"recognising {args.id_seconds:.0f} s")
+    print(f"  microphone level: {db:.0f} dBFS")
 
     if all(ok for _, ok, _, _, _ in results):
-        print("\n  Allebei goed. Het werkt op echte muziek.")
+        print("\n  Both good. It works on real music.")
     else:
-        print("\n  Nog niet goed. Wat het meestal is:")
+        print("\n  Not right yet. What it usually is:")
         if not results[0][1]:
-            print("   - te zacht of te ver weg; zet harder of leg de telefoon dichterbij")
-            print("   - achtergrondgeluid; probeer het in een stille kamer")
-            print("   - probeer --learn-seconds 90 --id-seconds 25")
+            print("   - too quiet or too far away; turn it up or move the phone closer")
+            print("   - background noise; try it in a quiet room")
+            print("   - try --learn-seconds 90 --id-seconds 25")
         if not results[1][1]:
-            print("   - hij is te goed van vertrouwen; de drempels moeten omhoog")
-            print("   - dat is nuttige informatie, geen mislukking")
+            print("   - it is too trusting; the thresholds need to go up")
+            print("   - that is useful information, not a failure")
 
     store.close()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Muziekherkenning testen met de microfoon van je Mac.")
+        description="Test music recognition with your Mac's microphone.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("devices", help="beschikbare microfoons tonen").set_defaults(
+    sub.add_parser("devices", help="show the available microphones").set_defaults(
         func=cmd_devices)
 
-    p = sub.add_parser("learn", help="opnemen en vastleggen")
-    p.add_argument("label", help='bijvoorbeeld "Miles Davis - Kind of Blue A"')
+    p = sub.add_parser("learn", help="record and enrol")
+    p.add_argument("label", help='for instance "Miles Davis - Kind of Blue A"')
     p.add_argument("--seconds", type=float, default=60.0)
     p.add_argument("--density", type=int, default=1,
-                   help="1 op N hashes bewaren (1 = alles, zoals bij testen)")
+                   help="keep 1 in N hashes (1 = everything, as when testing)")
     p.set_defaults(func=cmd_learn)
 
-    p = sub.add_parser("id", help="opnemen en herkennen")
+    p = sub.add_parser("id", help="record and recognise")
     p.add_argument("--seconds", type=float, default=15.0)
     p.set_defaults(func=cmd_id)
 
-    p = sub.add_parser("watch", help="blijven luisteren")
+    p = sub.add_parser("watch", help="keep listening")
     p.add_argument("--seconds", type=float, default=15.0)
     p.add_argument("--interval", type=float, default=15.0,
-                   help="pauze tussen twee blokken")
+                   help="pause between two blocks")
     p.set_defaults(func=cmd_watch)
 
-    sub.add_parser("list", help="database tonen").set_defaults(func=cmd_list)
+    sub.add_parser("list", help="show the database").set_defaults(func=cmd_list)
 
-    p = sub.add_parser("forget", help="een kant verwijderen")
+    p = sub.add_parser("forget", help="remove a side")
     p.add_argument("id", type=int)
     p.set_defaults(func=cmd_forget)
 
-    p = sub.add_parser("proef", help="begeleide proefsessie met je telefoon")
+    p = sub.add_parser("trial", help="guided trial session with your phone")
     p.add_argument("--learn-seconds", type=float, default=45.0)
     p.add_argument("--id-seconds", type=float, default=15.0)
-    p.set_defaults(func=cmd_proef)
+    p.set_defaults(func=cmd_trial)
 
-    sub.add_parser("selftest", help="pijplijn testen zonder microfoon"
+    sub.add_parser("selftest", help="test the pipeline without a microphone"
                    ).set_defaults(func=cmd_selftest)
 
     args = parser.parse_args()
