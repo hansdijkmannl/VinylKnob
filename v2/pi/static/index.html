@@ -304,12 +304,17 @@ button.danger{background:var(--warn);color:#fff}
       <dt>level</dt><dd id="mLevel">–</dd>
       <dt>noise floor</dt><dd id="mFloor">–</dd>
       <dt>threshold</dt><dd id="mThreshold">–</dd>
+      <dt>source</dt><dd id="mSource">–</dd>
       <dt>Pi</dt><dd id="mPi">–</dd>
     </dl>
   </div>
   <button id="listen">Listen now</button>
-  <p class="hint">Listening runs on the Pi's own microphone. It starts by itself when
-  sound follows silence on the turntable input; this button asks for a lookup right now.</p>
+  <p class="hint">There is no microphone. The receiver digitises its own analog
+  inputs and serves each one over HTTP — the machinery behind sharing an input
+  with HEOS speakers — and the Pi reads the turntable straight off the phono
+  stage. It hears the record and nothing else in the room.</p>
+  <p class="hint">It asks by itself when sound follows silence and is loud enough
+  to be worth identifying. This button asks right now, whatever the level.</p>
 </section>
 
 <!-- ==================== QUEUE ==================== -->
@@ -544,7 +549,7 @@ button.danger{background:var(--warn);color:#fff}
       <dt>temperature</dt><dd id="sTemp">–</dd>
       <dt>fan</dt><dd id="sFan">–</dd>
       <dt>throttled</dt><dd id="sThrot">–</dd>
-      <dt>microphone</dt><dd id="sMic">–</dd>
+      <dt>listening on</dt><dd id="sMic">–</dd>
       <dt>panel polls</dt><dd id="sPoll">–</dd>
     </dl>
     <p class="hint">The fan steps up at 50, 60, 67.5 and 75 °C; throttling only starts at 80.
@@ -634,7 +639,16 @@ document.querySelectorAll('#tabs button').forEach(b =>
   b.addEventListener('click', () => showTab(b.dataset.t)));
 
 // ===========================================================================
-// NOW — what is playing, and whether the microphone hears anything
+// The input the ears are on, short enough for a definition list. /status hands
+// back the whole stream URL; what is worth reading is which input on which
+// receiver, not the path pattern.
+function sourceName(s) {
+  if (!s.source) return 'not connected';
+  const host = (s.source.match(/^https?:\/\/([^:/]+)/) || [])[1] || '?';
+  return `${s.sourceInput || '?'} on ${host}`;
+}
+
+// NOW — what is playing, and whether the line carries anything
 // ===========================================================================
 const pct = db => Math.max(0, Math.min(100, (db + 80) / 80 * 100));
 let artworkKey = '';
@@ -861,6 +875,7 @@ TABS.now = {
     setText('mLevel', s.levelDb + ' dB');
     setText('mFloor', s.floorDb + ' dB');
     setText('mThreshold', s.thresholdDb + ' dB');
+    setText('mSource', sourceName(s));
 
     const p = s.pi || {};
     setText('mPi', (p.tempC == null ? '–' : p.tempC + ' °C')
@@ -1384,7 +1399,7 @@ async function systemTick() {
     $('sTemp').style.color = p.hot ? 'var(--warn)' : '';
     setText('sFan', p.fanRpm ? p.fanRpm + ' rpm' : '–');
     setText('sThrot', p.throttled ? 'yes' : 'no');
-    setText('sMic', s.micDevice || '–');
+    setText('sMic', sourceName(s));
     setText('sPoll', s.panelPolls + (s.panelFrom ? ` · ${s.panelFrom}` : ''));
   } catch (e) { /* the page keeps whatever it had */ }
   atvTick();
