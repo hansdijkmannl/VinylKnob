@@ -20,7 +20,7 @@
 
 enum class Screen : uint8_t {
   Volume,      // sleeve as the background, arc around the rim
-  Inputs,      // ingangenlijst
+  Inputs,      // the list of inputs
   Browse,      // browsing the record shelf
   Pairing,     // QR code and address, when something is waiting to be linked
   Off,         // switched off; any touch or turn wakes it
@@ -53,7 +53,7 @@ struct UiState {
   char     sourceApp[24]  = "";     // "YouTube" when there is no artwork
   bool     listening      = false;   // the Pi is recording right now
 
-  // keuzeschermen
+  // the choice screens
   int      pickIndex      = 0;
   int      pickCount      = 0;
   char     pickLabel[24]  = "";
@@ -74,7 +74,7 @@ struct UiState {
   bool     shelfLinkable  = false;
   bool     justLinked     = false;   // just linked; confirm briefly
 
-  // netwerk
+  // network
   char     ip[16]         = "";
   int      rssi           = 0;
 };

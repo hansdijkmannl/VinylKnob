@@ -326,7 +326,7 @@ static void pickAlbum() {
 }
 
 // ---------------------------------------------------------------------------
-// Gebaren
+// Gestures
 // ---------------------------------------------------------------------------
 static void changeVolume(int steps) {
   static uint32_t lastStepAt = 0;

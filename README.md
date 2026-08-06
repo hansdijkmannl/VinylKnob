@@ -19,7 +19,7 @@ It links the two and remembers, so next time it knows without asking anyone.
 | Short press | mute |
 | Double press | jump to your favourite input |
 | Hold 1 s | amplifier on or off |
-| Tap the sleeve | browse your record shelf |
+| Tap the sleeve | browse your record shelf; **BACK** at the bottom leaves without choosing |
 | Tap the note | listen now |
 
 While a record plays the sleeve fills the screen, with the volume as an arc

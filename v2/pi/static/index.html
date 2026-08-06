@@ -1172,11 +1172,11 @@ let wheelRest = 0;
 on('shelfGlass', 'wheel', e => {
   e.preventDefault();
   wheelRest += e.deltaY;
-  let gedaan = 0;
-  while (Math.abs(wheelRest) >= WHEEL_PER_STEP && gedaan < 3) {
+  let stepped = 0;
+  while (Math.abs(wheelRest) >= WHEEL_PER_STEP && stepped < 3) {
     shelfMove(wheelRest > 0 ? 1 : -1);
     wheelRest -= Math.sign(wheelRest) * WHEEL_PER_STEP;
-    gedaan++;
+    stepped++;
   }
   // Cap the remainder rather than discarding it: discarding feels like lost
   // input, and accumulating without limit makes a swipe overrun.

@@ -220,8 +220,14 @@ that is exactly the moment you reach for your phone.
 ## Phase 6 — The collection browser ✅
 
 Three sleeves in a row, the knob as the position, the jump index as a ring of
-letters along the inner rim. Tap the sleeve to get in, press to get out; turning
-browses, turning while held jumps by letter.
+letters along the inner rim. Tap the sleeve to get in; turning browses, turning
+while held jumps by letter, and a press picks the album you are on.
+
+There is a **BACK** button in the gap of the letter ring, because pressing the
+knob in here is the *choose* gesture and with an unrecognised record playing
+that press writes a fingerprint you cannot unwrite. Leaving without choosing
+should not depend on knowing that the screen falls back on its own after
+eighteen seconds.
 
 **Choosing does two things, depending on what is playing.**
 

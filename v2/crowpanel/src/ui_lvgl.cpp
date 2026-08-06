@@ -50,6 +50,7 @@ static lv_obj_t *lblPickHead, *lblPickAbove, *lblPickCurrent, *lblPickBelow;
 #define SHELF_RING_MAX 27
 static lv_obj_t *shelfSlot[3], *shelfThumb[3], *shelfArc;
 static lv_obj_t *lblShelfHead, *lblShelfTitle, *lblShelfArtist, *lblShelfCount;
+static lv_obj_t *shelfBackPlate, *lblShelfBack;
 static lv_obj_t *shelfRing[SHELF_RING_MAX];
 static lv_obj_t *lblShelfLetter, *letterVeil;
 
@@ -378,6 +379,34 @@ void uiBegin() {
                              LV_ALIGN_CENTER, 0, 116);
   lblShelfCount  = makeLabel(lyBrowse, &lv_font_montserrat_14, COL_TRACK,
                              LV_ALIGN_CENTER, 0, 150);
+
+  // The way out. Pressing the knob in here *picks* an album, and with an
+  // unrecognised record playing that press writes a fingerprint you cannot
+  // unwrite — so browsing without choosing needed a control of its own rather
+  // than the eighteen-second timeout. It sits in the gap of the letter ring, at
+  // the same spot as the listen button on the volume screen, so the bottom of
+  // the glass is always the one place a button lives.
+  shelfBackPlate = lv_obj_create(lyBrowse);
+  lv_obj_remove_style_all(shelfBackPlate);
+  lv_obj_set_size(shelfBackPlate, 132, 48);
+  lv_obj_align(shelfBackPlate, LV_ALIGN_CENTER, 0, 192);
+  lv_obj_set_style_radius(shelfBackPlate, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(shelfBackPlate, lv_color_hex(COL_BACKGROUND), 0);
+  lv_obj_set_style_bg_opa(shelfBackPlate, LV_OPA_60, 0);
+  lv_obj_set_style_border_color(shelfBackPlate, lv_color_hex(COL_TRACK), 0);
+  lv_obj_set_style_border_width(shelfBackPlate, 1, 0);
+  lv_obj_set_style_border_opa(shelfBackPlate, LV_OPA_40, 0);
+  lv_obj_clear_flag(shelfBackPlate, LV_OBJ_FLAG_CLICKABLE);
+
+  lblShelfBack = lv_label_create(lyBrowse);
+  lv_obj_set_style_text_font(lblShelfBack, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(lblShelfBack, lv_color_hex(COL_TRACK), 0);
+  lv_obj_set_style_text_align(lblShelfBack, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_size(lblShelfBack, 132, 48);
+  lv_obj_set_style_pad_top(lblShelfBack, 15, 0);
+  lv_obj_align(lblShelfBack, LV_ALIGN_CENTER, 0, 192);
+  lv_label_set_text(lblShelfBack, LV_SYMBOL_LEFT "  BACK");
+  makeTappable(lblShelfBack, Touch::Dismiss);
 
   // The letter you are jumping to, large on screen. The ring stays small — that
   // shows *where* you are — but while jumping you want to read without hunting,
