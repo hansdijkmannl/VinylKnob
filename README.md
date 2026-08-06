@@ -1,4 +1,4 @@
-# MarantzKnob
+# VinylKnob
 
 A physical volume knob for a Denon or Marantz receiver that also tells you which
 record is playing.
