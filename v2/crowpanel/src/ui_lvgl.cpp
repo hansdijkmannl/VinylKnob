@@ -88,6 +88,27 @@ static int32_t rotSin = 0, rotCos = 1 << 16;      // Q16, of minus the angle
 static int16_t rotTenths = 0;
 static uint16_t rowBuf[SCREEN_W];                  // one row, in internal RAM
 
+// Where the glass actually is, per row. The panel is round and the buffer is
+// square, so a fifth of every frame is corner that sits behind the bezel. There
+// is no point rotating pixels nobody can see, and skipping them is a fifth off
+// the whole pass.
+static int16_t spanFrom[SCREEN_H], spanTo[SCREEN_H];
+
+static void buildSpans() {
+  const int32_t r = SCREEN_W / 2, cy = SCREEN_H / 2;
+  for (int32_t dy = 0; dy < SCREEN_H; dy++) {
+    const int32_t d = dy - cy;
+    int32_t half = 0;
+    // Integer square root of r*r - d*d, no floating point in a startup loop.
+    for (int32_t v = r * r - d * d; half * half <= v; half++) {}
+    half--;
+    spanFrom[dy] = (int16_t)(r - half);
+    spanTo[dy]   = (int16_t)(r + half);
+    if (spanFrom[dy] < 0) spanFrom[dy] = 0;
+    if (spanTo[dy] > SCREEN_W - 1) spanTo[dy] = SCREEN_W - 1;
+  }
+}
+
 // What the rotation costs, in the only terms that matter here: how long the
 // panel spends putting a frame up, and how many of those there were.
 //
@@ -117,7 +138,8 @@ void uiDrawStats(uint32_t &totalMs, uint32_t &passes) {
 // The usual trick: red and blue sit far enough apart in the word to be
 // interpolated in one go without spilling into each other, so this is two
 // multiplies instead of six, and no unpacking to bytes and back.
-static inline uint16_t blend565(uint16_t a, uint16_t b, int32_t f) {
+static inline __attribute__((always_inline))
+uint16_t blend565(uint16_t a, uint16_t b, int32_t f) {
   const int32_t arb = a & 0xF81F, agr = a & 0x07E0;
   const int32_t brb = b & 0xF81F, bgr = b & 0x07E0;
   const int32_t rb = (arb + (((brb - arb) * f) >> 5)) & 0xF81F;
@@ -125,50 +147,57 @@ static inline uint16_t blend565(uint16_t a, uint16_t b, int32_t f) {
   return (uint16_t)(rb | g);
 }
 
-static void flushRotated(lv_color_t *px) {
+static void __attribute__((optimize("O3"))) IRAM_ATTR
+flushRotated(lv_color_t *px) {
   // Counter-rotate every destination pixel to find where it came from. The
   // centre is the centre of the glass, because that is what the mount turned
   // around.
   //
-  // Interpolated between the two rows, and nearest along them.
+  // Bilinear, and in IRAM at -O3, which is what makes it affordable.
   //
-  // Taking the nearest pixel outright is a multiply cheaper and looks it: at
-  // three degrees the source row only changes every twentieth pixel, so a line
-  // of text picks up a visible staircase and the stems of the letters come out
-  // one pixel wide in one place and two in the next.
+  // Interpolating between the two rows only was the first try, on the argument
+  // that the staircase runs that way and the other direction slips by less than
+  // a pixel across a row. That holds at three degrees. At six it does not: the
+  // source advances 0.9945 pixels per step, so a row slips two and a half
+  // pixels and two or three columns are doubled — scattered differently on
+  // every row, which is exactly the ragged look on vertical strokes.
   //
-  // Full bilinear fixes that and costs 241 ms a frame against 132 — four
-  // frames a second, on the one device whose knob must not feel slow. Nearly
-  // all of that buys something invisible: at a few degrees the source advances
-  // 0.9986 pixels per step along a row, so over a whole row the sampling slips
-  // by two thirds of a pixel and a single column is doubled somewhere. The
-  // staircase is entirely in the other direction. So one blend, not three.
+  // So all four neighbours after all. Plain, that measured 241 ms a frame and
+  // was too slow to keep; the blends were the cost, not the reads. Compiling
+  // this one function for speed and putting it in internal RAM, where it is not
+  // fighting the flash cache for the same bus PSRAM is on, is what brought it
+  // back within reach — see the numbers in ../README.md.
   const int32_t cx = SCREEN_W / 2, cy = SCREEN_H / 2;
   const uint16_t *src = (const uint16_t *)px;
 
   for (int32_t dy = 0; dy < SCREEN_H; dy++) {
-    // Start of the row, in Q16 source coordinates.
-    int32_t sx = (cx << 16) + (0 - cx) * rotCos + (dy - cy) * rotSin;
-    int32_t sy = (cy << 16) - (0 - cx) * rotSin + (dy - cy) * rotCos;
+    const int32_t x0 = spanFrom[dy], x1 = spanTo[dy];
+    if (x1 < x0) continue;
+    // Start of the visible part of the row, in Q16 source coordinates.
+    int32_t sx = (cx << 16) + (x0 - cx) * rotCos + (dy - cy) * rotSin;
+    int32_t sy = (cy << 16) - (x0 - cx) * rotSin + (dy - cy) * rotCos;
 
-    for (int32_t dx = 0; dx < SCREEN_W; dx++) {
+    for (int32_t dx = x0; dx <= x1; dx++) {
       const int32_t ix = sx >> 16, iy = sy >> 16;
       // One short of the bottom, because the sample reaches into the next row.
       // Outside is black; on a round screen that sits in the corners behind the
       // bezel, where nobody ever sees it.
-      if (ix < 0 || ix >= SCREEN_W || iy < 0 || iy >= SCREEN_H - 1) {
-        rowBuf[dx] = 0;
+      if (ix < 0 || ix >= SCREEN_W - 1 || iy < 0 || iy >= SCREEN_H - 1) {
+        rowBuf[dx - x0] = 0;
       } else {
         const uint16_t *r0 = src + iy * SCREEN_W + ix;
-        rowBuf[dx] = blend565(r0[0], r0[SCREEN_W], (sy >> 11) & 0x1F);
+        const int32_t fx = (sx >> 11) & 0x1F;
+        rowBuf[dx - x0] = blend565(blend565(r0[0], r0[1], fx),
+                                   blend565(r0[SCREEN_W], r0[SCREEN_W + 1], fx),
+                                   (sy >> 11) & 0x1F);
       }
       sx += rotCos;
       sy -= rotSin;
     }
 #if (LV_COLOR_16_SWAP != 0)
-    gfx->draw16bitBeRGBBitmap(0, dy, rowBuf, SCREEN_W, 1);
+    gfx->draw16bitBeRGBBitmap(x0, dy, rowBuf, x1 - x0 + 1, 1);
 #else
-    gfx->draw16bitRGBBitmap(0, dy, rowBuf, SCREEN_W, 1);
+    gfx->draw16bitRGBBitmap(x0, dy, rowBuf, x1 - x0 + 1, 1);
 #endif
   }
 }
@@ -285,6 +314,7 @@ void uiBegin() {
   // somewhere it does not belong. Costs nothing when the angle is zero, which
   // is why it is conditional and why changing it from zero needs a restart.
   dispDrv.full_refresh = settings.screenAngle != 0;
+  buildSpans();
   uiSetAngle(settings.screenAngle);
   lv_disp_drv_register(&dispDrv);
 
