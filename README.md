@@ -4,9 +4,10 @@ A physical volume knob for a Denon or Marantz receiver that also tells you which
 record is playing.
 
 Turn it and the volume follows. Put a record on and the sleeve appears on the
-screen — heard by a microphone, matched against your own Discogs collection.
-Wasn't recognised? Browse your shelf on the knob itself and point at the album.
-It links the two and remembers, so next time it knows without asking anyone.
+screen — heard on the receiver's own line feed, matched against your own Discogs
+collection. Wasn't recognised? Browse your shelf on the knob itself and point at
+the album. It links the two and remembers, so next time it knows without asking
+anyone.
 
 <img src="3D%20Print/AVR_Knob_preview.svg" alt="" width="360">
 
@@ -50,17 +51,34 @@ Around €150. The full list with the reasoning behind each part is in
 | **Raspberry Pi 5** | 1 GB is enough; it listens, recognises and holds your collection |
 | microSD card | 32 GB, A1, high-endurance |
 | Power supply | the official 27 W USB-C one for a Pi 5, not a generic charger |
-| A USB microphone | see the warning below |
 | USB-A to JST MX1.25, 4-pin | Pi to panel. **The CrowPanel has no USB-C** — power and data share this connector. Usually in the box |
+
+No microphone. See [How it listens](#how-it-listens).
 
 And a **Denon or Marantz receiver with network control**. Any model speaking the
 telnet protocol on port 23 should do; in the receiver's menu set *Network →
 Network Control* to **Always On**, or the port disappears in standby.
 
-> **The microphone is the weak spot.** A cheap USB lavalier works with the
-> volume up but struggles at conversational levels from across the room. If you
-> want reliable recognition from the sofa, budget for a decent capsule — an
-> EM272 on a CM108 dongle is the usual answer — rather than the €8 one.
+## How it listens
+
+Denon and Marantz receivers digitise their analog inputs and serve each one as a
+plain HTTP stream — the machinery behind sharing an input with HEOS speakers.
+The turntable is one of them, so the Pi listens to the record straight off the
+phono stage:
+
+```
+http://<receiver>:8015/analoginput/analog/analog/0/phono
+```
+
+Raw 16-bit stereo PCM at 44.1 kHz, realtime, one client at a time. On an SR7015
+the music sits **43 dB** above that input's noise floor; a microphone in the same
+room, in the same minute, managed **13 dB**. The fingerprinter is only validated
+down to 20 dB, so that is the difference between working by design and working
+by luck — and it hears no conversation, no doors and no traffic.
+
+`v2/pi/line.sh` lists what your receiver offers and which input carries signal.
+If yours has no such stream, the knob and the screen work as they always did;
+only recognition needs it.
 
 ## Getting it running
 
@@ -70,9 +88,8 @@ Network Control* to **Always On**, or the port disappears in standby.
    Needs PlatformIO. It boots into its own access point called
    `MarantzKnob-setup`; connect to it, fill in your network and your receiver's
    address, save.
-3. **Set up the Pi** — `v2/pi/install.sh` does the lot: packages,
-   virtualenv, both services, the microphone. It prints the address to open when
-   it is done.
+3. **Set up the Pi** — `v2/pi/install.sh` does the lot: packages, virtualenv,
+   both services. It prints the address to open when it is done.
 4. **Add your collection** — open the web interface, Collection tab, enter your
    Discogs username and a personal access token (Discogs → Settings →
    Developers), press Sync. After that it re-syncs itself daily.
@@ -89,7 +106,7 @@ Three parts, each doing what it is good at:
    │  ESP32-S3   │                └──────────────┘
    └──────┬──────┘
           │ HTTP :8791    ┌───────────────┐
-          ├──────────────▶│ ears          │  microphone, Apple TV,
+          ├──────────────▶│ ears          │  line feed, Apple TV,
           │               │ listen.py    │  web interface
    USB    │               └───────┬───────┘
    power  │                       │ HTTP :8790
@@ -132,9 +149,9 @@ still spinning, and every link teaches the local database one more side.
 
 ## Known rough edges
 
-- **The enclosure is not finished.** Nine STL revisions, no lid yet, and the
-  microphone channel still needs to become a proper pocket. Treat `3D Print/` as
-  work in progress.
+- **The enclosure is not finished.** Nine STL revisions and no lid yet; treat
+  `3D Print/` as work in progress. The microphone channel in there is a
+  leftover — there is no microphone any more.
 - **The web interface has no password** and listens on your whole network. That
   is a deliberate trade-off for a device on your own LAN — there is nothing in
   it more sensitive than your record collection — but do not forward it through
@@ -151,7 +168,7 @@ still spinning, and every link teaches the local database one more side.
 | | |
 |---|---|
 | `v2/crowpanel/` | ESP32 firmware — display, encoder, telnet to the receiver |
-| `v2/pi/` | the ears: microphone, Apple TV, web interface, installer |
+| `v2/pi/` | the ears: line feed, Apple TV, web interface, installer |
 | `v2/brain/` | the brain: recognition, Discogs, fingerprints, database |
 | `v2/recognizer/` | standalone fingerprinting prototype, with its own notes |
 | `v2/mockup/` | the interface sketch the design came from |

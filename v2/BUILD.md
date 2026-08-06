@@ -171,26 +171,36 @@ like; it is idempotent.
 
 ---
 
-## Step 6 — Check the microphone
+## Step 6 — Check the line feed
 
-Plug the microphone into a **USB-A** port on the Pi and run:
+There is no microphone to plug in. The receiver digitises its own analog inputs
+and serves each one over HTTP; the Pi listens to the turntable input. Put a
+record on and run:
 
 ```bash
-ssh marantzknob.local marantzknob/v2/pi/microphone.sh
+ssh marantzknob.local marantzknob/v2/pi/line.sh
 ```
 
-This is the five-minute check from [BOM.md](BOM.md), performed rather than
-described: it finds the card, turns **Auto Gain Control** off, records five
-seconds and says whether there is signal in it.
+It asks the receiver which inputs it offers and measures three seconds of each,
+so the one with your turntable on it stands out from the rest:
 
-Two outcomes mean you have the wrong microphone:
+```
+  phono           3.1s  peak 0.0740   -36.6 dBFS  <- signal
+  cd              3.1s  peak 0.0001   -92.5 dBFS
+  tuner           3.1s  peak 0.0001   -92.5 dBFS
+```
 
-- **no controls at all** — the firmware is doing something to the signal and you
-  cannot stop it;
-- **peak below 0.002** — silent, so wrong device or muted.
+Put the name of that one in `LINE_INPUT` in `marantzknob-listen.service`. The
+default is `phono`, which is right on most receivers.
 
-A *low* level is fine. Fingerprinting works on a relative threshold; what ruins
-recognition is a pumping AGC, not a quiet recording.
+The script pauses the ears while it runs, because the receiver serves **one**
+client at a time and the ears normally hold that connection — without stepping
+aside every reading is a scrap of somebody else's stream and everything looks
+dead.
+
+Nothing above -60 dBFS with a record playing means either the receiver is not on
+the turntable, or that input arrives over HDMI. Only the analog inputs get
+digitised.
 
 ---
 

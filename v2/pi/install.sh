@@ -21,7 +21,7 @@ echo "==> Packages"
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
     python3-venv python3-dev build-essential \
-    alsa-utils libsndfile1 avahi-daemon \
+    libsndfile1 avahi-daemon \
     ffmpeg
 
 # ffmpeg is not optional: shazamio has pydub convert the recording before
@@ -65,19 +65,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Finding the microphone
+# 3. The sound
 # ---------------------------------------------------------------------------
-echo "==> Microphone"
-CARD=$(arecord -l 2>/dev/null | awk -F'[ :]' '/^card /{print $2; exit}')
-if [ -z "$CARD" ]; then
-    echo "    NO recording device found. Is the USB microphone plugged in?"
-    echo "    The service is installed anyway; fix MIC_DEVICE later."
-    MIC="plughw:1,0"
-else
-    MIC="plughw:${CARD},0"
-    echo "    card $CARD -> $MIC"
-    "$ROOT/v2/pi/microphone.sh" "$CARD" || true
-fi
+# There is no microphone to find. The receiver digitises its own analog inputs
+# and serves them over HTTP; the ears read the turntable one. Which input that
+# is cannot be settled here, because it needs a record playing to tell the
+# inputs apart — ./line.sh does that when you are ready.
+echo "==> Sound comes from the receiver's line feed; run ./line.sh to check it"
 
 # ---------------------------------------------------------------------------
 # 4. Services
@@ -86,10 +80,8 @@ echo "==> systemd"
 for unit in marantzknob-brain marantzknob-listen marantzknob-sync; do
     sed -e "s|__ROOT__|$ROOT|g" \
         -e "s|__USER__|$WHO|g" \
-        -e "s|__MIC__|$MIC|g" \
         "$ROOT/v2/pi/$unit.service" | sudo tee "/etc/systemd/system/$unit.service" >/dev/null
 done
-sudo usermod -aG audio "$WHO"
 sudo systemctl daemon-reload
 sudo systemctl enable --now marantzknob-brain marantzknob-listen
 
@@ -118,5 +110,4 @@ echo "    Web interface : http://$(hostname).local"
 echo "    Raw levels    : http://$(hostname).local/status"
 echo "    Logs          : journalctl -u marantzknob-brain -u marantzknob-listen -f"
 echo
-echo "    You were just added to the 'audio' group; log out and back in if you"
-echo "    want to run arecord yourself."
+echo "    Put a record on and run ./line.sh to see which input carries it."

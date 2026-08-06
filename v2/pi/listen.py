@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
 """
-The device's ears: listens along on the USB microphone and asks the brain for a
-lookup as soon as something starts playing.
+The device's ears: listens along on the receiver's own line feed and asks the
+brain for a lookup as soon as something starts playing.
+
+There is no microphone. Denon and Marantz receivers digitise their analog
+inputs and offer each one as a plain HTTP stream — the mechanism behind sharing
+an input with HEOS speakers — and the turntable is one of them:
+
+    http://<receiver>:8015/analoginput/analog/analog/0/phono
+
+Raw 16-bit stereo PCM at 44.1 kHz, realtime, one client at a time. Measured on
+an SR7015: the music sits 43 dB above that input's noise floor, where a
+microphone in the same room managed 13 dB. The fingerprinter is only validated
+down to 20 dB, so this is the difference between working by design and working
+by luck — and it hears no conversation, no doors and no traffic.
 
 Why not on a timer — see ../PLAN.md. shazamio is an unofficial client with no
 key: a handful of lookups an evening does not stand out, one a minute does. It
@@ -9,18 +21,16 @@ is also simply pointless, because a side lasts twenty minutes and does not
 change its name in the meantime.
 
 So listening happens on an event: **sound after silence**. That is exactly the
-moment you put the needle down, and it works without this service knowing
-anything about the amplifier — which matters, because the receiver allows only
-one telnet session and the panel owns it.
+moment you put the needle down.
 
-The threshold is not fixed but follows the room: the noise floor tracks the
-quiet and we trigger on a jump above it. That way the same number works in a
-silent room and next to an open window.
+The threshold still follows the signal rather than being fixed: the noise floor
+tracks the quiet and we trigger on a jump above it. On a line feed that floor
+barely moves, but the same code covers both and costs nothing.
 
 This service also serves the web interface: one page with tabs, in
-static/index.html. It lives here rather than with the brain because the
-microphone, the Apple TV and the proxy to the panel are all here; the brain
-supplies only its API, passed through under /api/.
+static/index.html. It lives here rather than with the brain because the line
+feed, the Apple TV and the proxy to the panel are all here; the brain supplies
+only its API, passed through under /api/.
 
 Runs as a systemd service — see marantzknob-listen.service.
 """
@@ -46,9 +56,19 @@ COVER_PX = int(os.environ.get("COVER_PX", "480"))
 
 # -- settings, every one overridable through the environment ----------------
 BRAIN        = os.environ.get("BRAIN_URL", "http://127.0.0.1:8790")
-MIC_DEVICE_NAME     = os.environ.get("MIC_DEVICE", "plughw:1,0")
-RATE        = int(os.environ.get("MIC_RATE", "44100"))
 PORT        = int(os.environ.get("LISTEN_PORT", "8791"))
+
+# Where the sound comes from. AVR_HOST is normally left empty: the panel is
+# already configured with the receiver's address and hands it over, the same
+# way the panel's own address is discovered rather than typed in.
+#
+# LINE_INPUT is the last part of the stream path, which is the protocol name in
+# lower case — phono, cd, tuner, dvd, game, mediaplayer, bluray, tvaudio. Run
+# ./line.sh to see what your receiver offers and which ones carry signal.
+AVR_HOST    = os.environ.get("AVR_HOST", "")
+LINE_INPUT  = os.environ.get("LINE_INPUT", "phono")
+LINE_PORT   = int(os.environ.get("LINE_PORT", "8015"))
+RATE        = int(os.environ.get("LINE_RATE", "44100"))
 
 BLOCK_S       = 0.1                     # how often we measure the level
 CLIP_S   = float(os.environ.get("CLIP_SECONDS", "8"))
@@ -74,7 +94,12 @@ MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "3"))
 # soft passage already drops below the threshold, and then the sleeve vanishes
 # while the record plays on. Five minutes of silence is genuinely over.
 COVER_HOLD_S = float(os.environ.get("COVER_HOLD_SECONDS", "300"))
-TRIGGER_DB    = float(os.environ.get("TRIGGER_DB", "12"))       # above the noise floor
+# How far above the noise floor counts as sound. On the line feed there is 43 dB
+# of room between the floor and the music, so this can sit high enough to ignore
+# hum and a needle in the run-out groove, and still fire the moment music starts.
+# With a microphone it had to be 6, and that was uncomfortably close to the
+# noise.
+TRIGGER_DB    = float(os.environ.get("TRIGGER_DB", "15"))       # above the noise floor
 # The noise floor falls quickly and rises very slowly. That is not the same as
 # the tenth percentile over the last minute, and the difference matters: play a
 # minute of continuous music and that music *becomes* the tenth percentile, so
@@ -84,6 +109,55 @@ FLOOR_RISE_DB = 0.02          # per 0.1 s block, so ~0.2 dB per second
 FLOOR_QUIET_DB  = 6.0           # this close to the floor counts as "the room"
 
 BYTES_PER_BLOCK = int(RATE * BLOCK_S) * 2       # 16-bit mono
+
+
+class MonoReader:
+    """The stereo stream, handed on as mono.
+
+    Shaped like the pipe of the arecord process this replaces: the loop below
+    calls readexactly() for a block of 16-bit mono and does not care where it
+    comes from. The receiver sends stereo, so a block is twice as many bytes on
+    the wire; the downmix happens here and nowhere else.
+    """
+
+    def __init__(self, content) -> None:
+        self._content = content
+
+    async def readexactly(self, n: int) -> bytes:
+        stereo = await self._content.readexactly(n * 2)
+        pairs = np.frombuffer(stereo, dtype="<i2").reshape(-1, 2).astype(np.int32)
+        return ((pairs[:, 0] + pairs[:, 1]) // 2).astype("<i2").tobytes()
+
+
+class LineStream:
+    """One open HTTP stream from the receiver, for as long as it lasts.
+
+    No timeout on the read: this connection is meant to stay open for hours.
+    The receiver serves one client at a time, so if this service is restarted
+    the old connection has to be gone before the new one is accepted — which is
+    why the caller closes it in a finally.
+    """
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self._session: ClientSession | None = None
+        self._response = None
+        self.stdout: MonoReader | None = None
+
+    async def open(self) -> "LineStream":
+        self._session = ClientSession(timeout=ClientTimeout(total=None,
+                                                            sock_connect=6))
+        self._response = await self._session.get(self.url)
+        if self._response.status != 200:
+            raise RuntimeError(f"{self.url} answered {self._response.status}")
+        self.stdout = MonoReader(self._response.content)
+        return self
+
+    async def close(self) -> None:
+        if self._response is not None:
+            self._response.close()
+        if self._session is not None:
+            await self._session.close()
 
 
 # From here the Pi puts its fan on the highest step; throttling only starts at
@@ -183,37 +257,62 @@ class Ears:
         self.linkable = 0                       # records waiting to be linked
         self.linkable_until = 0.0                 # how long that count is valid
 
+        # Which stream we are actually on, for /status. Filled in once the
+        # connection stands, so an empty string means "not listening yet".
+        self.source_url = ""
+
         # The clock counts audio, not wall time: every block is exactly BLOCK_S
-        # of sound. That is not the same thing. If arecord falls behind, or the
+        # of sound. That is not the same thing. If the stream stalls, or the
         # system clock jumps, the thresholds below still hold — with time.time()
         # a hiccup could skip a side or ask again in the middle of one.
         self.clock = 0.0
 
-    # -- recording ---------------------------------------------------------
-    async def start_arecord(self):
-        return await asyncio.create_subprocess_exec(
-            "arecord", "-D", MIC_DEVICE_NAME, "-f", "S16_LE", "-r", str(RATE),
-            "-c", "1", "-t", "raw", "-q",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    # -- listening ---------------------------------------------------------
+    async def open_source(self) -> LineStream | None:
+        """The stream, or None while we do not yet know where to get it.
+
+        At boot the panel has usually not polled yet, so there is no address to
+        ask for. That is not a fault and should not read like one: it resolves
+        itself within seconds, and saying so once beats filing an error every
+        five seconds until it does.
+        """
+        host = await avr_host()
+        if not host:
+            return None
+        return await LineStream(
+            f"http://{host}:{LINE_PORT}/analoginput/analog/analog/0/{LINE_INPUT}"
+        ).open()
 
     async def draai(self) -> None:
+        waiting = False
         while True:
-            proc = await self.start_arecord()
+            source = None
             try:
-                await self.audio_loop(proc)
+                source = await self.open_source()
+                if source is None:
+                    if not waiting:
+                        print("[listen] waiting for the panel to say where the "
+                              "receiver is", flush=True)
+                        waiting = True
+                    await asyncio.sleep(5)
+                    continue
+                waiting = False
+                self.source_url = source.url
+                print(f"[listen] on {source.url}", flush=True)
+                await self.audio_loop(source)
             except (asyncio.IncompleteReadError, ConnectionResetError):
-                print("[listen] microphone dropped out, retrying in 5 s", flush=True)
+                print("[listen] line feed dropped out, retrying in 5 s", flush=True)
             except Exception as e:                              # noqa: BLE001
                 print(f"[listen] error: {e!r}", flush=True)
             finally:
-                if proc.returncode is None:
-                    proc.kill()
-                await proc.wait()
+                if source is not None:
+                    await source.close()
+                    self.source_url = ""
             await asyncio.sleep(5)
 
-    async def audio_loop(self, proc) -> None:
+    async def audio_loop(self, source) -> None:
         while True:
-            block = await proc.stdout.readexactly(BYTES_PER_BLOCK)
+            block = await source.stdout.readexactly(BYTES_PER_BLOCK)
             self.clock += BLOCK_S
             mon = np.frombuffer(block, dtype="<i2").astype(np.float32) / 32768.0
             level = db(float(np.sqrt(np.mean(mon * mon))))
@@ -287,8 +386,8 @@ class Ears:
                 self.listening = True
                 if not asked and not retry:
                     # The needle just landed; let it settle before we sample.
-                    await self.slik(proc, SETTLE_S)
-                pcm = await self.hap(proc, CLIP_S)
+                    await self.skip(source, SETTLE_S)
+                pcm = await self.grab(source, CLIP_S)
                 self.playing = True
                 self.loud_since = None
                 try:
@@ -296,17 +395,17 @@ class Ears:
                 finally:
                     self.listening = False
 
-    async def slik(self, proc, seconden: float) -> None:
-        n = int(seconden / BLOCK_S)
+    async def skip(self, source, seconds: float) -> None:
+        n = int(seconds / BLOCK_S)
         for _ in range(n):
-            await proc.stdout.readexactly(BYTES_PER_BLOCK)
+            await source.stdout.readexactly(BYTES_PER_BLOCK)
             self.clock += BLOCK_S
 
-    async def hap(self, proc, seconden: float) -> bytes:
-        n = int(seconden / BLOCK_S)
+    async def grab(self, source, seconds: float) -> bytes:
+        n = int(seconds / BLOCK_S)
         out = []
         for _ in range(n):
-            out.append(await proc.stdout.readexactly(BYTES_PER_BLOCK))
+            out.append(await source.stdout.readexactly(BYTES_PER_BLOCK))
             self.clock += BLOCK_S
         return b"".join(out)
 
@@ -376,7 +475,7 @@ async def index(_request):
 
     It sits as a file next to this code rather than as a string inside it,
     because it is hundreds of lines of HTML and CSS and that does not belong in
-    the middle of the microphone logic.
+    the middle of the listening logic.
 
     The page itself fetches three things from the same address: /status and the
     Apple TV from this service, /api/* from the brain, and /panel/* from the
@@ -443,7 +542,7 @@ async def api_now(request):
     # the device *knows* what it is doing, artwork included.
     # Report it even when nothing is playing but an app is open: that the Apple
     # TV is sitting on YouTube is information in itself, and the alternative is
-    # falling back to a microphone that has no business there.
+    # falling back to the turntable's line, which has no business there.
     if not ears.panel_wants and atv.device is not None and (
             atv.artist or atv.title or atv.app_id):
         return web.json_response({
@@ -667,12 +766,43 @@ def panel_host() -> str:
     return PANEL or ears.last_panel_ip
 
 
+_avr_host_seen = ""
+
+
+async def avr_host() -> str:
+    """The receiver's address, asked of the panel rather than configured.
+
+    The panel already has it — it needs it for telnet — so making you type it a
+    second time here is a way of letting the two drift apart. AVR_HOST
+    overrides, for the case where this service runs somewhere the panel cannot
+    be reached.
+
+    Cached once found: the address of a receiver does not change while the
+    music is playing, and the audio loop reopens this on every reconnect.
+    """
+    global _avr_host_seen
+    if AVR_HOST:
+        return AVR_HOST
+    if _avr_host_seen:
+        return _avr_host_seen
+    host = panel_host()
+    if not host:
+        return ""
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=4)) as s:
+            async with s.get(f"http://{host}/api/settings") as r:
+                _avr_host_seen = (await r.json()).get("avrHost", "") or ""
+    except Exception:                                       # noqa: BLE001
+        return ""
+    return _avr_host_seen
+
+
 async def _forward(request, target: str, what: str):
     """Pass a request through unchanged and hand back the answer.
 
     This is what puts the whole web interface on one address while the three
     parts stay where they belong: the queue and the collection in the brain, the
-    settings on the panel itself, the microphone here. The browser sees none of
+    settings on the panel itself, the listening here. The browser sees none of
     it, and that is the point — otherwise you would be carrying three port
     numbers around in your head.
 
@@ -781,7 +911,8 @@ async def api_status(_request):
         "last": ears.last,
         "releaseId": ears.release_id,
         "coverUrl": ears.cover_url,
-        "micDevice": MIC_DEVICE_NAME,
+        "source": ears.source_url,
+        "sourceInput": LINE_INPUT,
         "listeningAllowed": ((ears.panel_wants or time.monotonic() > ears.panel_until)
                                 and ears.amplifier_on),
         "amplifierOn": ears.amplifier_on,
@@ -864,7 +995,8 @@ def main() -> None:
         runner = web.AppRunner(app)
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", PORT).start()
-        print(f"[ears] microphone {MIC_DEVICE_NAME}, brain at {BRAIN}, "
+        where = AVR_HOST or "the receiver the panel knows"
+        print(f"[ears] line input {LINE_INPUT} on {where}, brain at {BRAIN}, "
               f"panel {PANEL or 'auto'}, port {PORT}", flush=True)
 
         # Port 80 is a bonus: if it fails (no permission) the rest keeps

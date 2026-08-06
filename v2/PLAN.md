@@ -276,6 +276,55 @@ current one you can see from the border around it and the title underneath.
 Since the sleeve leads to the shelf, the QR code for linking has been given a
 touch area of its own around the dot — you do not hit ten pixels with a finger.
 
+## Phase 7 — The microphone out ✅
+
+**6 August 2026.** There is no microphone any more. Denon and Marantz receivers
+digitise their analog inputs and serve each one as a plain HTTP stream — the
+machinery behind sharing an input with HEOS speakers — so the ears read the
+turntable straight off the phono stage:
+
+```
+http://<receiver>:8015/analoginput/analog/analog/0/phono
+```
+
+Raw 16-bit stereo PCM at 44.1 kHz, realtime, one client at a time. Measured on
+the SR7015 with one record, both paths within the same minute:
+
+| | line feed | microphone |
+|---|---|---|
+| signal | −36.7 dBFS | −42.0 dBFS |
+| its own noise floor | −80 dBFS | −54.7 dBFS |
+| **room above the floor** | **43 dB** | **13 dB** |
+
+Phase 0 established that the fingerprinter is faultless down to 20 dB. The
+microphone was working *below* that the whole time.
+
+Two things had to be checked before this was worth doing, and both came out
+well:
+
+- **The existing fingerprints survive.** Twenty-five seconds of line and
+  twenty-five of microphone, recorded simultaneously and matched against each
+  other in a scratch database: line-enrolled against a microphone query scored
+  278 at a margin of 5.1x, the other way round 3.1x, with the time offset dead
+  on zero in both directions. So the 132,000 fingerprints built up through the
+  microphone did not have to be thrown away.
+- **It is genuinely realtime.** 176,616 B/s measured over a minute against
+  176,400 expected, steady in every ten-second window.
+
+What it costs: one client at a time, only the analog inputs (anything over HDMI
+stays silent), and an undocumented manufacturer endpoint that a firmware update
+could take away. The knob, the screen and the shelf do not depend on it.
+
+`pi/line.sh` replaces `microphone.sh`: it asks the receiver which inputs it has
+and measures each one, pausing the ears first because they hold the one
+connection allowed.
+
+**Known rough edge.** The noise floor is seeded from the first block the ears
+read. Start the service in the middle of a side and the floor seeds on music,
+so that side will not trigger a lookup; it settles at the first real silence.
+With a microphone the room noise hid this. Not fixed here, because the
+threshold logic is tuned and this change was about the source.
+
 ---
 
 ## What carries over from version 1

@@ -1,5 +1,5 @@
 [Unit]
-Description=MarantzKnob ears - listens along and asks the brain for a lookup
+Description=MarantzKnob ears - listens on the receiver's line feed and asks the brain for a lookup
 After=marantzknob-brain.service sound.target
 Wants=marantzknob-brain.service
 
@@ -25,21 +25,28 @@ Environment=BRAIN_URL=http://127.0.0.1:8790
 # polling yet.
 #Environment=PANEL_HOST=192.168.1.50
 
-# Which recording card. install.sh fills in whatever arecord -l found;
-# if it is wrong, this is the line to change.
-Environment=MIC_DEVICE=__MIC__
+# Where the sound comes from. The receiver's address is normally left to the
+# panel, which already has it for telnet; set AVR_HOST only if this service runs
+# somewhere the panel cannot be reached.
+#
+# LINE_INPUT is the protocol name in lower case. ./line.sh lists what your
+# receiver offers and which of them actually carry signal.
+#Environment=AVR_HOST=192.168.1.60
+Environment=LINE_INPUT=phono
 
-# The threshold follows the room, but these numbers decide when a lookup
+# The threshold follows the signal, but these numbers decide when a lookup
 # happens. Triggering too eagerly: raise TRIGGER_DB. Missing the start of a
-# side: lower START_SECONDS.
-Environment=TRIGGER_DB=6
+# side: lower START_SECONDS. On a line feed there is around 40 dB between the
+# noise floor and the music, so 15 is comfortable; with a microphone this had
+# to sit at 6.
+Environment=TRIGGER_DB=15
 Environment=START_SECONDS=2.5
 Environment=SETTLE_SECONDS=4
 Environment=CLIP_SECONDS=15
 Environment=QUIET_SECONDS=15
 Environment=RETRY_SECONDS=60
 # How long the sleeve stays after the last sound. Separate from QUIET_SECONDS,
-# because with a weak signal a soft passage already drops below the threshold.
+# which decides when listening may resume.
 Environment=COVER_HOLD_SECONDS=300
 
 [Install]

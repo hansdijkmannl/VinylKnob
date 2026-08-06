@@ -1,8 +1,8 @@
 # The Pi: ears and brain
 
 Two services run here. The **brain** ([../brain/](../brain/)) does recognition,
-Discogs and the database. The **ears** (`listen.py`) watch the microphone, talk
-to the Apple TV, and serve the web interface.
+Discogs and the database. The **ears** (`listen.py`) listen on the receiver's
+line feed, talk to the Apple TV, and serve the web interface.
 
 ## Setting it up
 
@@ -32,31 +32,36 @@ cd marantzknob/v2/pi && ./install.sh
 ```
 
 The script is idempotent — running it again is always safe. It installs
-packages, builds a virtualenv, registers both services, finds the microphone,
-and reduces writes to the SD card (logs to RAM, swap off; see
+packages, builds a virtualenv, registers both services, and reduces writes to
+the SD card (logs to RAM, swap off; see
 [../BOM.md](../BOM.md) for why that matters more than a faster card).
 
 `numpy` and `scipy` come from `apt` rather than `pip` on purpose: building scipy
 on a Pi 5 with 1 GB takes over an hour and barely fits in memory.
 
-### 3. Check the microphone
+### 3. Check the line feed
+
+Put a record on and run:
 
 ```bash
-./microphone.sh
+./line.sh
 ```
 
-This is the five-minute check from [../BOM.md](../BOM.md), performed instead of
-described. It finds the card, turns **Auto Gain Control** off, records five
-seconds and tells you whether there is signal in it.
+There is no microphone. The receiver digitises its own analog inputs and serves
+each one over HTTP — see [../BOM.md](../BOM.md) — and this asks yours which it
+offers, then measures three seconds of each so the turntable one stands out:
 
-Two outcomes mean you have the wrong microphone:
+```
+  phono           3.1s  peak 0.0740   -36.6 dBFS  <- signal
+  cd              3.1s  peak 0.0001   -92.5 dBFS
+```
 
-- **no controls at all** — the firmware is doing something to the signal and you
-  cannot stop it;
-- **peak below 0.002** — silent, so wrong device or muted.
+Put that name in `LINE_INPUT` in `marantzknob-listen.service`; `phono` is the
+default and right on most receivers.
 
-A *low* level is not a problem. Fingerprinting works on a relative threshold;
-what ruins recognition is a pumping AGC, not a quiet recording.
+The script pauses the ears while it runs. The receiver serves one client at a
+time and the ears normally hold that connection, so without stepping aside every
+reading is a scrap of somebody else's stream.
 
 ### 4. See whether it runs
 
@@ -118,14 +123,14 @@ And it works without this service knowing anything about the amplifier. That is
 not a coincidence but a requirement: the receiver allows exactly one telnet
 session, and the panel owns it.
 
-**The threshold follows the room.** The noise floor tracks the quiet and
+**The threshold follows the signal.** The noise floor tracks the quiet and
 triggers a set number of decibels above it. The floor falls quickly and rises
 very slowly, and only while the level is close to it — otherwise a minute of
 continuous music *becomes* the floor and the margin you need disappears.
 
 **The clock counts audio, not wall time.** Every block is exactly 0.1 s of
 sound, and all the thresholds run on that. It looks like a detail and is not:
-with `time.time()`, a hiccup in `arecord` could skip a side or ask again in the
+with `time.time()`, a stall in the stream could skip a side or ask again in the
 middle of one.
 
 Tuning lives in `marantzknob-listen.service`:
