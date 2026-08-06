@@ -952,7 +952,9 @@ on('selDiscard', 'click', async () => {
 async function loadQueue() {
   let q, k;
   try {
-    q = await json('api/plays?status=unknown');
+    // Two kinds of question, one queue: nothing recognised it, or it is on
+    // more than one of your records.
+    q = await json('api/plays?status=unknown,choose');
     k = await json('api/plays?limit=20');
   } catch (e) {
     $('queue').innerHTML = '<p class="err" style="margin:0">Brain not reachable.</p>';
@@ -965,7 +967,8 @@ async function loadQueue() {
     : '<p class="hint" style="margin:0">Nothing to link. Everything was recognised.</p>';
   refreshSelection();
 
-  const settled = k.plays.filter(p => p.status !== 'unknown' && p.status !== 'discarded');
+  const settled = k.plays.filter(p => p.status !== 'unknown' &&
+                                      p.status !== 'choose' && p.status !== 'discarded');
   $('known').innerHTML = settled.length
     ? settled.map(knownRow).join('')
     : '<p class="hint" style="margin:0">Nothing recognised yet.</p>';
@@ -973,14 +976,22 @@ async function loadQueue() {
 }
 
 function queueRow(p) {
+  // Two rows in one, because they end the same way — a Link button — and only
+  // begin differently. Either nothing knew the record, or something knew the
+  // track and your shelf has it more than once.
+  const choosing = p.status === 'choose' && (p.choices || []).length > 1;
   const guess = p.artist ? ` · guessed: ${esc(p.artist)} — ${esc(p.title)}` : '';
+  const heading = choosing ? `${esc(p.artist)} — ${esc(p.title)}` : 'Unknown record';
+  const under = choosing
+    ? `${esc(p.at)} · on ${p.choices.length} of your records — which one was on?`
+    : `${esc(p.at)}${guess}`;
   return `<div class="item" id="play-${p.id}">
     <input type="checkbox" class="tickbox" data-pick="${p.id}"
            aria-label="select this recording"${chosen.has(p.id) ? ' checked' : ''}>
-    <div class="thumb">?</div>
+    <div class="thumb">${choosing ? '&#9834;' : '?'}</div>
     <div class="body">
-      <div class="t">Unknown record</div>
-      <div class="s">${esc(p.at)}${guess}</div>
+      <div class="t">${heading}</div>
+      <div class="s">${under}</div>
       ${p.clip ? `<audio controls preload="none" src="${esc(p.clip)}"></audio>` : ''}
       <div class="row" style="margin-top:.6rem">
         <input class="grow" placeholder="Search your shelf…" data-search="${p.id}">
@@ -988,8 +999,19 @@ function queueRow(p) {
         <button class="sec mini" data-manual="${p.id}">By manual</button>
         <button class="sec mini" data-discard="${p.id}">Discard</button>
       </div>
-      <div class="hits" id="hits-${p.id}"></div>
+      <div class="hits" id="hits-${p.id}">${choosing ? hitList(p.id, p.choices) : ''}</div>
     </div></div>`;
+}
+
+// The candidates, ready to click. Same markup as a search result, because it is
+// the same act: you are pointing at one of your records. Searching over the top
+// replaces them, which is what you want if none of them is right.
+function hitList(playId, releases) {
+  return releases.slice(0, 8).map(r => `<div class="hit">
+    <img src="${esc(r.cover || '')}" alt="">
+    <div class="n">${esc(r.title)}<small>${esc(r.artist)}${r.year ? ' · ' + esc(r.year) : ''}</small></div>
+    <button class="sec mini" data-link="${playId}:${r.id}">Link</button>
+  </div>`).join('');
 }
 
 function knownRow(p) {
@@ -1005,12 +1027,7 @@ function knownRow(p) {
 
 function showHits(playId, releases, where) {
   $('hits-' + playId).innerHTML = releases.length
-    ? `<p class="hint" style="margin:0 0 .3rem">Found ${where}:</p>` +
-      releases.slice(0, 8).map(r => `<div class="hit">
-        <img src="${esc(r.cover || '')}" alt="">
-        <div class="n">${esc(r.title)}<small>${esc(r.artist)}${r.year ? ' · ' + esc(r.year) : ''}</small></div>
-        <button class="sec mini" data-link="${playId}:${r.id}">Link</button>
-      </div>`).join('')
+    ? `<p class="hint" style="margin:0 0 .3rem">Found ${where}:</p>` + hitList(playId, releases)
     : `<p class="hint" style="margin:0">Nothing found ${where}.</p>`;
 }
 
@@ -1503,7 +1520,8 @@ async function loadSettings() {
 async function refreshCounts(s) {
   if (!s) { try { s = await json('api/settings'); } catch (e) { return; } }
   setText('nColl', s.collectionCount || '');
-  setText('nQueue', (s.counts || {}).unknown || '');
+  const c2 = s.counts || {};
+  setText('nQueue', (c2.unknown || 0) + (c2.choose || 0) || '');
 }
 
 // ---------------------------------------------------------------------------

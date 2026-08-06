@@ -354,6 +354,50 @@ measurement came back zero because the poll had drained it.
 Six degrees is a lot to be out by, and a shim costs nothing per frame. The angle
 is for when the mount cannot be moved.
 
+## Phase 9 — Which record is it, then ✅
+
+**6 August 2026.** Robbie Williams gave this away. A track came up and the
+sleeve that appeared was *Greatest Hits*, when what was turning was *Swing When
+You're Winning*. Nothing was broken: Shazam recognised the song correctly and
+then named the release its own metadata prefers, which for anything with a hit
+on it is a compilation. The brain matched that title against the shelf, found a
+record by that name, and was wrong for entirely reasonable reasons.
+
+So the question changed. Not "what album is this song from" — a service's answer
+to that is an opinion — but "which of *your* records carries this song". That is
+a different question and your own shelf can answer it. Discogs has the
+tracklists; 549 releases and 8,259 tracks later, `releases_with_track()` answers
+it in a query.
+
+Usually there is exactly one and nothing is asked. Sometimes there are three,
+and then nothing here can tell which platter is on. It would be worse to guess:
+a wrong link is permanent and teaches the local fingerprint database a lie. So
+it asks, and the asking is the shelf you already know — same three sleeves, same
+knob, same press — narrowed to the records it could be. The letter ring goes
+away with them, because jumping by initial through four sleeves is turning with
+extra steps, and a ring of letters would suggest the rest of the shelf is still
+out there to walk to.
+
+Three things this turned up along the way:
+
+- **Two copies of a record is not a choice.** Life Thru A Lens is on the shelf
+  three times. Offering all three is a question with one answer written down
+  three times, so duplicate pressings collapse by artist and title, oldest kept.
+- **A match is not the same as an answer.** A recognised track whose album you
+  do not own — Cocky, off *Escapology* — was marked recognised and the open link
+  was dropped, so pointing at the right sleeve was quietly impossible. The link
+  now stays open whenever the listen has not landed on one of your records,
+  whether that is because there are several or none.
+- **The question has to survive you not being there.** A choice made only on the
+  panel is a choice lost if the record played while you were in another room, so
+  those listens get their own status and wait in the queue with the candidates
+  laid out, one press each.
+
+Sixteen cases in `v2/brain/test_match.py`, each one a mistake that actually
+happened or a rule that must keep working — including Hans Zimmer's *Live*,
+which the first fix for the compilation problem broke and which is why replaying
+all 113 historical lookups was worth the trouble.
+
 ---
 
 ## What carries over from version 1

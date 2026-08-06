@@ -22,6 +22,22 @@ static int     count  = 0;
 static int     current  = 0;
 static bool    loaded = false;
 
+// -- narrowing it down ------------------------------------------------------
+// A recognised track is sometimes on more than one record you own — the album
+// and the collection that reprinted it. Nothing here can tell which platter is
+// spinning, so the Pi hands over the handful it could be and browsing is
+// narrowed to those. Same three sleeves, same knob, shorter list.
+//
+// A list of positions into albums[], not a copy of anything: the names, the
+// ids and the cached pictures all stay where they are, and clearing the filter
+// is setting a count back to zero.
+static uint16_t chosen[SHELF_FILTER_MAX];
+static int      chosenCount = 0;       // 0 = the whole shelf
+
+static inline int realIndex(int index) {
+  return chosenCount ? (int)chosen[index] : index;
+}
+
 // -- the pictures -----------------------------------------------------------
 // Remember a handful of sleeves, not just the three on screen: turning back and
 // forth over the same spot is exactly what you do while searching, and
@@ -115,37 +131,37 @@ bool shelfLoad(const char *host, uint16_t port) {
   int lines = 1;
   for (int i = 0; i < length; i++) if (fresh[i] == '\n') lines++;
 
-  Album *tabel = (Album *)heap_caps_malloc(sizeof(Album) * lines, MALLOC_CAP_SPIRAM);
-  if (!tabel) { free(fresh); return false; }
+  Album *table = (Album *)heap_caps_malloc(sizeof(Album) * lines, MALLOC_CAP_SPIRAM);
+  if (!table) { free(fresh); return false; }
 
   // Split in place: tabs and newlines become nulls, and we remember where each
   // piece starts. That way not one copy of the text sits alongside it.
   int n = 0;
   char *p = fresh;
   while (p < fresh + length && n < lines) {
-    char *eindeRegel = strchr(p, '\n');
-    if (eindeRegel) *eindeRegel = '\0';
+    char *lineEnd = strchr(p, '\n');
+    if (lineEnd) *lineEnd = '\0';
 
     char *tab1 = strchr(p, '\t');
-    if (!tab1) { if (!eindeRegel) break; p = eindeRegel + 1; continue; }
+    if (!tab1) { if (!lineEnd) break; p = lineEnd + 1; continue; }
     *tab1 = '\0';
     char *tab2 = strchr(tab1 + 1, '\t');
-    if (!tab2) { if (!eindeRegel) break; p = eindeRegel + 1; continue; }
+    if (!tab2) { if (!lineEnd) break; p = lineEnd + 1; continue; }
     *tab2 = '\0';
 
-    tabel[n].id         = (uint16_t)atoi(p);
-    tabel[n].artistOff = (uint32_t)(tab1 + 1 - fresh);
-    tabel[n].titleOff   = (uint32_t)(tab2 + 1 - fresh);
+    table[n].id         = (uint16_t)atoi(p);
+    table[n].artistOff = (uint32_t)(tab1 + 1 - fresh);
+    table[n].titleOff   = (uint32_t)(tab2 + 1 - fresh);
     n++;
 
-    if (!eindeRegel) break;
-    p = eindeRegel + 1;
+    if (!lineEnd) break;
+    p = lineEnd + 1;
   }
 
   if (blob)  free(blob);
   if (albums) free(albums);
   blob  = fresh;
-  albums = tabel;
+  albums = table;
   count = n;
   current = 0;
   loaded = n > 0;
@@ -158,22 +174,44 @@ bool shelfLoad(const char *host, uint16_t port) {
 }
 
 bool shelfLoaded() { return loaded; }
-int  shelfCount()  { return count; }
+int  shelfCount()  { return chosenCount ? chosenCount : count; }
 int  shelfIndex()   { return current; }
+bool shelfNarrowed() { return chosenCount > 0; }
+
+void shelfNarrow(const uint16_t *ids, int n) {
+  static int wholeShelfAt = 0;    // where you stood before the shelf narrowed
+  if (!loaded) { chosenCount = 0; return; }
+
+  if (ids == nullptr || n <= 0) {
+    // Widening. Put you back where you were: the position is what makes the
+    // shelf feel like a shelf, and a handful of candidates should not cost it.
+    if (chosenCount) { current = wholeShelfAt; chosenCount = 0; }
+    return;
+  }
+
+  if (!chosenCount) wholeShelfAt = current;
+  chosenCount = 0;
+  for (int i = 0; i < n && chosenCount < SHELF_FILTER_MAX; i++) {
+    for (int k = 0; k < count; k++) {
+      if (albums[k].id == ids[i]) { chosen[chosenCount++] = (uint16_t)k; break; }
+    }
+  }
+  current = 0;
+}
 
 const char *shelfArtist(int index) {
-  if (!loaded || index < 0 || index >= count) return "";
-  return blob + albums[index].artistOff;
+  if (!loaded || index < 0 || index >= shelfCount()) return "";
+  return blob + albums[realIndex(index)].artistOff;
 }
 
 const char *shelfTitle(int index) {
-  if (!loaded || index < 0 || index >= count) return "";
-  return blob + albums[index].titleOff;
+  if (!loaded || index < 0 || index >= shelfCount()) return "";
+  return blob + albums[realIndex(index)].titleOff;
 }
 
 uint16_t shelfReleaseId(int index) {
-  if (!loaded || index < 0 || index >= count) return 0;
-  return albums[index].id;
+  if (!loaded || index < 0 || index >= shelfCount()) return 0;
+  return albums[realIndex(index)].id;
 }
 
 char shelfLetterAt(int index) {
@@ -184,29 +222,33 @@ char shelfLetterAt(int index) {
 }
 
 static int wrap(int i) {
-  if (count <= 0) return 0;
-  return ((i % count) + count) % count;
+  const int n = shelfCount();
+  if (n <= 0) return 0;
+  return ((i % n) + n) % n;
 }
 
 void shelfMove(int steps) { current = wrap(current + steps); }
 void shelfSet(int index)  { current = wrap(index); }
 
 void shelfJump(int direction) {
+  // Jumping by letter through four records is not travelling, it is the same
+  // as turning. With the shelf narrowed this is a plain step.
   if (!loaded) return;
-  const char hier = shelfLetterAt(current);
+  if (chosenCount) { shelfMove(direction); return; }
+  const char here = shelfLetterAt(current);
 
   if (direction > 0) {
     // To the first album of the next letter.
     for (int i = 1; i <= count; i++) {
       const int k = wrap(current + i);
-      if (shelfLetterAt(k) != hier) { current = k; return; }
+      if (shelfLetterAt(k) != here) { current = k; return; }
     }
   } else {
     // Back: first to the start of this letter. Already there, and on to the
     // start of the previous one. That is how a jump index should feel — one
     // step back takes you to the top of the letter you are in.
     int begin = current;
-    while (begin > 0 && shelfLetterAt(begin - 1) == hier) begin--;
+    while (begin > 0 && shelfLetterAt(begin - 1) == here) begin--;
     if (begin != current) { current = begin; return; }
     if (begin == 0) { current = count - 1; return; }
     const char previous = shelfLetterAt(begin - 1);
@@ -225,7 +267,10 @@ static Thumb *findThumb(int album) {
   return nullptr;
 }
 
-static int visibleAt(int slot) { return wrap(current + slot - 1); }
+// The album in one of the three slots, as a position in albums[] rather than in
+// the narrowed list: the cache and the fetch both key on the real thing, and
+// with the shelf narrowed those are different numbers.
+static int visibleAt(int slot) { return realIndex(wrap(current + slot - 1)); }
 
 const lv_img_dsc_t *shelfArtworkAt(int slot) {
   if (!loaded || slot < 0 || slot > 2) return nullptr;
@@ -253,7 +298,7 @@ static Thumb *freeSlot() {
 }
 
 static bool fetchArtwork(const char *host, uint16_t port, int album) {
-  if (!jpeg || album < 0 || album >= count) return false;
+  if (!jpeg || album < 0 || album >= count) return false;   // real index
   if (WiFi.status() != WL_CONNECTED) return false;
 
   Thumb *slot = freeSlot();

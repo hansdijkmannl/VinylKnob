@@ -111,26 +111,17 @@ async def api_listen(request):
                                   "matched": False, "release": None})
 
     # Which of your records is this, then.
-    #
-    # A service names the track it heard and then names a release to go with
-    # it, and that second part is its opinion, not yours: for anything with a
-    # hit on it the metadata prefers a compilation. So ask the tracklists
-    # first — which of *your* copies actually carries this song — and fall back
-    # to comparing album titles when the tracklists cannot say.
     artist = hit.get("artist") or ""
-    choices = store.releases_with_track(artist, hit.get("title") or "")
-    if len(choices) == 1:
-        match = choices[0]
-    elif len(choices) > 1:
-        # Genuinely on more than one record you own: the album and the
-        # collection that reissued it. Nothing here can tell which platter is
-        # spinning, so it is offered rather than guessed.
-        match = None
-    else:
-        match = store.best_collection_match(artist, hit.get("album") or "")
+    match, choices = store.decide_release(artist, hit.get("title") or "",
+                                          hit.get("album") or "")
 
     play_id = store.add_play(
-        "recognised", engine=hit["engine"], artist=artist,
+        # Recognised, but on more than one of your records: that is not settled,
+        # it is a question, and it has to end up somewhere you will find it. The
+        # panel asks it while the needle is still down; the queue asks it the
+        # next morning, when you were not standing there.
+        "choose" if match is None and len(choices) > 1 else "recognised",
+        engine=hit["engine"], artist=artist,
         title=hit.get("title") or "", album=hit.get("album") or "",
         cover_url=hit.get("cover") or "",
         # Keep the clip whenever nothing was linked, because that is what a
@@ -161,8 +152,20 @@ async def api_listen(request):
 async def api_plays(request):
     status = request.query.get("status") or None
     rows = store.plays(status=status, limit=int(request.query.get("limit", 50)))
-    return web.json_response({"plays": [row_to_play(r) for r in rows],
-                              "counts": store.counts()})
+
+    out = []
+    for row in rows:
+        play = row_to_play(row)
+        if row["status"] == "choose":
+            # Worked out again rather than stored: you may have bought one of
+            # the other pressings since, or a tracklist may have arrived that
+            # was not there when this played. The question is about the shelf as
+            # it is now, not as it was.
+            play["choices"] = [row_to_release(r) for r in
+                               store.releases_with_track(row["artist"], row["title"])]
+        out.append(play)
+
+    return web.json_response({"plays": out, "counts": store.counts()})
 
 
 def _remember_clip(play_id: int, release_id: int) -> int:

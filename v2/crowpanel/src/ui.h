@@ -72,6 +72,10 @@ struct UiState {
   // because otherwise you point at something without knowing you are recording
   // it permanently.
   bool     shelfLinkable  = false;
+  // Browsing is narrowed to the records this track could be on, rather than the
+  // whole shelf. The heading says so and the letter ring goes away — jumping by
+  // letter through four records is the same as turning.
+  bool     shelfNarrowed  = false;
   bool     justLinked     = false;   // just linked; confirm briefly
 
   // network

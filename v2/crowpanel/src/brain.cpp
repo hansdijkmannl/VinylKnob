@@ -17,7 +17,7 @@ static uint8_t  misses       = 0;
 // the knob, so every millisecond spent waiting here is felt in the volume. A Pi
 // on your own network answers in tens of milliseconds; longer than that and it
 // is not there, so waiting achieves nothing.
-static const uint16_t VERBIND_TIMEOUT_MS = 400;
+static const uint16_t CONNECT_TIMEOUT_MS = 400;
 static const uint16_t READ_TIMEOUT_MS    = 800;
 
 void brainBegin() {
@@ -37,6 +37,9 @@ static void clear() {
   brainState.title[0]   = '\0';
   brainState.album[0]   = '\0';
   brainState.app[0]     = '\0';
+  // And the question lapses with it: with the Pi gone there is nothing to hang
+  // an answer on, so the shelf should not still be narrowed down to three.
+  brainState.choiceCount = 0;
   brainState.revision++;
 }
 
@@ -45,7 +48,7 @@ void brainAskLookup() {
   char url[96];
   snprintf(url, sizeof(url), "http://%s:%u/listen", settings.brainHost, BRAIN_PORT);
   HTTPClient http;
-  http.setConnectTimeout(VERBIND_TIMEOUT_MS);
+  http.setConnectTimeout(CONNECT_TIMEOUT_MS);
   http.setTimeout(READ_TIMEOUT_MS);
   if (!http.begin(url)) return;
   http.POST("");
@@ -62,7 +65,7 @@ bool brainLink(uint16_t releaseId) {
   snprintf(url, sizeof(url), "http://%s:%u/link?id=%u",
            settings.brainHost, BRAIN_PORT, (unsigned)releaseId);
   HTTPClient http;
-  http.setConnectTimeout(VERBIND_TIMEOUT_MS);
+  http.setConnectTimeout(CONNECT_TIMEOUT_MS);
   // Roomier than the rest: the brain records fingerprints here and that takes
   // longer than a poll. It stalls the loop briefly, but only ever on your own
   // press of the knob.
@@ -99,7 +102,7 @@ void brainLoop() {
            settings.brainHost, BRAIN_PORT, brainWantsToListen ? 1 : 0);
 
   HTTPClient http;
-  http.setConnectTimeout(VERBIND_TIMEOUT_MS);
+  http.setConnectTimeout(CONNECT_TIMEOUT_MS);
   http.setTimeout(READ_TIMEOUT_MS);
   if (!http.begin(url)) { misses++; clear(); return; }
 
@@ -133,6 +136,12 @@ void brainLoop() {
   strlcpy(fresh.album,   doc["album"]   | "", sizeof(fresh.album));
   strlcpy(fresh.app,     doc["app"]     | "", sizeof(fresh.app));
 
+  // Which of your records this track is on, when it is on more than one.
+  for (JsonVariantConst v : doc["choices"].as<JsonArrayConst>()) {
+    if (fresh.choiceCount >= SHELF_FILTER_MAX) break;
+    fresh.choices[fresh.choiceCount++] = v.as<uint16_t>();
+  }
+
   // Only bump the revision when something genuinely differs; otherwise the
   // screen redraws every few seconds for no reason.
   const bool differs =
@@ -148,7 +157,17 @@ void brainLoop() {
       strcmp(fresh.album,   brainState.album)   != 0 ||
       strcmp(fresh.app,     brainState.app)     != 0 ||
       fresh.linkable   != brainState.linkable  ||
+      fresh.choiceCount != brainState.choiceCount ||
+      memcmp(fresh.choices, brainState.choices,
+             fresh.choiceCount * sizeof(uint16_t)) != 0 ||
       fresh.hot       != brainState.hot;
+
+  if (fresh.choiceCount != brainState.choiceCount) {
+    // Worth a line in the log: it is the only state here you cannot read off
+    // the screen without opening the shelf first.
+    Serial.printf("[brain] %d record%s to choose between\n",
+                  fresh.choiceCount, fresh.choiceCount == 1 ? "" : "s");
+  }
 
   fresh.revision = brainState.revision + (differs ? 1 : 0);
   brainState = fresh;

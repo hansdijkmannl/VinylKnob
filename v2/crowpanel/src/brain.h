@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "shelf.h"   // SHELF_FILTER_MAX: the most we offer at once
+
 // ---------------------------------------------------------------------------
 // What is playing, fetched from the Pi.
 //
@@ -32,6 +34,12 @@ struct BrainState {
   char app[24]     = "";      // "YouTube", when the Apple TV is the source
   bool hot       = false;      // Pi on its top fan step, or throttling
   uint8_t linkable = 0;         // records waiting to be linked
+  // The records this track is on, when it is on more than one of yours —
+  // the album and the collection that reprinted it. The Pi will not choose
+  // between them, so browsing is narrowed to these and you point at the one
+  // that is spinning. Empty in the ordinary case.
+  uint16_t choices[SHELF_FILTER_MAX] = {0};
+  uint8_t  choiceCount = 0;
   uint32_t revision = 0;        // increments as soon as anything changes
 };
 

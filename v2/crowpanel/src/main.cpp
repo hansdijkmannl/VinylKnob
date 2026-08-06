@@ -220,10 +220,10 @@ static void refreshUi() {
   ui.powered    = avrState.powered;
   ui.turning    = millis() < turningUntil;
   strlcpy(ui.inputLabel, avrState.inputLabel, sizeof(ui.inputLabel));
-  // Show whatever the Pi reports, whatever the source. It routes the turntable
-  // through the microphone and everything else through the Apple TV; if that is
-  // playing nothing, nothing comes — exactly the behaviour we want, without this
-  // panel needing to know anything about it.
+  // Show whatever the Pi reports, whatever the source. It listens in on the
+  // receiver's own phono stream for the turntable and asks the Apple TV for
+  // everything else; if neither is playing, nothing comes — exactly the
+  // behaviour we want, without this panel needing to know anything about it.
   brainWantsToListen = onTurntable();
   // The brain reported something new, so your own choice lapses.
   if (userPicked && brainState.revision != pickedAtRevision) userPicked = false;
@@ -238,6 +238,7 @@ static void refreshUi() {
   }
   ui.shelfLetter = (millis() < letterUntil) ? shelfLetterAt(shelfIndex()) : 0;
   ui.shelfLinkable = brainState.canLink;
+  ui.shelfNarrowed = shelfNarrowed();
   ui.justLinked    = millis() < linkedUntil;
   ui.haveArtwork   = brainState.haveArtwork;
   ui.artworkIsLogo = brainState.artworkIsLogo;
@@ -275,6 +276,9 @@ static void enterInputs() {
 }
 
 static void leaveToVolume() {
+  // Widen the shelf again on the way out, or the next tap on the sleeve gives
+  // you the same three records with no idea why.
+  shelfNarrow(nullptr, 0);
   ui.screen = Screen::Volume;
   refreshUi();
 }
@@ -285,12 +289,22 @@ static void enterBrowse() {
   if (settings.brainHost[0] == '\0') return;      // no Pi, no shelf
   if (!shelfLoaded()) shelfLoad(settings.brainHost, BRAIN_PORT);
 
-  // Start at the record playing now, if it is on the shelf. Otherwise you land
-  // at the A every time while you were just listening to something — and that
-  // is precisely the album you want to see the neighbours of.
-  if (shelfLoaded() && brainState.onShelf && brainState.album[0]) {
-    for (int i = 0; i < shelfCount(); i++) {
-      if (strcmp(shelfTitle(i), brainState.album) == 0) { shelfSet(i); break; }
+  // A track that is on more than one of your records narrows the shelf to those
+  // few. The Pi worked out which they are from the tracklists; it will not
+  // choose between them and neither will this, so you point at the one that is
+  // spinning. Everything else about browsing stays the same — same three
+  // sleeves, same knob, shorter list.
+  if (brainState.choiceCount > 1) {
+    shelfNarrow(brainState.choices, brainState.choiceCount);
+  } else {
+    shelfNarrow(nullptr, 0);
+    // Start at the record playing now, if it is on the shelf. Otherwise you
+    // land at the A every time while you were just listening to something —
+    // and that is precisely the album you want to see the neighbours of.
+    if (shelfLoaded() && brainState.onShelf && brainState.album[0]) {
+      for (int i = 0; i < shelfCount(); i++) {
+        if (strcmp(shelfTitle(i), brainState.album) == 0) { shelfSet(i); break; }
+      }
     }
   }
   ui.screen = Screen::Browse;

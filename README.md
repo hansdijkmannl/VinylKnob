@@ -158,6 +158,16 @@ Records are identified three ways, cheapest first:
 Linking by hand is not a chore here. It happens on the knob, while the record is
 still spinning, and every link teaches the local database one more side.
 
+A service names the track it heard and then names an album to go with it, and
+that second part is its opinion, not yours: for anything with a hit on it the
+metadata reaches for a compilation. So the Pi asks your own tracklists first —
+which of *your* copies actually carries this song. Usually that is one record
+and nothing is asked. When it is more than one, nothing here can tell which
+platter is turning, so it asks: the shelf narrows to those two or three sleeves
+and you point at the one that is on. If you were not standing there, the same
+question is waiting in the queue the next morning, with the candidates already
+laid out and one press each.
+
 ## Known rough edges
 
 - **There is no enclosure here yet.** It went through nine revisions and is
@@ -187,6 +197,15 @@ still spinning, and every link teaches the local database one more side.
 | `v2/mockup/` | the interface sketch the design came from |
 | `logos/` | source logos for the app icons |
 | `v2/avr.sh` | poke the receiver's telnet port by hand, before anything else owns it |
+
+Two things run without a receiver or a turntable and are worth running after a
+change. The matcher test needs the brain's dependencies (it builds a throwaway
+database); the page test needs nothing but node.
+
+```bash
+v2/brain/.venv/bin/python v2/brain/test_match.py   # a service's answer vs your shelf
+node v2/pi/static/test_page.mjs                    # does the web interface hold together
+```
 
 ## Licence
 

@@ -1,10 +1,10 @@
 """
-Storage for the brain: settings, your Discogs collection, and everything that
-geluisterd is.
+Storage for the brain: settings, your Discogs collection, and everything it
+has listened to.
 
 One SQLite file plus two directories on disk (sleeves and audio clips).
 Runs on the Pi and on a laptop alike — there is nothing platform-specific
-is.
+about it.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS releases (
     year        TEXT,
     formats     TEXT,
     cover_url   TEXT,
-    cover_file  TEXT,          -- bestandsnaam in data/covers
+    cover_file  TEXT,          -- file name in data/covers
     added_at    TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_rel_artist ON releases(artist);
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS plays (
     title       TEXT,
     album       TEXT,
     cover_url   TEXT,
-    clip_file   TEXT,              -- bestandsnaam in data/clips
+    clip_file   TEXT,              -- file name in data/clips
     release_id  INTEGER REFERENCES releases(id) ON DELETE SET NULL,
     raw         TEXT
 );
@@ -386,12 +386,50 @@ class Store:
             "SELECT DISTINCT r.* FROM releases r JOIN tracks t ON t.release_id = r.id "
             "WHERE t.norm = ? ORDER BY r.year, r.id", (want,))
         want_artist = set(_normalise(artist).split())
-        out = []
+        out, seen = [], set()
         for row in rows:
             have = set(_normalise(row["artist"]).split())
-            if want_artist and have and len(want_artist & have) / len(want_artist | have) >= 0.5:
-                out.append(row)
+            if not (want_artist and have):
+                continue
+            if len(want_artist & have) / len(want_artist | have) < 0.5:
+                continue
+            # Two copies of the same record are not a choice. Plenty of shelves
+            # have a second pressing, or the same album on vinyl and on CD, and
+            # offering both would be asking a question with one answer written
+            # twice. Oldest first, so it is the original that survives.
+            key = (_normalise(row["artist"]), _normalise(row["title"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(row)
         return out
+
+    def decide_release(self, artist: str, title: str, album: str):
+        """Which of your records a recognised track came off.
+
+        Returns ``(match, choices)``. ``match`` is the release to settle on, or
+        None when it cannot be settled; ``choices`` is every record of yours that
+        carries this track, which is only interesting when there is more than one.
+
+        A service names the track it heard and then names a release to go with it,
+        and that second part is its opinion, not yours: for anything with a hit on
+        it the metadata prefers a compilation. So ask the tracklists first — which
+        of *your* copies actually carries this song — and fall back to comparing
+        album titles when the tracklists cannot say.
+
+        Kept out of the request handler because it is the one decision here
+        that can be wrong in interesting ways, and a decision you can call from a
+        test is a decision you can keep honest.
+        """
+        choices = self.releases_with_track(artist, title)
+        if len(choices) == 1:
+            return choices[0], choices
+        if len(choices) > 1:
+            # Genuinely on more than one record you own: the album and the
+            # collection that reissued it. Nothing here can tell which platter is
+            # spinning, so it is offered rather than guessed.
+            return None, choices
+        return self.best_collection_match(artist, album), choices
 
     # -- listens -----------------------------------------------------------
     def add_play(self, status: str, engine: str = "", artist: str = "", title: str = "",
@@ -412,11 +450,21 @@ class Store:
         return cur.lastrowid
 
     def plays(self, status: str | None = None, limit: int = 50):
+        """Listens, newest first. `status` may name several, comma-separated.
+
+        Several, because two different things are waiting for you and they wait
+        in the same place: a record nothing recognised, and a track that is on
+        more than one of your records. Both are a question, so both belong in
+        the queue.
+        """
         if status:
+            want = [s for s in status.split(",") if s]
+            holes = ",".join("?" * len(want))
             return self.db.execute(
                 "SELECT p.*, r.artist AS r_artist, r.title AS r_title, r.cover_file "
                 "FROM plays p LEFT JOIN releases r ON r.id = p.release_id "
-                "WHERE p.status = ? ORDER BY p.id DESC LIMIT ?", (status, limit)).fetchall()
+                f"WHERE p.status IN ({holes}) ORDER BY p.id DESC LIMIT ?",
+                (*want, limit)).fetchall()
         return self.db.execute(
             "SELECT p.*, r.artist AS r_artist, r.title AS r_title, r.cover_file "
             "FROM plays p LEFT JOIN releases r ON r.id = p.release_id "

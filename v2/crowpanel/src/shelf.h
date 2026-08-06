@@ -26,12 +26,22 @@
 // title below, not from its size.
 #define SHELF_PX 120
 
+// How many records a single track can be offered on. More than a handful is
+// not a choice any more, it is the shelf again.
+#define SHELF_FILTER_MAX 8
+
 void shelfBegin();
 
 // Fetch the list. Once is enough; false when it failed.
 bool shelfLoad(const char *host, uint16_t port);
 bool shelfLoaded();
 int  shelfCount();
+
+// Narrow browsing to a handful of releases, by release id, and put the
+// position back at the first of them. Pass nullptr or 0 to get the whole shelf
+// back. Everything below then counts in the narrowed list.
+void shelfNarrow(const uint16_t *ids, int n);
+bool shelfNarrowed();
 
 // Where we are, and moving. Wraps around at both ends.
 int  shelfIndex();

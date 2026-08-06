@@ -272,6 +272,9 @@ class Ears:
         # the evening. It is also the moment when the clip still belongs to the
         # sound you are hearing.
         self.open_play_id: int | None = None
+        # Release ids the last lookup could not choose between. Empty in the
+        # ordinary case, so nothing downstream has to think about it.
+        self.choices: list[int] = []
         self.force = asyncio.Event()
         self.last = "nothing heard yet"
         self.release_id: int | None = None     # artwork from your own shelf
@@ -405,6 +408,7 @@ class Ears:
                     # Drop the open link too: what you would point at now no
                     # longer belongs to sound from a quarter of an hour ago.
                     self.open_play_id = None
+                    self.choices = []
                     print("[listen] quiet for a long time, cleared the screen", flush=True)
                     print("[ears] quiet, ready for the next side", flush=True)
 
@@ -481,9 +485,20 @@ class Ears:
         # stretch of it happened not to match. Clearing would make the sleeve
         # vanish in the middle of a side, which is exactly what happened when
         # the retry after 60 seconds came back with nothing.
+        # Records of yours this track is on, when it is on more than one. The
+        # brain will not guess between them and neither will this: it is offered
+        # on the panel, filtered down to just these, and you point at the one
+        # that is spinning.
+        self.choices = [c["id"] for c in (body.get("choices") or [])]
+
         if body.get("matched"):
             self.misses = 0
-            self.open_play_id = None
+            # The link stays open as long as this listen has not landed on one
+            # of your records. With several candidates you still have to point.
+            # With none at all — the track was recognised but the album it names
+            # is not on the shelf — pointing is the only way this side will ever
+            # be learnt, and until now that was quietly impossible.
+            self.open_play_id = None if rel else body.get("playId")
             self.release_id = rel["id"] if rel else None
             self.cover_url = hit.get("cover") or None
             self.artist = hit.get("artist") or (rel["artist"] if rel else "")
@@ -492,6 +507,9 @@ class Ears:
 
         if body.get("matched") and rel:
             self.last = f"{rel['artist']} — {rel['title']}"
+        elif body.get("matched") and self.choices:
+            self.last = (f"{hit.get('artist','?')} — {hit.get('title','?')} "
+                            f"(on {len(self.choices)} of your records — pick one)")
         elif body.get("matched"):
             self.last = (f"{hit.get('artist','?')} — "
                             f"{hit.get('title','?')} (not on the shelf)")
@@ -536,7 +554,10 @@ async def index(_request):
 
 
 async def count_linkable() -> int:
-    """How many records are waiting to be linked.
+    """How many records are waiting for you.
+
+    Both kinds: nothing recognised it, or the track is on more than one of your
+    records and only you can say which.
 
     Cached for half a minute, because the panel asks every four seconds and the
     queue changes a couple of times an evening at most.
@@ -545,7 +566,7 @@ async def count_linkable() -> int:
         return ears.linkable
     try:
         async with ClientSession(timeout=ClientTimeout(total=5)) as s:
-            async with s.get(f"{BRAIN}/api/plays?status=unknown&limit=99") as r:
+            async with s.get(f"{BRAIN}/api/plays?status=unknown,choose&limit=99") as r:
                 body = await r.json()
         ears.linkable = len(body.get("plays", []))
     except Exception:                                       # noqa: BLE001
@@ -625,6 +646,9 @@ async def api_now(request):
         # Is there an open lookup that came up empty? Then you can point at an
         # album on the panel and hang it on that.
         "canLink": ears.open_play_id is not None,
+        # When the track is on more than one of your records: which ones. The
+        # panel narrows the shelf to these instead of offering all of them.
+        "choices": ears.choices,
         "hot": pi_heat()["hot"],
     })
 
@@ -735,7 +759,7 @@ async def api_link(request):
             # round, a wrong number would hang a listen on nothing — and worse,
             # store the clip as fingerprints against a release that does not
             # exist. A link is permanent; you do not make one on good
-            # vertrouwen.
+            # faith.
             async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
                 releases = (await r.json()).get("releases", [])
             rel = next((x for x in releases if x["id"] == rel_id), None)
@@ -757,6 +781,7 @@ async def api_link(request):
     ears.last = f"{rel['artist']} — {rel['title']} (linked by hand)"
     ears.cover_cache_src, ears.cover_cache = "", b""
     ears.open_play_id = None
+    ears.choices = []            # the question is answered
     ears.linkable_until = 0.0                    # fetch the count again
 
     print(f"[listen] {ears.last}, {out.get('hashes', 0)} fingerprints",

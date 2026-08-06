@@ -766,7 +766,14 @@ void uiRender(const UiState &s) {
       // The heading says what pressing will do. Without it you point at an
       // album and record a link without knowing — or the other way round, wait
       // for something that is not going to happen.
-      if (s.shelfLinkable) {
+      if (s.shelfNarrowed) {
+        // Not the shelf but a question, and a short one. Which record it is
+        // matters more here than saying a link will happen: you know that
+        // already, or you would not be looking at three sleeves instead of
+        // five hundred.
+        lv_label_set_text(lblShelfHead, "WHICH ONE IS ON?");
+        lv_obj_set_style_text_color(lblShelfHead, lv_color_hex(COL_ACCENT), 0);
+      } else if (s.shelfLinkable) {
         lv_label_set_text(lblShelfHead, "LINK TO WHAT IS PLAYING");
         lv_obj_set_style_text_color(lblShelfHead, lv_color_hex(COL_ACCENT), 0);
       } else {
@@ -774,7 +781,7 @@ void uiRender(const UiState &s) {
         lv_obj_set_style_text_color(lblShelfHead, lv_color_hex(COL_DIM), 0);
       }
 
-      const int hier = shelfIndex();
+      const int here = shelfIndex();
       for (int slot = 0; slot < 3; slot++) {
         lv_obj_clear_flag(shelfSlot[slot], LV_OBJ_FLAG_HIDDEN);
         const lv_img_dsc_t *image = shelfArtworkAt(slot);
@@ -787,17 +794,25 @@ void uiRender(const UiState &s) {
         }
       }
 
-      lv_label_set_text(lblShelfTitle, shelfTitle(hier));
-      lv_label_set_text(lblShelfArtist, shelfArtist(hier));
-      lv_label_set_text_fmt(lblShelfCount, "%d / %d", hier + 1, n);
+      lv_label_set_text(lblShelfTitle, shelfTitle(here));
+      lv_label_set_text(lblShelfArtist, shelfArtist(here));
+      lv_label_set_text_fmt(lblShelfCount, "%d / %d", here + 1, n);
 
       // The ring: one letter per initial that occurs in the shelf, spread over
       // 300 degrees with the gap at the bottom. Only repositioned when the list
       // changes — moving 27 objects on every step would be a waste.
+      // Narrowed there is no ring: jumping by letter through four sleeves is
+      // the same as turning, and the letters would suggest the rest of the shelf
+      // is still there to walk to.
       static int ringBuiltFor = -1;
       static char ringLetters[SHELF_RING_MAX];
       static int  ringCount = 0;
-      if (ringBuiltFor != n) {
+      if (s.shelfNarrowed) {
+        for (int i = 0; i < SHELF_RING_MAX; i++)
+          lv_obj_add_flag(shelfRing[i], LV_OBJ_FLAG_HIDDEN);
+        ringBuiltFor = -1;   // rebuild once the whole shelf comes back
+        ringCount = 0;
+      } else if (ringBuiltFor != n) {
         ringBuiltFor = n;
         ringCount = 0;
         char previous = 0;
@@ -807,9 +822,9 @@ void uiRender(const UiState &s) {
         }
         for (int i = 0; i < SHELF_RING_MAX; i++) {
           if (i >= ringCount) { lv_obj_add_flag(shelfRing[i], LV_OBJ_FLAG_HIDDEN); continue; }
-          const float graden = -150.0f +
+          const float degrees = -150.0f +
               (ringCount > 1 ? 300.0f * i / (ringCount - 1) : 150.0f);
-          const float rad = graden * 3.14159265f / 180.0f;
+          const float rad = degrees * 3.14159265f / 180.0f;
           // Upright on a circle of 205: the angle only decides the position.
           const int dx = (int)(205.0f * sinf(rad));
           const int dy = (int)(-205.0f * cosf(rad));
@@ -819,7 +834,7 @@ void uiRender(const UiState &s) {
           lv_obj_clear_flag(shelfRing[i], LV_OBJ_FLAG_HIDDEN);
         }
       }
-      const char now = shelfLetterAt(hier);
+      const char now = shelfLetterAt(here);
       for (int i = 0; i < ringCount; i++)
         lv_obj_set_style_text_color(shelfRing[i],
             lv_color_hex(ringLetters[i] == now ? COL_ACCENT : COL_TRACK), 0);
