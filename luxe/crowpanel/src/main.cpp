@@ -18,11 +18,11 @@
 #include <WiFi.h>
 #include <Wire.h>
 
-#include "brein.h"
+#include "brain.h"
 #include "config.h"
 #include "board.h"
-#include "hoes.h"
-#include "kast.h"
+#include "artwork.h"
+#include "shelf.h"
 #include "knob.h"
 #include "marantz.h"
 #include "pcf.h"
@@ -38,33 +38,33 @@ static bool     uiDirty      = true;
 static uint32_t lastRevision = 0;
 static uint32_t idleReturnAt = 0;
 static uint32_t turningUntil = 0;
-static uint32_t eigenLuisterTot = 0;   // eigen tik, tot de Pi het overneemt
+static uint32_t ownListenUntil = 0;   // eigen tik, tot de Pi het overneemt
 
 // De grote letter in de platenkast: tot wanneer hij blijft staan.
 static const uint32_t LETTER_MS = 900;
-static uint32_t letterTot = 0;
+static uint32_t letterUntil = 0;
 
 // Hoe lang "gekoppeld" in beeld blijft nadat je een album aan een onherkende
 // plaat hebt gehangen.
-static const uint32_t GEKOPPELD_MS = 3000;
-static uint32_t gekoppeldTot = 0;
+static const uint32_t LINKED_MS = 3000;
+static uint32_t linkedUntil = 0;
 
 // Zelf een album aangewezen. Blijft staan tot het brein iets anders meldt --
 // speelt er even later echt een plaat, dan wint die. Dat is met opzet: wat er
 // werkelijk klinkt is waarheid, wat jij aanwees was een keuze.
-static bool     zelfGekozen = false;
-static uint32_t gekozenBijRev = 0;
-static char     gekozenArtiest[48] = "";
-static char     gekozenTitel[48]   = "";
+static bool     userPicked = false;
+static uint32_t pickedAtRevision = 0;
+static char     pickedArtist[48] = "";
+static char     pickedTitle[48]   = "";
 
 // -- schermhelderheid -------------------------------------------------------
 // Naast de bank is vol licht 's avonds hinderlijk. Elke aanraking of klik zet
 // hem meteen weer aan; dimmen gaat vanzelf als je een tijd niets doet.
-static uint32_t laatsteAanraking = 0;
-static bool     gedimd           = false;
+static uint32_t lastTouchAt = 0;
+static bool     dimmed           = false;
 
-static void schermWakker() {
-  laatsteAanraking = millis();
+static void screenWake() {
+  lastTouchAt = millis();
 
   // Stond hij uit, dan is elke aanraking of klik het aanknopje. Dat is het hele
   // antwoord op "kan ik hem ook weer aanzetten met de knop": ja, en met de
@@ -73,31 +73,31 @@ static void schermWakker() {
     ui.screen = Screen::Volume;
     uiDirty = true;
   }
-  if (gedimd) gedimd = false;
+  if (dimmed) dimmed = false;
   boardBacklight(settings.brightness);
 }
 
-static void schermDimLus() {
+static void screenDimLoop() {
   if (ui.screen == Screen::Off) return;      // uit is uit
 
   // Verandert de instelling terwijl je aan de schuif zit, dan meteen toepassen.
   // Anders zou "realtime" alleen op papier staan.
-  static uint8_t toegepast = 0;
-  if (!gedimd && toegepast != settings.brightness) {
-    toegepast = settings.brightness;
-    boardBacklight(toegepast);
+  static uint8_t appliedBrightness = 0;
+  if (!dimmed && appliedBrightness != settings.brightness) {
+    appliedBrightness = settings.brightness;
+    boardBacklight(appliedBrightness);
   }
   // Zet je de stand om in de webinterface, dan meteen toepassen.
-  static int8_t gedraaid = -1;
-  if (gedraaid != (int8_t)settings.rotated) {
-    gedraaid = settings.rotated;
+  static int8_t appliedRotation = -1;
+  if (appliedRotation != (int8_t)settings.rotated) {
+    appliedRotation = settings.rotated;
     uiSetRotation(settings.rotated);
     uiDirty = true;
   }
 
-  if (settings.dimAfterS == 0 || gedimd) return;
-  if (millis() - laatsteAanraking < (uint32_t)settings.dimAfterS * 1000) return;
-  gedimd = true;
+  if (settings.dimAfterS == 0 || dimmed) return;
+  if (millis() - lastTouchAt < (uint32_t)settings.dimAfterS * 1000) return;
+  dimmed = true;
   boardBacklight((settings.brightness * DIM_LEVEL_PCT) / 100);
 }
 
@@ -115,19 +115,19 @@ static int      pickIndex     = 0;
 static const char *EXTRA[] = { "Turn Off", "Turn Off + Amp" };
 static const int   EXTRA_N = 2;
 
-static int pickTotaal() { return settings.inputCount + EXTRA_N; }
+static int pickCount() { return settings.inputCount + EXTRA_N; }
 
 // Staat de receiver op je favoriete ingang — de platenspeler? Dat bepaalt of de
 // Pi mag meeluisteren; op de Apple TV valt er niets te herkennen want die weet
 // het zelf. Wát er getoond wordt bepaalt de Pi, niet dit.
-static bool opPlatenspeler() {
+static bool onTurntable() {
   return settings.favouriteInput >= 0 &&
          settings.favouriteInput < settings.inputCount &&
          strcmp(avrState.input, settings.inputs[settings.favouriteInput].code) == 0;
 }
 
-static const char *pickNaam(int i) {
-  const int n = pickTotaal();
+static const char *pickName(int i) {
+  const int n = pickCount();
   if (n <= 0) return "";
   const int k = ((i % n) + n) % n;
   return (k < settings.inputCount) ? settings.inputs[k].label : EXTRA[k - settings.inputCount];
@@ -139,21 +139,21 @@ static void queueCommand(const char *cmd, uint32_t delayMs) {
 }
 
 static void refreshUi();          // staat verderop; hier alvast bekend maken
-static void kiesAlbum();
+static void pickAlbum();
 
 // Voor web.cpp: de volgorde is die van enum class Screen in ui.h.
-const char *uiSchermNaam() {
-  static const char *NAMEN[] = {"volume", "inputs", "browse",
+const char *uiScreenName() {
+  static const char *NAMES[] = {"volume", "inputs", "browse",
                                 "pairing", "off", "setup", "noavr"};
   const uint8_t i = (uint8_t)ui.screen;
-  return i < (sizeof(NAMEN) / sizeof(NAMEN[0])) ? NAMEN[i] : "?";
+  return i < (sizeof(NAMES) / sizeof(NAMES[0])) ? NAMES[i] : "?";
 }
 
 // Alles uit: scherm zwart, en desgevraagd de versterker mee. De Pi blijft
 // draaien — hij voedt dit paneel via USB, dus hem afsluiten zou betekenen dat
 // je hem daarna alleen met een stekker weer aan krijgt.
-static void zetUit(bool ookVersterker) {
-  if (ookVersterker) avrSend("ZMOFF");
+static void powerDown(bool alsoAmplifier) {
+  if (alsoAmplifier) avrSend("ZMOFF");
   ui.screen = Screen::Off;
   boardBacklight(0);
   refreshUi();
@@ -176,21 +176,21 @@ static void zetUit(bool ookVersterker) {
 // Ook de eerste meting telt mee, en dat is met opzet: valt de stroom 's nachts
 // even weg, dan start dit paneel opnieuw op naast een installatie die uit staat,
 // en dan hoort het niet de rest van de nacht te blijven branden.
-static int8_t vorigePower = -1;          // -1 = nog niets gezien
+static int8_t previousPower = -1;          // -1 = nog niets gezien
 
-static void volgVersterker() {
-  if (!avrState.connected || !avrState.haveVolume) { vorigePower = -1; return; }
+static void followAmplifier() {
+  if (!avrState.connected || !avrState.haveVolume) { previousPower = -1; return; }
 
-  const int8_t nu = avrState.powered ? 1 : 0;
-  if (nu == vorigePower) return;
-  const bool eerste = vorigePower < 0;
-  vorigePower = nu;
+  const int8_t now = avrState.powered ? 1 : 0;
+  if (now == previousPower) return;
+  const bool first = previousPower < 0;
+  previousPower = now;
 
   if (!settings.offWithAmp) return;
   // Bij de allereerste meting alleen dóven, nooit wekken: anders licht het
   // scherm op omdat het paneel opnieuw opstartte, niet omdat jij iets deed.
-  if (nu == 0)       zetUit(false);      // versterker uit: scherm mee
-  else if (!eerste)  schermWakker();     // en weer aan zodra hij aangaat
+  if (now == 0)       powerDown(false);      // versterker uit: scherm mee
+  else if (!first)  screenWake();     // en weer aan zodra hij aangaat
 }
 
 static void sendInput(const char *code) {
@@ -218,27 +218,27 @@ static void refreshUi() {
   // de microfoon en alles daarbuiten langs de Apple TV; speelt die niets, dan
   // komt er niets — precies het gedrag dat we bij de Xbox willen, zonder dat
   // dit paneel daar iets van hoeft te weten.
-  breinWilLuisteren = opPlatenspeler();
+  brainWantsToListen = onTurntable();
   // Het brein heeft iets nieuws gemeld: dan vervalt je eigen keuze.
-  if (zelfGekozen && breinState.revision != gekozenBijRev) zelfGekozen = false;
+  if (userPicked && brainState.revision != pickedAtRevision) userPicked = false;
 
-  if (zelfGekozen) {
-    strlcpy(ui.nowArtist, gekozenArtiest, sizeof(ui.nowArtist));
-    strlcpy(ui.nowTitle,  gekozenTitel,   sizeof(ui.nowTitle));
+  if (userPicked) {
+    strlcpy(ui.nowArtist, pickedArtist, sizeof(ui.nowArtist));
+    strlcpy(ui.nowTitle,  pickedTitle,   sizeof(ui.nowTitle));
   } else {
-    strlcpy(ui.nowArtist, breinState.artiest, sizeof(ui.nowArtist));
-    strlcpy(ui.nowTitle,  breinState.album[0] ? breinState.album : breinState.titel,
+    strlcpy(ui.nowArtist, brainState.artist, sizeof(ui.nowArtist));
+    strlcpy(ui.nowTitle,  brainState.album[0] ? brainState.album : brainState.title,
             sizeof(ui.nowTitle));
   }
-  ui.shelfLetter = (millis() < letterTot) ? kastLetterVan(kastIndex()) : 0;
-  ui.shelfLinkable = breinState.koppelbaar;
-  ui.justLinked    = millis() < gekoppeldTot;
-  ui.haveArtwork   = breinState.haveHoes;
-  ui.artworkIsLogo = breinState.hoesIsLogo;
-  strlcpy(ui.sourceApp, breinState.app, sizeof(ui.sourceApp));
-  ui.pairing     = breinState.koppelen;
-  ui.piHot       = breinState.heet;
-  ui.listening   = breinState.luistert || millis() < eigenLuisterTot;
+  ui.shelfLetter = (millis() < letterUntil) ? shelfLetterAt(shelfIndex()) : 0;
+  ui.shelfLinkable = brainState.canLink;
+  ui.justLinked    = millis() < linkedUntil;
+  ui.haveArtwork   = brainState.haveArtwork;
+  ui.artworkIsLogo = brainState.artworkIsLogo;
+  strlcpy(ui.sourceApp, brainState.app, sizeof(ui.sourceApp));
+  ui.pairing     = brainState.linkable;
+  ui.piHot       = brainState.hot;
+  ui.listening   = brainState.listening || millis() < ownListenUntil;
   ui.rssi = netApMode ? 0 : WiFi.RSSI();
   strlcpy(ui.ip, netApMode ? WiFi.softAPIP().toString().c_str()
                            : WiFi.localIP().toString().c_str(), sizeof(ui.ip));
@@ -250,11 +250,11 @@ static void refreshUi() {
                                       ui.screen = Screen::Volume;
 
   if (ui.screen == Screen::Inputs) {
-    ui.pickCount = pickTotaal();
+    ui.pickCount = pickCount();
     ui.pickIndex = pickIndex;
-    strlcpy(ui.pickLabel, pickNaam(pickIndex), sizeof(ui.pickLabel));
-    strlcpy(ui.pickPrev, pickTotaal() > 1 ? pickNaam(pickIndex - 1) : "", sizeof(ui.pickPrev));
-    strlcpy(ui.pickNext, pickTotaal() > 1 ? pickNaam(pickIndex + 1) : "", sizeof(ui.pickNext));
+    strlcpy(ui.pickLabel, pickName(pickIndex), sizeof(ui.pickLabel));
+    strlcpy(ui.pickPrev, pickCount() > 1 ? pickName(pickIndex - 1) : "", sizeof(ui.pickPrev));
+    strlcpy(ui.pickNext, pickCount() > 1 ? pickName(pickIndex + 1) : "", sizeof(ui.pickNext));
   }
   uiDirty = true;
 }
@@ -276,19 +276,19 @@ static void leaveToVolume() {
 // De platenkast in. De lijst wordt bij de eerste keer opgehaald en daarna
 // bewaard: 549 namen zijn 25 kB en veranderen hooguit als je iets nieuws koopt.
 static void enterBrowse() {
-  if (settings.breinHost[0] == '\0') return;      // zonder Pi geen kast
-  if (!kastGeladen()) kastLaad(settings.breinHost, BREIN_PORT);
+  if (settings.brainHost[0] == '\0') return;      // zonder Pi geen kast
+  if (!shelfLoaded()) shelfLoad(settings.brainHost, BRAIN_PORT);
 
   // Beginnen bij de plaat die nu draait, als die in de kast staat. Anders sta je
   // elke keer weer bij de A terwijl je net naar iets zat te luisteren, en dat is
   // precies het album waarvan je wil weten wat ernaast staat.
-  if (kastGeladen() && breinState.inKast && breinState.album[0]) {
-    for (int i = 0; i < kastAantal(); i++) {
-      if (strcmp(kastTitel(i), breinState.album) == 0) { kastZet(i); break; }
+  if (shelfLoaded() && brainState.onShelf && brainState.album[0]) {
+    for (int i = 0; i < shelfCount(); i++) {
+      if (strcmp(shelfTitle(i), brainState.album) == 0) { shelfSet(i); break; }
     }
   }
   ui.screen = Screen::Browse;
-  letterTot = 0;
+  letterUntil = 0;
   idleReturnAt = millis() + IDLE_RETURN_MS * 3;
   refreshUi();
 }
@@ -306,22 +306,22 @@ static void enterBrowse() {
 //
 // Speelt er niets bijzonders, dan is het alleen "laat zien": de hoes komt
 // schermvullend terug. Opleggen kan dit apparaat niet.
-static void kiesAlbum() {
-  const int i = kastIndex();
-  if (!kastGeladen() || i < 0) { leaveToVolume(); return; }
+static void pickAlbum() {
+  const int i = shelfIndex();
+  if (!shelfLoaded() || i < 0) { leaveToVolume(); return; }
 
-  const bool koppelen = breinState.koppelbaar;
-  if (koppelen) breinKoppel(kastId(i));
+  const bool linkable = brainState.canLink;
+  if (linkable) brainLink(shelfReleaseId(i));
 
-  strlcpy(gekozenArtiest, kastArtiest(i), sizeof(gekozenArtiest));
-  strlcpy(gekozenTitel,   kastTitel(i),   sizeof(gekozenTitel));
-  zelfGekozen   = true;
-  gekozenBijRev = breinState.revision;
+  strlcpy(pickedArtist, shelfArtist(i), sizeof(pickedArtist));
+  strlcpy(pickedTitle,   shelfTitle(i),   sizeof(pickedTitle));
+  userPicked   = true;
+  pickedAtRevision = brainState.revision;
   // Bij een koppeling gaat de melding een paar tellen in beeld: je hebt net iets
   // vastgelegd, en dan wil je bevestigd zien dat het aankwam.
-  gekoppeldTot  = koppelen ? millis() + GEKOPPELD_MS : 0;
+  linkedUntil  = linkable ? millis() + LINKED_MS : 0;
 
-  if (!hoesLaadAlbum(settings.breinHost, BREIN_PORT, kastId(i))) hoesWis();
+  if (!artworkLoadAlbum(settings.brainHost, BRAIN_PORT, shelfReleaseId(i))) artworkClear();
   leaveToVolume();
 }
 
@@ -347,7 +347,7 @@ static void changeVolume(int steps) {
 }
 
 static void scrollInputs(int steps) {
-  const int n = pickTotaal();
+  const int n = pickCount();
   if (n == 0) return;
   pickIndex = ((pickIndex + steps) % n + n) % n;
 
@@ -362,9 +362,9 @@ static void scrollInputs(int steps) {
 
 // Wat er gebeurt als je in de lijst bevestigt: een ingang kiezen, of een van de
 // twee uitzet-regels uitvoeren.
-static void kiesHuidige() {
+static void confirmInput() {
   if (pickIndex >= settings.inputCount) {
-    zetUit(pickIndex == settings.inputCount + 1);   // tweede regel = met versterker
+    powerDown(pickIndex == settings.inputCount + 1);   // tweede regel = met versterker
     return;
   }
   if (pickIndex >= 0 && pickIndex < settings.inputCount)
@@ -375,7 +375,7 @@ static void kiesHuidige() {
 static void handleKnob() {
   const KnobInput in = knobPoll();
 
-  if (in.steps != 0 || in.event != KnobEvent::None) schermWakker();
+  if (in.steps != 0 || in.event != KnobEvent::None) screenWake();
 
   if (in.steps != 0) {
     if (ui.screen == Screen::Browse) {
@@ -383,14 +383,14 @@ static void handleKnob() {
       // letter: met 549 albums is stap voor stap draaien geen doen, en dit is
       // dezelfde sprongindex als de letterring in de webinterface.
       if (in.held) {
-        for (int i = 0; i < abs(in.steps); i++) kastSpring(in.steps > 0 ? 1 : -1);
+        for (int i = 0; i < abs(in.steps); i++) shelfJump(in.steps > 0 ? 1 : -1);
         // De letter waar je landde groot in beeld, zolang je springt en nog
         // even daarna. Veertien pixels langs de rand zijn te weinig om tijdens
         // het draaien te lezen; hierop hoef je niet te zoeken.
-        letterTot = millis() + LETTER_MS;
+        letterUntil = millis() + LETTER_MS;
       } else {
-        kastGa(in.steps);
-        letterTot = 0;               // gewoon bladeren: de letter mag weg
+        shelfMove(in.steps);
+        letterUntil = 0;               // gewoon bladeren: de letter mag weg
       }
       idleReturnAt = millis() + IDLE_RETURN_MS * 3;
     } else if (in.held) {
@@ -412,9 +412,9 @@ static void handleKnob() {
       // knob.cpp onderdrukt de korte druk al als je tijdens het indrukken hebt
       // gedraaid, dus hier hoeft alleen het keuzescherm afgehandeld.
       if (ui.screen == Screen::Inputs) {          // bevestigen
-        kiesHuidige();
+        confirmInput();
       } else if (ui.screen == Screen::Browse) {
-        kiesAlbum();
+        pickAlbum();
       } else {
         avrSend(avrState.muted ? "MUOFF" : "MUON");
       }
@@ -443,11 +443,11 @@ static void handleKnob() {
 
 static void handleTouch() {
   const Touch tik = uiTakeTouch();
-  if (tik != Touch::None) schermWakker();
+  if (tik != Touch::None) screenWake();
   switch (tik) {
     case Touch::InputLabel: enterInputs();   break;
     case Touch::Confirm:
-      if (ui.screen == Screen::Inputs) kiesHuidige();
+      if (ui.screen == Screen::Inputs) confirmInput();
       else                             leaveToVolume();
       break;
     case Touch::Listen:
@@ -455,8 +455,8 @@ static void handleTouch() {
       // de Pi. Die komt een fractie later en neemt het over; blijft hij uit,
       // dan dooft dit vanzelf. Een knop die pas na een ronde reageert voelt
       // stuk, ook al is er niets mis.
-      breinVraagOpzoeking();
-      eigenLuisterTot = millis() + 4000;
+      brainAskLookup();
+      ownListenUntil = millis() + 4000;
       refreshUi();
       break;
     case Touch::Dismiss:    leaveToVolume(); break;
@@ -467,7 +467,7 @@ static void handleTouch() {
       // De QR-code zat eerst achter een tik op de hoes. Nu de platenkast daar
       // zit heeft het stipje zijn eigen aanraakvlak — ruim, want tien pixels
       // raak je niet met een vinger.
-      if (breinState.koppelen > 0) {
+      if (brainState.linkable > 0) {
         ui.screen = Screen::Pairing;
         idleReturnAt = millis() + IDLE_RETURN_MS * 3;
         refreshUi();
@@ -541,9 +541,9 @@ void setup() {
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   pcfBegin();
   knobBegin();
-  breinBegin();
-  hoesBegin();
-  kastBegin();
+  brainBegin();
+  artworkBegin();
+  shelfBegin();
 
   // uiBegin() zet het paneel zelf aan — voeding, resets, ST7701 en de
   // aanraakchip zitten in board.cpp. De seriële weergave doet daar niets van,
@@ -551,7 +551,7 @@ void setup() {
   uiBegin();
 
   boardBacklight(settings.brightness);
-  schermWakker();
+  screenWake();
 
   connectWifi();
 
@@ -565,7 +565,7 @@ void loop() {
   maintainWifi();
   webLoop();
   avrLoop();
-  breinLoop();
+  brainLoop();
 
   if (pendingCmd[0] && millis() >= pendingAt) {
     avrSend(pendingCmd);
@@ -576,10 +576,10 @@ void loop() {
   // De kast haalt zijn hoezen op zodra je even stilhoudt; hij
   // meldt zelf wanneer er iets te tekenen valt.
   if (ui.screen == Screen::Browse &&
-      kastLus(settings.breinHost, BREIN_PORT)) refreshUi();
+      shelfLoop(settings.brainHost, BRAIN_PORT)) refreshUi();
   uiTick();
   handleTouch();
-  schermDimLus();
+  screenDimLoop();
 
   // Terugvallen naar het volumescherm als je niets meer doet
   if (ui.screen == Screen::Inputs && idleReturnAt && millis() > idleReturnAt) {
@@ -589,16 +589,16 @@ void loop() {
 
   if (avrState.revision != lastRevision) {
     lastRevision = avrState.revision;
-    volgVersterker();                  // vóór refreshUi: die leest ui.screen
+    followAmplifier();                  // vóór refreshUi: die leest ui.screen
     refreshUi();
   }
-  static uint32_t lastBrein = 0;
-  if (breinState.revision != lastBrein) {
-    lastBrein = breinState.revision;
+  static uint32_t lastBrain = 0;
+  if (brainState.revision != lastBrain) {
+    lastBrain = brainState.revision;
     // De hoes hoort bij deze plaat; ophalen zodra er een andere komt. Dat duurt
     // een paar honderd milliseconden, dus precies één keer per plaat.
-    if (breinState.haveHoes) hoesLaad(settings.breinHost, BREIN_PORT);
-    else                     hoesWis();
+    if (brainState.haveArtwork) artworkLoad(settings.brainHost, BRAIN_PORT);
+    else                     artworkClear();
     refreshUi();
   }
 
@@ -606,36 +606,36 @@ void loop() {
   // ophalen hing eerst uitsluitend aan het moment van wijzigen, en ging dat ene
   // moment mis, dan bleef het scherm leeg zolang dezelfde plaat draaide — er
   // verandert dan immers niets meer om op te reageren.
-  static uint32_t hoesHerkansAt = 0;
-  if (breinState.haveHoes && !hoesBeeld() && millis() > hoesHerkansAt) {
-    hoesHerkansAt = millis() + 10000;
-    if (hoesLaad(settings.breinHost, BREIN_PORT)) refreshUi();
+  static uint32_t artworkRetryAt = 0;
+  if (brainState.haveArtwork && !artworkImage() && millis() > artworkRetryAt) {
+    artworkRetryAt = millis() + 10000;
+    if (artworkLoad(settings.brainHost, BRAIN_PORT)) refreshUi();
   }
 
   // Naald neergezet: de ingang gaat naar je favoriet. Dat is het moment om de
   // Pi te laten luisteren, in plaats van te wachten tot hij het zelf merkt.
-  static char vorigeIngang[16] = "";
-  if (strcmp(avrState.input, vorigeIngang) != 0) {
+  static char previousInput[16] = "";
+  if (strcmp(avrState.input, previousInput) != 0) {
     const bool naarFavoriet =
         settings.favouriteInput >= 0 && settings.favouriteInput < settings.inputCount &&
         strcmp(avrState.input, settings.inputs[settings.favouriteInput].code) == 0;
-    strlcpy(vorigeIngang, avrState.input, sizeof(vorigeIngang));
-    if (naarFavoriet && vorigeIngang[0]) breinVraagOpzoeking();
+    strlcpy(previousInput, avrState.input, sizeof(previousInput));
+    if (naarFavoriet && previousInput[0]) brainAskLookup();
 
     // Bij het wisselen van ingang wisselt ook de bron. De hoes van de vorige
     // bron meteen weg, want de nieuwe komt pas bij de volgende melding.
-    hoesWis();
+    artworkClear();
     refreshUi();
   }
   if (ui.turning && millis() >= turningUntil) refreshUi();
   // Om dezelfde reden als hierboven: het scherm wordt alleen opnieuw getekend
   // als er iets wijzigt, en een tijd die afloopt is zo'n wijziging. Zonder deze
   // regel bleef de grote letter staan tot je weer aan de knop kwam.
-  if (ui.shelfLetter && millis() >= letterTot) refreshUi();
-  if (ui.justLinked && millis() >= gekoppeldTot) refreshUi();
-  static bool eigenLuisterAan = false;
-  const bool eigenNu = millis() < eigenLuisterTot;
-  if (eigenNu != eigenLuisterAan) { eigenLuisterAan = eigenNu; refreshUi(); }
+  if (ui.shelfLetter && millis() >= letterUntil) refreshUi();
+  if (ui.justLinked && millis() >= linkedUntil) refreshUi();
+  static bool ownListenOn = false;
+  const bool eigenNu = millis() < ownListenUntil;
+  if (eigenNu != ownListenOn) { ownListenOn = eigenNu; refreshUi(); }
 
   static uint32_t lastDraw = 0;
   if (uiDirty && millis() - lastDraw > 40) {

@@ -43,7 +43,7 @@ void settingsLoad() {
   strlcpy(settings.wifiSsid, prefs.getString("ssid", "").c_str(), sizeof(settings.wifiSsid));
   strlcpy(settings.wifiPass, prefs.getString("pass", "").c_str(), sizeof(settings.wifiPass));
   strlcpy(settings.avrHost,  prefs.getString("host", "").c_str(), sizeof(settings.avrHost));
-  strlcpy(settings.breinHost, prefs.getString("brein", "").c_str(), sizeof(settings.breinHost));
+  strlcpy(settings.brainHost, prefs.getString("brein", "").c_str(), sizeof(settings.brainHost));
   settings.brightness = prefs.getUChar("bright", BACKLIGHT_LEVEL);
   settings.dimAfterS  = prefs.getUShort("dim", DEF_DIM_AFTER_S);
   settings.rotated    = prefs.getBool("rot", false);
@@ -84,7 +84,7 @@ void settingsSave() {
   prefs.putString("ssid", settings.wifiSsid);
   prefs.putString("pass", settings.wifiPass);
   prefs.putString("host", settings.avrHost);
-  prefs.putString("brein", settings.breinHost);
+  prefs.putString("brein", settings.brainHost);
   prefs.putUChar("bright", settings.brightness);
   prefs.putUShort("dim", settings.dimAfterS);
   prefs.putBool("rot", settings.rotated);
@@ -132,7 +132,7 @@ void settingsToJson(String &out) {
   doc["wifiSsid"]       = settings.wifiSsid;
   doc["wifiPassSet"]    = strlen(settings.wifiPass) > 0;
   doc["avrHost"]        = settings.avrHost;
-  doc["breinHost"]      = settings.breinHost;
+  doc["breinHost"]      = settings.brainHost;
   doc["brightness"]     = settings.brightness;
   doc["dimAfterS"]      = settings.dimAfterS;
   doc["rotated"]        = settings.rotated;
@@ -186,7 +186,7 @@ bool settingsFromJson(const String &body, String &err, bool &wifiChanged) {
   if (doc["avrHost"].is<const char *>())
     strlcpy(settings.avrHost, doc["avrHost"], sizeof(settings.avrHost));
   if (doc["breinHost"].is<const char *>())
-    strlcpy(settings.breinHost, doc["breinHost"], sizeof(settings.breinHost));
+    strlcpy(settings.brainHost, doc["breinHost"], sizeof(settings.brainHost));
   if (doc["brightness"].is<int>())
     settings.brightness = constrain((int)doc["brightness"], 10, 255);
   if (doc["dimAfterS"].is<int>())

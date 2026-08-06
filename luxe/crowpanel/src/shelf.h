@@ -24,39 +24,39 @@
 // Formaat van de hoesjes. Alle drie even groot: dan hoeft er bij één stap maar
 // één nieuwe op te halen in plaats van drie. Welke de huidige is zie je aan de
 // rand eromheen en aan de titel eronder, niet aan het formaat.
-#define KAST_PX 120
+#define SHELF_PX 120
 
-void kastBegin();
+void shelfBegin();
 
 // De lijst ophalen. Eén keer genoeg; geeft false als het niet lukte.
-bool kastLaad(const char *host, uint16_t poort);
-bool kastGeladen();
-int  kastAantal();
+bool shelfLoad(const char *host, uint16_t poort);
+bool shelfLoaded();
+int  shelfCount();
 
 // Waar we nu staan, en verplaatsen. Loopt om aan beide uiteinden.
-int  kastIndex();
-void kastGa(int stappen);
-void kastZet(int index);
+int  shelfIndex();
+void shelfMove(int steps);
+void shelfSet(int index);
 
 // De eerste letter van de artiest ('#' als het geen A-Z is).
-char kastLetterVan(int index);
+char shelfLetterAt(int index);
 
 // Naar het begin van de vorige of volgende letter springen. Met 549 albums is
 // stap voor stap draaien geen doen; dit is de sprongindex van de webinterface,
 // maar dan met de knop bediend.
-void kastSpring(int richting);
+void shelfJump(int direction);
 
 // Tekst van het album op deze plek in de lijst.
-const char *kastArtiest(int index);
-const char *kastTitel(int index);
+const char *shelfArtist(int index);
+const char *shelfTitle(int index);
 
 // Het releasenummer, om de hoes schermvullend op te kunnen halen.
-uint16_t kastId(int index);
+uint16_t shelfReleaseId(int index);
 
 // Het plaatje voor een van de drie plekken (0 = links, 1 = midden, 2 = rechts),
 // of nullptr zolang het er nog niet is.
-const lv_img_dsc_t *kastHoes(int plek);
+const lv_img_dsc_t *shelfArtworkAt(int slot);
 
 // Per lus aanroepen: haalt op wat er ontbreekt, maar alleen als je even stil
 // bent. Geeft true als er iets veranderd is en het scherm opnieuw moet.
-bool kastLus(const char *host, uint16_t poort);
+bool shelfLoop(const char *host, uint16_t poort);

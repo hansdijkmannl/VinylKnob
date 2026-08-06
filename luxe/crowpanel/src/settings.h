@@ -16,7 +16,7 @@ struct Settings {
 
   // Het brein op de Pi: waar de herkenning vandaan komt. Leeg = uit, dan
   // gedraagt het paneel zich als in fase 2 en toont het alleen volume.
-  char     breinHost[48];
+  char     brainHost[48];
 
   uint8_t  halfDbPerClick;       // 1 = 0,5 dB per klik
   uint8_t  accelFactor;          // vermenigvuldiger bij snel draaien

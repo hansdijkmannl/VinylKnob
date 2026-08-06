@@ -32,7 +32,7 @@ enum class Screen : uint8_t {
 // main.cpp — die houdt de schermtoestand bij — maar wordt hier bekendgemaakt
 // omdat web.cpp hem nodig heeft voor de kopie van dit paneel in de
 // webinterface. Zonder dit kon die kopie alleen het volumescherm nadoen.
-const char *uiSchermNaam();
+const char *uiScreenName();
 
 struct UiState {
   Screen   screen        = Screen::Setup;

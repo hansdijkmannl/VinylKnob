@@ -1,4 +1,4 @@
-#include "hoes.h"
+#include "artwork.h"
 
 #include <HTTPClient.h>
 #include <TJpg_Decoder.h>
@@ -10,30 +10,30 @@
 // interne geheugen — vandaar heap_caps_malloc en niet gewoon malloc.
 static uint16_t *pixels = nullptr;
 static uint8_t  *jpeg   = nullptr;
-static bool      gevuld = false;
+static bool      filled = false;
 static lv_img_dsc_t beeld;
 
 // Ruimer dan de ~35 kB die de Pi levert bij 480 pixels, zodat een hoes met veel
 // detail er ook nog in past zonder dat het misgaat.
 static const size_t JPEG_MAX = 96 * 1024;
 
-static bool schrijfBlok(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
+static bool writeBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
   if (!pixels) return false;
-  if (y >= HOES_PX) return false;                 // klaar, de rest overslaan
+  if (y >= ARTWORK_PX) return false;                 // klaar, de rest overslaan
   for (uint16_t r = 0; r < h; r++) {
     const int16_t py = y + r;
-    if (py < 0 || py >= HOES_PX) continue;
+    if (py < 0 || py >= ARTWORK_PX) continue;
     for (uint16_t c = 0; c < w; c++) {
       const int16_t px = x + c;
-      if (px < 0 || px >= HOES_PX) continue;
-      pixels[py * HOES_PX + px] = bitmap[r * w + c];
+      if (px < 0 || px >= ARTWORK_PX) continue;
+      pixels[py * ARTWORK_PX + px] = bitmap[r * w + c];
     }
   }
   return true;
 }
 
-void hoesBegin() {
-  pixels = (uint16_t *)heap_caps_malloc(HOES_PX * HOES_PX * 2, MALLOC_CAP_SPIRAM);
+void artworkBegin() {
+  pixels = (uint16_t *)heap_caps_malloc(ARTWORK_PX * ARTWORK_PX * 2, MALLOC_CAP_SPIRAM);
   jpeg   = (uint8_t *)heap_caps_malloc(JPEG_MAX, MALLOC_CAP_SPIRAM);
   if (!pixels || !jpeg) {
     Serial.println(F("[hoes] geen PSRAM voor de hoes"));
@@ -41,9 +41,9 @@ void hoesBegin() {
   }
   memset(&beeld, 0, sizeof(beeld));
   beeld.header.cf         = LV_IMG_CF_TRUE_COLOR;
-  beeld.header.w          = HOES_PX;
-  beeld.header.h          = HOES_PX;
-  beeld.data_size         = HOES_PX * HOES_PX * 2;
+  beeld.header.w          = ARTWORK_PX;
+  beeld.header.h          = ARTWORK_PX;
+  beeld.data_size         = ARTWORK_PX * ARTWORK_PX * 2;
   beeld.data              = (const uint8_t *)pixels;
 }
 
@@ -53,17 +53,17 @@ static uint32_t accent = 0xe8a33d;      // de amber uit de mockup, als terugval
 // is altijd modderig grijsbruin. Daarom een histogram over de kleurtoon, gewogen
 // met verzadiging en helderheid, en daarna de toon met vaste verzadiging
 // terugzetten — zo is de boog altijd fel genoeg om tegen de hoes af te steken.
-static void bepaalAccent() {
+static void findAccent() {
   accent = 0xe8a33d;
-  if (!pixels || !gevuld) return;
+  if (!pixels || !filled) return;
 
-  const int BAKKEN = 24;
-  float gewicht[BAKKEN] = {0};
-  const int stap = 6;                   // ~6400 monsters, ruim genoeg
+  const int BUCKETS = 24;
+  float weight[BUCKETS] = {0};
+  const int step = 6;                   // ~6400 monsters, ruim genoeg
 
-  for (int y = 0; y < HOES_PX; y += stap) {
-    for (int x = 0; x < HOES_PX; x += stap) {
-      const uint16_t p = pixels[y * HOES_PX + x];
+  for (int y = 0; y < ARTWORK_PX; y += step) {
+    for (int x = 0; x < ARTWORK_PX; x += step) {
+      const uint16_t p = pixels[y * ARTWORK_PX + x];
       const float r = ((p >> 11) & 0x1F) / 31.0f;
       const float g = ((p >> 5) & 0x3F) / 63.0f;
       const float b = (p & 0x1F) / 31.0f;
@@ -73,21 +73,21 @@ static void bepaalAccent() {
       const float d  = mx - mn;
       if (mx < 0.12f || d < 0.07f) continue;      // te donker of te grijs
 
-      float tint;
-      if      (mx == r) tint = fmodf((g - b) / d, 6.0f);
-      else if (mx == g) tint = (b - r) / d + 2.0f;
-      else              tint = (r - g) / d + 4.0f;
-      if (tint < 0) tint += 6.0f;
+      float hue;
+      if      (mx == r) hue = fmodf((g - b) / d, 6.0f);
+      else if (mx == g) hue = (b - r) / d + 2.0f;
+      else              hue = (r - g) / d + 4.0f;
+      if (hue < 0) hue += 6.0f;
 
-      const int bak = ((int)(tint / 6.0f * BAKKEN)) % BAKKEN;
-      gewicht[bak] += (d / mx) * mx;               // verzadiging x helderheid
+      const int bucket = ((int)(hue / 6.0f * BUCKETS)) % BUCKETS;
+      weight[bucket] += (d / mx) * mx;               // verzadiging x helderheid
     }
   }
 
-  int beste = -1;
+  int best = -1;
   float top = 0;
-  for (int i = 0; i < BAKKEN; i++) if (gewicht[i] > top) { top = gewicht[i]; beste = i; }
-  if (beste < 0 || top < 2.0f) {
+  for (int i = 0; i < BUCKETS; i++) if (weight[i] > top) { top = weight[i]; best = i; }
+  if (best < 0 || top < 2.0f) {
     // Een hoes zonder uitgesproken kleur — zwart-wit, of heel donker. Dan geen
     // amber uit het niets, maar een koel grijsblauw dat bij zo'n hoes past.
     accent = 0x9fb4c8;
@@ -95,26 +95,26 @@ static void bepaalAccent() {
   }
 
   // Terug naar RGB met vaste verzadiging en helderheid.
-  const float tint = (beste + 0.5f) / BAKKEN * 6.0f;
+  const float hue = (best + 0.5f) / BUCKETS * 6.0f;
   const float S = 0.72f, V = 0.98f;
-  const float C = V * S, X = C * (1 - fabsf(fmodf(tint, 2.0f) - 1)), m = V - C;
+  const float C = V * S, X = C * (1 - fabsf(fmodf(hue, 2.0f) - 1)), m = V - C;
   float r = 0, g = 0, b = 0;
-  if      (tint < 1) { r = C; g = X; }
-  else if (tint < 2) { r = X; g = C; }
-  else if (tint < 3) { g = C; b = X; }
-  else if (tint < 4) { g = X; b = C; }
-  else if (tint < 5) { r = X; b = C; }
+  if      (hue < 1) { r = C; g = X; }
+  else if (hue < 2) { r = X; g = C; }
+  else if (hue < 3) { g = C; b = X; }
+  else if (hue < 4) { g = X; b = C; }
+  else if (hue < 5) { r = X; b = C; }
   else               { r = C; b = X; }
   accent = ((uint32_t)((r + m) * 255) << 16) |
            ((uint32_t)((g + m) * 255) << 8) |
             (uint32_t)((b + m) * 255);
 }
 
-uint32_t hoesAccent() { return accent; }
+uint32_t artworkAccent() { return accent; }
 
-void hoesWis() { gevuld = false; accent = 0xe8a33d; }
+void artworkClear() { filled = false; accent = 0xe8a33d; }
 
-const lv_img_dsc_t *hoesBeeld() { return gevuld ? &beeld : nullptr; }
+const lv_img_dsc_t *artworkImage() { return filled ? &beeld : nullptr; }
 
 static bool haalEnDecodeer(const char *url) {
   HTTPClient http;
@@ -149,7 +149,7 @@ static bool haalEnDecodeer(const char *url) {
     return false;
   }
 
-  memset(pixels, 0, HOES_PX * HOES_PX * 2);
+  memset(pixels, 0, ARTWORK_PX * ARTWORK_PX * 2);
   // Vlak voor het decoderen en niet één keer bij het opstarten: TJpgDec heeft
   // één globale callback, en kast.cpp decodeert in zijn eigen buffers. Wie het
   // laatst instelde wint, dus stelt iedereen het zelf in.
@@ -160,21 +160,21 @@ static bool haalEnDecodeer(const char *url) {
   // oranje en groen die je krijgt als hoog en laag byte verwisseld zijn.
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(false);
-  TJpgDec.setCallback(schrijfBlok);
+  TJpgDec.setCallback(writeBlock);
   const JRESULT r = TJpgDec.drawJpg(0, 0, jpeg, gelezen);
-  gevuld = (r == JDR_OK);
-  if (!gevuld) {
+  filled = (r == JDR_OK);
+  if (!filled) {
     Serial.printf("[hoes] decoderen mislukt (%d)\n", r);
   } else {
     // Twee pixels ter controle: hiermee is te vergelijken of de kleurvolgorde
     // klopt, zonder naar het scherm te hoeven kijken.
-    bepaalAccent();
+    findAccent();
     Serial.printf("[hoes] %u bytes, accent #%06X\n", (unsigned)gelezen, (unsigned)accent);
   }
-  return gevuld;
+  return filled;
 }
 
-bool hoesLaad(const char *host, uint16_t poort) {
+bool artworkLoad(const char *host, uint16_t poort) {
   if (!pixels || !jpeg) { Serial.println(F("[hoes] geen buffers")); return false; }
   if (WiFi.status() != WL_CONNECTED) { Serial.println(F("[hoes] geen wifi")); return false; }
   char url[96];
@@ -182,13 +182,13 @@ bool hoesLaad(const char *host, uint16_t poort) {
   return haalEnDecodeer(url);
 }
 
-bool hoesLaadAlbum(const char *host, uint16_t poort, uint16_t releaseId) {
+bool artworkLoadAlbum(const char *host, uint16_t poort, uint16_t releaseId) {
   if (!pixels || !jpeg) return false;
   if (WiFi.status() != WL_CONNECTED) return false;
   // Dezelfde maat als /hoes levert, want hij komt op dezelfde plek terecht:
   // schermvullend achter het volume.
   char url[112];
   snprintf(url, sizeof(url), "http://%s:%u/kasthoes?id=%u&px=%d",
-           host, poort, (unsigned)releaseId, HOES_PX);
+           host, poort, (unsigned)releaseId, ARTWORK_PX);
   return haalEnDecodeer(url);
 }

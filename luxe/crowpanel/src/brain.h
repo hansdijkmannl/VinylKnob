@@ -16,39 +16,39 @@
 // Daarom staat hier geen logica over herkennen, alleen over ophalen.
 // ---------------------------------------------------------------------------
 
-struct BreinState {
+struct BrainState {
   bool bereikbaar = false;
   bool speelt     = false;      // er loopt een plaat
-  bool luistert   = false;      // de Pi neemt nu op of zoekt op
-  bool inKast     = false;      // gevonden in je eigen Discogs-collectie
+  bool listening   = false;      // de Pi neemt nu op of zoekt op
+  bool onShelf     = false;      // gevonden in je eigen Discogs-collectie
   // Er staat een opzoeking open die niets opleverde: wijs je nu een album aan
   // in de kast, dan wordt dat eraan gekoppeld en leert het apparaat deze kant.
-  bool koppelbaar = false;
-  bool haveHoes   = false;      // er staat een hoes klaar op /hoes
-  bool hoesIsLogo = false;      // ...maar het is het app-logo, geen echte hoes
-  char artiest[48] = "";
-  char titel[64]   = "";
+  bool canLink = false;
+  bool haveArtwork   = false;      // er staat een hoes klaar op /hoes
+  bool artworkIsLogo = false;      // ...maar het is het app-logo, geen echte hoes
+  char artist[48] = "";
+  char title[64]   = "";
   char album[64]   = "";
   char app[24]     = "";      // "YouTube", als de Apple TV de bron is
-  bool heet       = false;      // Pi op de hoogste ventilatorstand of geknepen
-  uint8_t koppelen = 0;         // platen die op een koppeling wachten
+  bool hot       = false;      // Pi op de hoogste ventilatorstand of geknepen
+  uint8_t linkable = 0;         // platen die op een koppeling wachten
   uint32_t revision = 0;        // loopt op zodra er iets wijzigt
 };
 
-extern BreinState breinState;
+extern BrainState brainState;
 
 // Zet main.cpp: heeft luisteren nu zin? Gaat mee bij elke peiling, zodat de Pi
 // niet op de Apple TV staat te herkennen.
-extern bool breinWilLuisteren;
+extern bool brainWantsToListen;
 
-void breinBegin();
-void breinLoop();               // per lus aanroepen; regelt zelf zijn tempo
+void brainBegin();
+void brainLoop();               // per lus aanroepen; regelt zelf zijn tempo
 
 // Koppel dit album aan de plaat die nu draait maar niet herkend werd. De Pi
 // legt het vast en maakt er meteen een vingerafdruk van, zodat dezelfde kant de
 // volgende keer zonder dienst herkend wordt. Geeft false als het misging.
-bool breinKoppel(uint16_t releaseId);
+bool brainLink(uint16_t releaseId);
 
 // Vraag de Pi nu te luisteren. Gebruikt als de ingang naar je favoriet gaat:
 // dat is het moment waarop je de naald neerzet.
-void breinVraagOpzoeking();
+void brainAskLookup();

@@ -120,10 +120,10 @@
 // Het brein op de Pi. Vier seconden is ruim: een plaatkant duurt twintig
 // minuten, dus er valt zelden iets te melden — maar zet je de naald neer, dan
 // wil je het binnen een paar tellen zien.
-#define BREIN_PORT             8791
-#define BREIN_POLL_MS          4000
-#define BREIN_BEZIG_MS         1000    // terwijl de Pi luistert
-#define BREIN_RETRY_MS         30000   // na een paar missers: rustiger aan
+#define BRAIN_PORT             8791
+#define BRAIN_POLL_MS          4000
+#define BRAIN_BUSY_MS         1000    // terwijl de Pi luistert
+#define BRAIN_RETRY_MS         30000   // na een paar missers: rustiger aan
 
 // Terugvallen naar het volumescherm als je niets meer doet. Ruim genomen: in
 // de ingangenlijst ben je aan het kijken en kiezen, en dan is vier seconden net

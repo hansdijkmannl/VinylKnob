@@ -356,7 +356,7 @@ static void handleState() {
   // Welk scherm er nu staat. De webinterface toont een kopie van dit paneel en
   // kon tot nu toe alleen raden wat er te zien was; met dit veld klopt die
   // kopie ook als je in de ingangenlijst zit of als het scherm uit is.
-  doc["screen"] = uiSchermNaam();
+  doc["screen"] = uiScreenName();
 
   String out;
   serializeJson(doc, out);

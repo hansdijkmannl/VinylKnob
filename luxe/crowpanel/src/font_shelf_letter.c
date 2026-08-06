@@ -5,7 +5,7 @@
  *
  *   npx lv_font_conv --font <lvgl>/scripts/built_in_font/Montserrat-Medium.ttf \
  *       -r 0x23 -r 0x41-0x5A --size 130 --bpp 2 --format lvgl --no-compress \
- *       -o src/font_kastletter.c
+ *       -o src/font_shelf_letter.c
  *
  * Waarom een eigen lettertype: LVGL levert Montserrat tot 48 px en dat is op een
  * scherm van 480 te klein voor de letter die je tijdens het springen wil zien.
@@ -15,7 +15,7 @@
 /*******************************************************************************
  * Size: 130 px
  * Bpp: 2
- * Opts: --font /Users/iHDPro/.platformio/libdeps/crowpanel/crowpanel/lvgl/scripts/built_in_font/Montserrat-Medium.ttf -r 0x23 -r 0x41-0x5A --size 130 --bpp 2 --format lvgl --no-compress -o /Volumes/Opslag/Apps/MarantzKnob/luxe/crowpanel/src/font_kastletter.c
+ * Opts: --font /Users/iHDPro/.platformio/libdeps/crowpanel/crowpanel/lvgl/scripts/built_in_font/Montserrat-Medium.ttf -r 0x23 -r 0x41-0x5A --size 130 --bpp 2 --format lvgl --no-compress -o /Volumes/Opslag/Apps/MarantzKnob/luxe/crowpanel/src/font_shelf_letter.c
  ******************************************************************************/
 
 // De gegenereerde keuze tussen twee insluitpaden werkt hier niet: PlatformIO
@@ -23,11 +23,11 @@
 #include "lvgl.h"
 
 
-#ifndef FONT_KASTLETTER
-#define FONT_KASTLETTER 1
+#ifndef FONT_SHELF_LETTER
+#define FONT_SHELF_LETTER 1
 #endif
 
-#if FONT_KASTLETTER
+#if FONT_SHELF_LETTER
 
 /*-----------------
  *    BITMAPS
@@ -6602,9 +6602,9 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
 
 /*Initialize a public general font descriptor*/
 #if LVGL_VERSION_MAJOR >= 8
-const lv_font_t font_kastletter = {
+const lv_font_t font_shelf_letter = {
 #else
-lv_font_t font_kastletter = {
+lv_font_t font_shelf_letter = {
 #endif
     .get_glyph_dsc = lv_font_get_glyph_dsc_fmt_txt,    /*Function pointer to get glyph's data*/
     .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,    /*Function pointer to get glyph's bitmap*/
@@ -6626,5 +6626,5 @@ lv_font_t font_kastletter = {
 
 
 
-#endif /*#if FONT_KASTLETTER*/
+#endif /*#if FONT_SHELF_LETTER*/
 

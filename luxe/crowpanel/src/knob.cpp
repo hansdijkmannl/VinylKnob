@@ -19,8 +19,8 @@ static volatile int32_t encSubSteps  = 0;
 
 static void IRAM_ATTR encoderIsr() {
   const uint8_t cur = (digitalRead(PIN_ENC_A) << 1) | digitalRead(PIN_ENC_B);
-  const int8_t stap = ENC_TABLE[(encPrevState << 2) | cur];
-  encSubSteps += ENC_INVERT ? -stap : stap;
+  const int8_t step = ENC_TABLE[(encPrevState << 2) | cur];
+  encSubSteps += ENC_INVERT ? -step : step;
   encPrevState = cur;
 }
 
