@@ -123,7 +123,18 @@ And it works without this service knowing anything about the amplifier. That is
 not a coincidence but a requirement: the receiver allows exactly one telnet
 session, and the panel owns it.
 
-**The threshold follows the signal.** The noise floor tracks the quiet and
+**Two thresholds, and they do different jobs.** `TRIGGER_DB` is relative — so
+far above the quiet — and decides that *something started*. `MIN_LEVEL_DB` is
+absolute and decides whether there is *enough to identify*. Without the second,
+hum and a needle in the run-out groove clear the first easily and spend a lookup
+that cannot succeed; every one of those burns an attempt and leaves an unknown
+in the queue. `/status` reports the higher of the two as `thresholdDb`, so the
+meter on the page shows what the loop really uses.
+
+Both are on the automatic path only. Tapping the note on the panel or the button
+on the page goes past all of it — you have decided there is something to hear.
+
+**The floor follows the signal.** The noise floor tracks the quiet and
 triggers a set number of decibels above it. The floor falls quickly and rises
 very slowly, and only while the level is close to it — otherwise a minute of
 continuous music *becomes* the floor and the margin you need disappears.
@@ -137,7 +148,9 @@ Tuning lives in `marantzknob-listen.service`:
 
 | | Default | For |
 |---|---|---|
-| `TRIGGER_DB` | 6 | how far above the noise floor counts as music |
+| `TRIGGER_DB` | 15 | how far above the noise floor counts as music |
+| `MIN_LEVEL_DB` | -60 | quieter than this is not worth asking about at all |
+| `FLOOR_MAX_DB` | -55 | the noise floor can never be claimed to be higher |
 | `START_SECONDS` | 2.5 | how long sound must last before it "is playing" |
 | `SETTLE_SECONDS` | 4 | letting the needle settle before sampling |
 | `CLIP_SECONDS` | 15 | length of the recording sent for lookup |

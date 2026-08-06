@@ -122,6 +122,27 @@ FLOOR_QUIET_DB  = 6.0           # this close to the floor counts as "the room"
 # nothing in the normal case, where the floor is thirty decibels below this.
 FLOOR_MAX_DB = float(os.environ.get("FLOOR_MAX_DB", "-55"))
 
+# And a floor under the whole thing: never ask about sound too quiet to
+# recognise anyway.
+#
+# The threshold above is a *relative* one — so many decibels over whatever the
+# quiet is — which is right for deciding that something started, and says
+# nothing about whether there is enough there to identify. With the line idle at
+# -80 or lower, that relative threshold lands around -65, and hum, a needle in
+# the run-out groove or a little bleed from a neighbouring input all clear it
+# comfortably. Each one is a lookup that cannot succeed: it spends a request on
+# a service that owes us nothing, burns one of the three attempts, and drops
+# another unknown in the queue for you to throw away by hand.
+#
+# Measured on this line over an evening: music runs between -33 and -48 dBFS,
+# the idle input between -80 and -92. -60 sits in that gap with twelve decibels
+# of room on the music side.
+#
+# Only the automatic path is gated. Asking by hand — the note on the panel, the
+# button on the page — goes through regardless: you have decided there is
+# something to hear, and the device should not argue.
+MIN_LEVEL_DB = float(os.environ.get("MIN_LEVEL_DB", "-60"))
+
 BYTES_PER_BLOCK = int(RATE * BLOCK_S) * 2       # 16-bit mono
 
 
@@ -324,6 +345,16 @@ class Ears:
                     self.source_url = ""
             await asyncio.sleep(5)
 
+    def threshold_db(self) -> float:
+        """The level sound has to clear before we ask on our own.
+
+        Two conditions in one number: far enough above the quiet to count as
+        something starting, and loud enough to be worth identifying at all. The
+        page draws its marker from this, so what you see on the meter is what
+        the loop actually uses.
+        """
+        return max(self.floor_db + TRIGGER_DB, MIN_LEVEL_DB)
+
     async def audio_loop(self, source) -> None:
         while True:
             block = await source.stdout.readexactly(BYTES_PER_BLOCK)
@@ -346,7 +377,7 @@ class Ears:
             self.floor_db = min(self.floor_db, FLOOR_MAX_DB)
 
             now = self.clock
-            loud = level > self.floor_db + TRIGGER_DB
+            loud = level > self.threshold_db()
 
             if loud:
                 self.quiet_since = None
@@ -365,8 +396,8 @@ class Ears:
                     self.misses = 0
 
                 # Clear the picture much later. That keeps the sleeve up
-                # through a soft passage, and drops it when the record is
-                # werkelijk af is.
+                # through a soft passage, and drops it when the record has
+                # genuinely finished.
                 if self.artist and now - self.quiet_since > COVER_HOLD_S:
                     self.release_id = None
                     self.cover_url = None
@@ -377,10 +408,15 @@ class Ears:
                     print("[listen] quiet for a long time, cleared the screen", flush=True)
                     print("[ears] quiet, ready for the next side", flush=True)
 
+            # Asking by hand goes past every gate above: the level, the
+            # threshold, the panel's opinion and the amplifier. You pressed the
+            # note on the knob or the button on the page, so you have already
+            # decided there is something to hear.
             asked = self.force.is_set()
 
-            # Asking by hand is always allowed; starting on its own only when
-            # the panel says a record is on and the amplifier is running.
+            # Starting on its own is the guarded path: loud enough to be worth
+            # identifying, the panel says a record is on, and the amplifier is
+            # running.
             allowed = ((self.panel_wants or time.monotonic() > self.panel_until)
                    and self.amplifier_on)
             starts = (allowed
@@ -920,7 +956,8 @@ async def api_status(_request):
     return web.json_response({
         "levelDb": round(ears.level_db, 1),
         "floorDb": round(ears.floor_db, 1),
-        "thresholdDb": round(ears.floor_db + TRIGGER_DB, 1),
+        "thresholdDb": round(ears.threshold_db(), 1),
+        "minLevelDb": MIN_LEVEL_DB,
         "playing": ears.playing,
         "listening": ears.listening,
         "last": ears.last,
