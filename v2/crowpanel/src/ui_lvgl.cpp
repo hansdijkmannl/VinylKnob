@@ -109,30 +109,6 @@ static void buildSpans() {
   }
 }
 
-// What the rotation costs, in the only terms that matter here: how long the
-// panel spends putting a frame up, and how many of those there were.
-//
-// Running totals, not an average since the last look. Reading used to clear
-// them, and the Pi asks this panel for its state every ten seconds — so the
-// counters were empty every time a person looked, and the first measurement
-// read a flat zero. Two reads and a subtraction give the average over whatever
-// window you care about, and nobody's poll can rob anybody else's.
-//
-// Milliseconds rather than microseconds in the total: at 27 ms a frame, a
-// 32-bit microsecond counter wraps in an hour of drawing.
-static volatile uint32_t flushMsTotal = 0, flushCount = 0;
-static volatile uint32_t drawMsTotal = 0, drawCount = 0;
-
-void uiFlushStats(uint32_t &totalMs, uint32_t &frames) {
-  totalMs = flushMsTotal;
-  frames  = flushCount;
-}
-
-void uiDrawStats(uint32_t &totalMs, uint32_t &passes) {
-  totalMs = drawMsTotal;
-  passes  = drawCount;
-}
-
 // Blend two RGB565 pixels, f in 0..31.
 //
 // The usual trick: red and blue sit far enough apart in the word to be
@@ -203,7 +179,6 @@ flushRotated(lv_color_t *px) {
 }
 
 static void flushCb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *px) {
-  const uint32_t t0 = micros();
   if (rotTenths != 0) {
     // full_refresh is on whenever the angle is, so this area is the whole
     // screen. Rotating a partial one would land it in the wrong place.
@@ -217,8 +192,6 @@ static void flushCb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *px) {
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px, w, h);
 #endif
   }
-  flushMsTotal += (micros() - t0 + 500) / 1000;
-  flushCount++;
   lv_disp_flush_ready(drv);
 }
 
@@ -911,17 +884,7 @@ void uiSetRotation(bool upsideDown) {
 }
 
 void uiTick() {
-  if (!buf1) return;
-  // Drawing and flushing together, which is what a change actually costs
-  // before it is on the glass. The flush counter alone leaves out the render,
-  // and with full_refresh the render is a whole screen too.
-  const uint32_t t0 = micros();
-  lv_timer_handler();
-  const uint32_t spent = micros() - t0;
-  if (spent > 2000) {                 // idle passes do nothing; ignore them
-    drawMsTotal += (spent + 500) / 1000;
-    drawCount++;
-  }
+  if (buf1) lv_timer_handler();
 }
 
 Touch uiTakeTouch() {

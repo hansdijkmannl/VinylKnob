@@ -362,19 +362,6 @@ static void handleState() {
   // right in the input list and with the screen off too.
   doc["screen"] = uiScreenName();
 
-  // What a frame costs on the glass. Running totals since boot: take two
-  // readings and divide the differences. Only interesting while working out
-  // whether the fine rotation is affordable, but it is two numbers and it saves
-  // guessing.
-  uint32_t totalMs = 0, frames = 0;
-  uiFlushStats(totalMs, frames);
-  doc["flushMs"]  = totalMs;
-  doc["flushes"]  = frames;
-  uint32_t drawMs = 0, passes = 0;
-  uiDrawStats(drawMs, passes);
-  doc["drawMs"]   = drawMs;
-  doc["draws"]    = passes;
-  doc["screenAngle"] = settings.screenAngle;
 
   String out;
   serializeJson(doc, out);

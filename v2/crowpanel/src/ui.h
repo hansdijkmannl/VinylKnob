@@ -93,14 +93,6 @@ void uiSetRotation(bool upsideDown);
 // — which costs a second pass over the whole buffer. 0 skips it entirely.
 void uiSetAngle(int16_t tenths);
 
-// What that pass costs, as running totals: milliseconds spent in the flush
-// and frames put out since boot. Two reads and a subtraction give the
-// average over any window; reading does not disturb another reader.
-void uiFlushStats(uint32_t &totalMs, uint32_t &frames);
-
-// The same for drawing and flushing together, which is what a change costs
-// before it reaches the glass. Passes that did nothing are not counted.
-void uiDrawStats(uint32_t &totalMs, uint32_t &passes);
 
 // Touches the screen reports back to the logic.
 enum class Touch : uint8_t { None, InputLabel, Artwork, Confirm, Dismiss, Listen,
