@@ -199,12 +199,13 @@ laid out and one press each.
 | `v2/avr.sh` | poke the receiver's telnet port by hand, before anything else owns it |
 
 Two things run without a receiver or a turntable and are worth running after a
-change. The matcher test needs the brain's dependencies (it builds a throwaway
-database); the page test needs nothing but node.
+change. The two Python ones need the virtualenv the installer makes (they build
+a throwaway database); the page test needs nothing but node.
 
 ```bash
-v2/brain/.venv/bin/python v2/brain/test_match.py   # a service's answer vs your shelf
-node v2/pi/static/test_page.mjs                    # does the web interface hold together
+.venv/bin/python v2/brain/test_match.py   # a service's answer against your shelf
+.venv/bin/python v2/pi/test_ears.py       # what the ears do with no sound
+node v2/pi/static/test_page.mjs           # does the web interface hold together
 ```
 
 ## Licence

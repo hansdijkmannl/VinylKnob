@@ -321,7 +321,7 @@ class Ears:
             f"http://{host}:{LINE_PORT}/analoginput/analog/analog/0/{LINE_INPUT}"
         ).open()
 
-    async def draai(self) -> None:
+    async def run(self) -> None:
         waiting = False
         while True:
             source = None
@@ -347,6 +347,44 @@ class Ears:
                     await source.close()
                     self.source_url = ""
             await asyncio.sleep(5)
+
+    def amplifier_is(self, on: bool) -> None:
+        """The amplifier went on or off; act on the change, not the state.
+
+        Switching off ends the evening, so it ends the record with it: the
+        screen goes back to being a volume knob. Waiting out COVER_HOLD_S
+        instead would mean switching on again half an hour later and being shown
+        whatever you finished with, which reads as "this is playing" when
+        nothing is.
+
+        Only on the edge. Called every ten seconds with the same answer, and
+        clearing on the state rather than the change would wipe the screen over
+        and over while the amplifier is simply off.
+        """
+        was_on, self.amplifier_on = self.amplifier_on, on
+        if was_on and not on and self.artist:
+            self.forget()
+            self.playing = False
+            self.misses = 0
+            self.retry_at = None
+            print("[listen] amplifier off, cleared the screen", flush=True)
+
+    def forget(self) -> None:
+        """Nothing is playing any more: empty the screen.
+
+        Everything that describes a record goes at once — the name, the sleeve,
+        the link you could still have made, the question about which pressing it
+        was. Clearing them one at a time is how they get out of step, and a
+        sleeve without an artist under it looks like a bug rather than an empty
+        screen.
+        """
+        self.release_id = None
+        self.cover_url = None
+        self.artist = self.title = self.album = ""
+        # The open link goes with it: what you would point at now no longer
+        # belongs to the sound it was recorded from.
+        self.open_play_id = None
+        self.choices = []
 
     def threshold_db(self) -> float:
         """The level sound has to clear before we ask on our own.
@@ -402,13 +440,7 @@ class Ears:
                 # through a soft passage, and drops it when the record has
                 # genuinely finished.
                 if self.artist and now - self.quiet_since > COVER_HOLD_S:
-                    self.release_id = None
-                    self.cover_url = None
-                    self.artist = self.title = self.album = ""
-                    # Drop the open link too: what you would point at now no
-                    # longer belongs to sound from a quarter of an hour ago.
-                    self.open_play_id = None
-                    self.choices = []
+                    self.forget()
                     print("[listen] quiet for a long time, cleared the screen", flush=True)
                     print("[ears] quiet, ready for the next side", flush=True)
 
@@ -1028,23 +1060,23 @@ async def watch_amplifier() -> None:
                         st = await r.json()
                 # Only shut the gate when we are sure: no connection to the
                 # receiver means the panel does not know either.
-                ears.amplifier_on = not (st.get("connected") and
-                                           not st.get("powered"))
+                ears.amplifier_is(not (st.get("connected") and
+                                       not st.get("powered")))
             except Exception:                                   # noqa: BLE001
                 ears.amplifier_on = True      # panel gone: do not guess
         await asyncio.sleep(10)
 
 
 async def start(app):
-    app["oren"] = asyncio.create_task(ears.draai())
+    app["ears"] = asyncio.create_task(ears.run())
     app["avr"] = asyncio.create_task(watch_amplifier())
     if atv.paired():
         app["atv"] = asyncio.create_task(atv.connect())
-        app["atv_bewaking"] = asyncio.create_task(atv.watch())
+        app["atv_watch"] = asyncio.create_task(atv.watch())
 
 
 async def stop(app):
-    for name in ("oren", "avr", "atv_bewaking"):
+    for name in ("ears", "avr", "atv_watch"):
         if name in app:
             app[name].cancel()
 

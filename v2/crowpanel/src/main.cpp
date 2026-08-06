@@ -147,6 +147,7 @@ static void queueCommand(const char *cmd, uint32_t delayMs) {
 
 static void refreshUi();          // defined further down; declared here
 static void pickAlbum();
+static void forgetTheQuestion();
 
 // For web.cpp: the order is that of enum class Screen in ui.h.
 const char *uiScreenName() {
@@ -163,6 +164,15 @@ static void powerDown(bool alsoAmplifier) {
   if (alsoAmplifier) avrSend("ZMOFF");
   ui.screen = Screen::Off;
   boardBacklight(0);
+  // Switching off ends the evening, so it ends the record with it. Come back to
+  // this screen tomorrow and it is a volume knob again — not the sleeve of
+  // whatever you finished with, which looks like something is playing. What you
+  // pointed at by hand goes too: that was a statement about a record that is no
+  // longer on. If the amplifier was left running the Pi says so within a few
+  // seconds and it all comes straight back, which is what should happen.
+  artworkClear();
+  userPicked = false;
+  forgetTheQuestion();
   refreshUi();
 }
 
@@ -598,6 +608,9 @@ void setup() {
 // than sitting there all evening.
 static uint16_t askedChoices[SHELF_FILTER_MAX];
 static uint8_t  askedCount = 0;
+
+// Forget that a question was ever asked, so the same one may be asked again.
+static void forgetTheQuestion() { askedCount = 0; }
 
 static void askIfNeeded() {
   if (brainState.choiceCount < 2) {
