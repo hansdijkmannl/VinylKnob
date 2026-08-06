@@ -178,7 +178,7 @@ bool artworkLoad(const char *host, uint16_t poort) {
   if (!pixels || !jpeg) { Serial.println(F("[artwork] no buffers")); return false; }
   if (WiFi.status() != WL_CONNECTED) { Serial.println(F("[artwork] no Wi-Fi")); return false; }
   char url[96];
-  snprintf(url, sizeof(url), "http://%s:%u/hoes", host, poort);
+  snprintf(url, sizeof(url), "http://%s:%u/artwork", host, poort);
   return haalEnDecodeer(url);
 }
 
@@ -188,7 +188,7 @@ bool artworkLoadAlbum(const char *host, uint16_t poort, uint16_t releaseId) {
   // The same size /hoes delivers, because it ends up in the same place:
   // full-screen behind the volume.
   char url[112];
-  snprintf(url, sizeof(url), "http://%s:%u/kasthoes?id=%u&px=%d",
+  snprintf(url, sizeof(url), "http://%s:%u/shelfcover?id=%u&px=%d",
            host, poort, (unsigned)releaseId, ARTWORK_PX);
   return haalEnDecodeer(url);
 }

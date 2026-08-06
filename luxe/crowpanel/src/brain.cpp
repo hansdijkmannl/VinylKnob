@@ -43,7 +43,7 @@ static void clear() {
 void brainAskLookup() {
   if (settings.brainHost[0] == '\0' || WiFi.status() != WL_CONNECTED) return;
   char url[96];
-  snprintf(url, sizeof(url), "http://%s:%u/luister", settings.brainHost, BRAIN_PORT);
+  snprintf(url, sizeof(url), "http://%s:%u/listen", settings.brainHost, BRAIN_PORT);
   HTTPClient http;
   http.setConnectTimeout(VERBIND_TIMEOUT_MS);
   http.setTimeout(READ_TIMEOUT_MS);
@@ -59,7 +59,7 @@ void brainAskLookup() {
 bool brainLink(uint16_t releaseId) {
   if (settings.brainHost[0] == '\0' || WiFi.status() != WL_CONNECTED) return false;
   char url[112];
-  snprintf(url, sizeof(url), "http://%s:%u/koppel?id=%u",
+  snprintf(url, sizeof(url), "http://%s:%u/link?id=%u",
            settings.brainHost, BRAIN_PORT, (unsigned)releaseId);
   HTTPClient http;
   http.setConnectTimeout(VERBIND_TIMEOUT_MS);
@@ -95,7 +95,7 @@ void brainLoop() {
   // TV there is nothing to recognise and the Pi need not bother Shazam — which
   // is exactly what we wanted to be frugal with.
   char url[96];
-  snprintf(url, sizeof(url), "http://%s:%u/nu?luister=%d",
+  snprintf(url, sizeof(url), "http://%s:%u/now?listen=%d",
            settings.brainHost, BRAIN_PORT, brainWantsToListen ? 1 : 0);
 
   HTTPClient http;
@@ -120,16 +120,16 @@ void brainLoop() {
 
   BrainState fresh;
   fresh.bereikbaar = true;
-  fresh.playing   = doc["speelt"] | false;
-  fresh.listening = doc["luistert"] | false;
-  fresh.onShelf   = doc["kast"]   | false;
-  fresh.canLink = doc["koppelbaar"] | false;
-  fresh.haveArtwork   = doc["hoes"] | false;
+  fresh.playing   = doc["playing"] | false;
+  fresh.listening = doc["listening"] | false;
+  fresh.onShelf   = doc["onShelf"]   | false;
+  fresh.canLink = doc["canLink"] | false;
+  fresh.haveArtwork   = doc["artwork"] | false;
   fresh.artworkIsLogo = doc["logo"] | false;
-  fresh.linkable = doc["koppelen"] | 0;
-  fresh.hot     = doc["heet"] | false;
-  strlcpy(fresh.artist, doc["artiest"] | "", sizeof(fresh.artist));
-  strlcpy(fresh.title,   doc["titel"]   | "", sizeof(fresh.title));
+  fresh.linkable = doc["linkable"] | 0;
+  fresh.hot     = doc["hot"] | false;
+  strlcpy(fresh.artist, doc["artist"] | "", sizeof(fresh.artist));
+  strlcpy(fresh.title,   doc["title"]   | "", sizeof(fresh.title));
   strlcpy(fresh.album,   doc["album"]   | "", sizeof(fresh.album));
   strlcpy(fresh.app,     doc["app"]     | "", sizeof(fresh.app));
 

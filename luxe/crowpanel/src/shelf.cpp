@@ -85,7 +85,7 @@ bool shelfLoad(const char *host, uint16_t poort) {
   if (!host || !host[0] || WiFi.status() != WL_CONNECTED) return false;
 
   char url[96];
-  snprintf(url, sizeof(url), "http://%s:%u/kast", host, poort);
+  snprintf(url, sizeof(url), "http://%s:%u/shelf", host, poort);
 
   HTTPClient http;
   http.setConnectTimeout(1000);
@@ -260,7 +260,7 @@ static bool fetchArtwork(const char *host, uint16_t poort, int album) {
   if (!slot || !slot->px) return false;
 
   char url[112];
-  snprintf(url, sizeof(url), "http://%s:%u/kasthoes?id=%u&px=%d",
+  snprintf(url, sizeof(url), "http://%s:%u/shelfcover?id=%u&px=%d",
            host, poort, (unsigned)albums[album].id, SHELF_PX);
 
   HTTPClient http;

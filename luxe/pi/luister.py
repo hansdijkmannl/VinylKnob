@@ -45,10 +45,10 @@ from aiohttp import ClientSession, ClientTimeout, web
 COVER_PX = int(os.environ.get("COVER_PX", "480"))
 
 # -- settings, every one overridable through the environment ----------------
-BRAIN        = os.environ.get("BREIN_URL", "http://127.0.0.1:8790")
+BRAIN        = os.environ.get("BRAIN_URL", "http://127.0.0.1:8790")
 MIC_DEVICE_NAME     = os.environ.get("MIC_DEVICE", "plughw:1,0")
 RATE        = int(os.environ.get("MIC_RATE", "44100"))
-PORT        = int(os.environ.get("LUISTER_PORT", "8791"))
+PORT        = int(os.environ.get("LISTEN_PORT", "8791"))
 
 BLOCK_S       = 0.1                     # how often we measure the level
 CLIP_S   = float(os.environ.get("CLIP_SECONDS", "8"))
@@ -95,7 +95,7 @@ HOT_C = float(os.environ.get("WARN_TEMP_C", "75"))
 
 def pi_heat() -> dict:
     """Temperature, fan speed, and whether it is being throttled."""
-    out = {"tempC": None, "fanRpm": None, "geknepen": False, "heet": False}
+    out = {"tempC": None, "fanRpm": None, "throttled": False, "hot": False}
     try:
         with open("/sys/class/thermal/thermal_zone0/temp") as f:
             out["tempC"] = round(int(f.read()) / 1000, 1)
@@ -112,10 +112,10 @@ def pi_heat() -> dict:
             continue
     try:
         with open("/sys/devices/platform/soc/soc:firmware/get_throttled") as f:
-            out["geknepen"] = int(f.read().strip(), 16) != 0
+            out["throttled"] = int(f.read().strip(), 16) != 0
     except Exception:                                       # noqa: BLE001
         pass
-    out["heet"] = bool(out["geknepen"] or (out["tempC"] or 0) >= HOT_C)
+    out["hot"] = bool(out["throttled"] or (out["tempC"] or 0) >= HOT_C)
     return out
 
 
@@ -432,10 +432,10 @@ async def api_nu(request):
     # interface started using this endpoint too — to show exactly what is on the
     # screen — counting those would muddy the diagnostic: "panel polls" would
     # then say as much about your phone as about the panel.
-    if "luister" in request.query:
+    if "listen" in request.query:
         ears.panel_polls += 1
         ears.last_panel_ip = request.remote or "?"
-        ears.panel_wants = request.query["luister"] not in ("0", "false", "nee")
+        ears.panel_wants = request.query["listen"] not in ("0", "false", "nee")
         ears.panel_until = time.monotonic() + 60
 
     # With the receiver on anything but the turntable, the Apple TV is the
@@ -447,35 +447,35 @@ async def api_nu(request):
     if not ears.panel_wants and atv.device is not None and (
             atv.artist or atv.title or atv.app_id):
         return web.json_response({
-            "koppelen": await count_linkable(),
-            "artiest": atv.artist,
-            "titel": atv.title,
+            "linkable": await count_linkable(),
+            "artist": atv.artist,
+            "title": atv.title,
             "album": atv.album or atv.title,
-            "hoes": bool(atv.artwork) or bool(await appicon.icon(atv.app_id)),
+            "artwork": bool(atv.artwork) or bool(await appicon.icon(atv.app_id)),
             # A logo is not artwork but a stand-in: the panel hides text behind
             # real artwork, but with a logo the title belongs on screen —
             # otherwise you see a brand and not what is playing.
             "logo": not atv.artwork and bool(await appicon.icon(atv.app_id)),
-            "kast": False,
-            "speelt": atv.playing_now,
-            "luistert": False,
-            "bron": "appletv",
+            "onShelf": False,
+            "playing": atv.playing_now,
+            "listening": False,
+            "source": "appletv",
             "app": atv.app,
-            "heet": pi_heat()["heet"],
+            "hot": pi_heat()["hot"],
         })
     return web.json_response({
-        "koppelen": await count_linkable(),
-        "artiest": ears.artist,
-        "titel": ears.title,
+        "linkable": await count_linkable(),
+        "artist": ears.artist,
+        "title": ears.title,
         "album": ears.album,
-        "hoes": bool(ears.release_id or ears.cover_url),   # is there anything on /hoes
-        "kast": ears.release_id is not None,  # gevonden in de eigen collectie
-        "speelt": ears.playing,
-        "luistert": ears.listening,
+        "artwork": bool(ears.release_id or ears.cover_url),   # is there anything on /hoes
+        "onShelf": ears.release_id is not None,  # gevonden in de eigen collectie
+        "playing": ears.playing,
+        "listening": ears.listening,
         # Is there an open lookup that came up empty? Then you can point at an
         # album on the panel and hang it on that.
-        "koppelbaar": ears.open_play_id is not None,
-        "heet": pi_heat()["heet"],
+        "canLink": ears.open_play_id is not None,
+        "hot": pi_heat()["hot"],
     })
 
 
@@ -571,12 +571,12 @@ async def api_link(request):
     kon geven.
     """
     if ears.open_play_id is None:
-        return web.json_response({"ok": False, "fout": "niets om te koppelen"},
+        return web.json_response({"ok": False, "error": "niets om te koppelen"},
                                  status=409)
     try:
         rel_id = int(request.query.get("id", ""))
     except ValueError:
-        return web.json_response({"ok": False, "fout": "no id"}, status=400)
+        return web.json_response({"ok": False, "error": "no id"}, status=400)
 
     play_id = ears.open_play_id
     try:
@@ -591,13 +591,13 @@ async def api_link(request):
             rel = next((x for x in lijst if x["id"] == rel_id), None)
             if rel is None:
                 return web.json_response(
-                    {"ok": False, "fout": f"album {rel_id} does not exist"}, status=404)
+                    {"ok": False, "error": f"album {rel_id} does not exist"}, status=404)
 
             async with s.post(f"{BRAIN}/api/plays/{play_id}/link",
                               json={"releaseId": rel_id}) as r:
                 out = await r.json()
     except Exception as e:                                  # noqa: BLE001
-        return web.json_response({"ok": False, "fout": f"{e!r}"}, status=502)
+        return web.json_response({"ok": False, "error": f"{e!r}"}, status=502)
 
     ears.release_id = rel_id
     ears.cover_url = None
@@ -612,7 +612,7 @@ async def api_link(request):
     print(f"[luister] {ears.last}, {out.get('hashes', 0)} vingerafdrukken",
           flush=True)
     return web.json_response({"ok": True, "hashes": out.get("hashes", 0),
-                              "artiest": ears.artist, "titel": ears.title})
+                              "artist": ears.artist, "title": ears.title})
 
 
 async def api_shelf_cover(request):
@@ -700,7 +700,7 @@ async def _forward(request, target: str, what: str):
 
 async def brain_proxy(request):
     """/api/* belongs to the brain, one port along on the same Pi."""
-    return await _forward(request, f"{BRAIN}/api/{request.match_info['staart']}",
+    return await _forward(request, f"{BRAIN}/api/{request.match_info['tail']}",
                            "brein")
 
 
@@ -717,7 +717,7 @@ async def panel_proxy(request):
             text="the panel has not been seen yet; it announces itself as soon "
                  "as it polls this Pi")
     return await _forward(request,
-                           f"http://{host}/{request.match_info.get('staart', '')}",
+                           f"http://{host}/{request.match_info.get('tail', '')}",
                            "paneel")
 
 
@@ -730,7 +730,7 @@ async def panel_root(request):
 
 # -- Apple TV ---------------------------------------------------------------
 async def atv_scan(_request):
-    return web.json_response({"apparaten": await atv.scan()})
+    return web.json_response({"devices": await atv.scan()})
 
 
 async def atv_pair(request):
@@ -751,45 +751,45 @@ async def atv_forget(_request):
 async def atv_status(_request):
     g = atv.paired()
     return web.json_response({
-        "gekoppeld": bool(g),
-        "naam": (g or {}).get("naam", ""),
-        "verbonden": atv.device is not None,
-        "speelt": atv.playing_now,
-        "artiest": atv.artist,
-        "titel": atv.title,
+        "paired": bool(g),
+        "name": (g or {}).get("naam", ""),
+        "connected": atv.device is not None,
+        "playing": atv.playing_now,
+        "artist": atv.artist,
+        "title": atv.title,
         "album": atv.album,
-        "hoes": bool(atv.artwork),
-        "hoesBytes": len(atv.artwork),
+        "artwork": bool(atv.artwork),
+        "artworkBytes": len(atv.artwork),
         "app": atv.app,
         "appId": atv.app_id,
-        "fout": atv.error,
+        "error": atv.error,
         # How old this information is. Without it, a frozen connection looks
         # exactly like an Apple TV that has been playing the same video for an
         # hour — and that is the difference you want to be able to see.
-        "seconden": (round(time.monotonic() - atv.last_update)
+        "ageSeconds": (round(time.monotonic() - atv.last_update)
                      if atv.last_update else None),
     })
 
 
 async def api_status(_request):
     return web.json_response({
-        "niveauDb": round(ears.level_db, 1),
-        "ruisvloerDb": round(ears.floor_db, 1),
-        "drempelDb": round(ears.floor_db + TRIGGER_DB, 1),
-        "speelt": ears.playing,
-        "luistert": ears.listening,
-        "laatste": ears.last,
+        "levelDb": round(ears.level_db, 1),
+        "floorDb": round(ears.floor_db, 1),
+        "thresholdDb": round(ears.floor_db + TRIGGER_DB, 1),
+        "playing": ears.playing,
+        "listening": ears.listening,
+        "last": ears.last,
         "releaseId": ears.release_id,
-        "hoesUrl": ears.cover_url,
-        "apparaat": MIC_DEVICE_NAME,
-        "luisterenToegestaan": ((ears.panel_wants or time.monotonic() > ears.panel_until)
+        "coverUrl": ears.cover_url,
+        "micDevice": MIC_DEVICE_NAME,
+        "listeningAllowed": ((ears.panel_wants or time.monotonic() > ears.panel_until)
                                 and ears.amplifier_on),
-        "versterkerAan": ears.amplifier_on,
-        "missers": ears.misses,
-        "maxHerkansen": MAX_RETRIES,
+        "amplifierOn": ears.amplifier_on,
+        "misses": ears.misses,
+        "maxRetries": MAX_RETRIES,
         "pi": pi_heat(),
-        "paneelVragen": ears.panel_polls,
-        "paneelVan": ears.last_panel_ip,
+        "panelPolls": ears.panel_polls,
+        "panelFrom": ears.last_panel_ip,
     })
 
 
@@ -833,24 +833,24 @@ async def stop(app):
 def main() -> None:
     app = web.Application()
     app.router.add_get("/", index)
-    app.router.add_post("/luister", api_listen_now)
+    app.router.add_post("/listen", api_listen_now)
     app.router.add_get("/status", api_status)
-    app.router.add_get("/nu", api_nu)
-    app.router.add_get("/hoes", api_cover)
-    app.router.add_get("/kast", api_shelf)
-    app.router.add_get("/kasthoes", api_shelf_cover)
-    app.router.add_post("/koppel", api_link)
+    app.router.add_get("/now", api_nu)
+    app.router.add_get("/artwork", api_cover)
+    app.router.add_get("/shelf", api_shelf)
+    app.router.add_get("/shelfcover", api_shelf_cover)
+    app.router.add_post("/link", api_link)
     app.router.add_get("/appletv/scan", atv_scan)
     app.router.add_get("/appletv/status", atv_status)
     app.router.add_post("/appletv/pair", atv_pair)
     app.router.add_post("/appletv/pin", atv_pin)
-    app.router.add_post("/appletv/vergeet", atv_forget)
+    app.router.add_post("/appletv/forget", atv_forget)
 
     # The two forwarding routes. They come last because they end in a wildcard
     # en anders de vaste routes hierboven zouden opslokken.
-    app.router.add_route("*", "/api/{staart:.*}", brain_proxy)
-    app.router.add_route("*", "/paneel", panel_root)
-    app.router.add_route("*", "/paneel/{staart:.*}", panel_proxy)
+    app.router.add_route("*", "/api/{tail:.*}", brain_proxy)
+    app.router.add_route("*", "/panel", panel_root)
+    app.router.add_route("*", "/panel/{tail:.*}", panel_proxy)
 
     app.on_startup.append(start)
     app.on_cleanup.append(stop)
