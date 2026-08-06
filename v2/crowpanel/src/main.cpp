@@ -90,6 +90,12 @@ static void screenDimLoop() {
   }
   // Same for flipping the orientation in the web interface.
   static int8_t appliedRotation = -1;
+  static int16_t appliedAngle = INT16_MIN;
+  if (appliedAngle != settings.screenAngle) {
+    appliedAngle = settings.screenAngle;
+    uiSetAngle(settings.screenAngle);
+    uiDirty = true;
+  }
   if (appliedRotation != (int8_t)settings.rotated) {
     appliedRotation = settings.rotated;
     uiSetRotation(settings.rotated);

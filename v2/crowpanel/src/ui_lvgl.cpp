@@ -69,14 +69,95 @@ static lv_color_t *buf2 = nullptr;
 // ---------------------------------------------------------------------------
 // Wiring LVGL to the board
 // ---------------------------------------------------------------------------
-static void flushCb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *px) {
-  const uint32_t w = area->x2 - area->x1 + 1;
-  const uint32_t h = area->y2 - area->y1 + 1;
+// -- fine rotation ----------------------------------------------------------
+//
+// LVGL turns a display by whole quarters and nothing in between, and it cannot
+// turn a label at all. So a panel that ended up a few degrees off in its mount
+// cannot be corrected anywhere in the widget tree: the sleeve and the arc would
+// come round and every piece of text would stay where it was.
+//
+// The one place where everything is already together is the finished frame, on
+// its way to the glass. Rotating there costs a second pass over the whole
+// buffer, which is why it is measured rather than assumed — see flushStats().
+//
+// Small angles are kinder than they look. Stepping along a destination row
+// moves the source by (cos, -sin) per pixel, and at four degrees sin is 0.07:
+// the source row changes only every fourteenth pixel, so the reads stay almost
+// sequential and PSRAM is not asked to jump about.
+static int32_t rotSin = 0, rotCos = 1 << 16;      // Q16, of minus the angle
+static int16_t rotTenths = 0;
+static uint16_t rowBuf[SCREEN_W];                  // one row, in internal RAM
+
+// What the rotation costs, in the only terms that matter here: how long the
+// panel spends putting a frame up, and how many of those there were.
+//
+// Running totals, not an average since the last look. Reading used to clear
+// them, and the Pi asks this panel for its state every ten seconds — so the
+// counters were empty every time a person looked, and the first measurement
+// read a flat zero. Two reads and a subtraction give the average over whatever
+// window you care about, and nobody's poll can rob anybody else's.
+//
+// Milliseconds rather than microseconds in the total: at 27 ms a frame, a
+// 32-bit microsecond counter wraps in an hour of drawing.
+static volatile uint32_t flushMsTotal = 0, flushCount = 0;
+static volatile uint32_t drawMsTotal = 0, drawCount = 0;
+
+void uiFlushStats(uint32_t &totalMs, uint32_t &frames) {
+  totalMs = flushMsTotal;
+  frames  = flushCount;
+}
+
+void uiDrawStats(uint32_t &totalMs, uint32_t &passes) {
+  totalMs = drawMsTotal;
+  passes  = drawCount;
+}
+
+static void flushRotated(lv_color_t *px) {
+  // Counter-rotate every destination pixel to find where it came from. The
+  // centre is the centre of the glass, because that is what the mount turned
+  // around.
+  const int32_t cx = SCREEN_W / 2, cy = SCREEN_H / 2;
+  const uint16_t *src = (const uint16_t *)px;
+
+  for (int32_t dy = 0; dy < SCREEN_H; dy++) {
+    // Start of the row, in Q16 source coordinates.
+    int32_t sx = (cx << 16) + (0 - cx) * rotCos + (dy - cy) * rotSin;
+    int32_t sy = (cy << 16) - (0 - cx) * rotSin + (dy - cy) * rotCos;
+
+    for (int32_t dx = 0; dx < SCREEN_W; dx++) {
+      const int32_t ix = sx >> 16, iy = sy >> 16;
+      // Outside the source is black. On a round screen those pixels sit in the
+      // corners, behind the bezel, so nobody ever sees this branch.
+      rowBuf[dx] = (ix < 0 || ix >= SCREEN_W || iy < 0 || iy >= SCREEN_H)
+                   ? 0 : src[iy * SCREEN_W + ix];
+      sx += rotCos;
+      sy -= rotSin;
+    }
 #if (LV_COLOR_16_SWAP != 0)
-  gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t *)px, w, h);
+    gfx->draw16bitBeRGBBitmap(0, dy, rowBuf, SCREEN_W, 1);
 #else
-  gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px, w, h);
+    gfx->draw16bitRGBBitmap(0, dy, rowBuf, SCREEN_W, 1);
 #endif
+  }
+}
+
+static void flushCb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *px) {
+  const uint32_t t0 = micros();
+  if (rotTenths != 0) {
+    // full_refresh is on whenever the angle is, so this area is the whole
+    // screen. Rotating a partial one would land it in the wrong place.
+    flushRotated(px);
+  } else {
+    const uint32_t w = area->x2 - area->x1 + 1;
+    const uint32_t h = area->y2 - area->y1 + 1;
+#if (LV_COLOR_16_SWAP != 0)
+    gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t *)px, w, h);
+#else
+    gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px, w, h);
+#endif
+  }
+  flushMsTotal += (micros() - t0 + 500) / 1000;
+  flushCount++;
   lv_disp_flush_ready(drv);
 }
 
@@ -87,6 +168,16 @@ static void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
     // lv_indev.c once disp_drv.rotated is 180. Doing it here too cancelled the
     // two out and every tap landed on the mirror image — exactly the bug that
     // stopped the listen button responding.
+    //
+    // The fine angle is a different matter: LVGL knows nothing about it, so the
+    // finger has to be turned back by hand. Same rotation as the picture, the
+    // other way round, or every tap lands where the button used to be.
+    if (rotTenths != 0) {
+      const int32_t cx = SCREEN_W / 2, cy = SCREEN_H / 2;
+      const int32_t rx = x - cx, ry = y - cy;
+      x = (int16_t)(cx + ((rx * rotCos + ry * rotSin) >> 16));
+      y = (int16_t)(cy + ((-rx * rotSin + ry * rotCos) >> 16));
+    }
     data->point.x = x;
     data->point.y = y;
     data->state   = LV_INDEV_STATE_PRESSED;
@@ -157,6 +248,12 @@ void uiBegin() {
   // writing the pixels out in reverse anyway.
   dispDrv.sw_rotate = 1;
   dispDrv.rotated   = settings.rotated ? LV_DISP_ROT_180 : LV_DISP_ROT_NONE;
+  // A fine angle turns the finished frame, so the flush has to be handed the
+  // whole of it. Rotating one of LVGL's partial areas would put it on the glass
+  // somewhere it does not belong. Costs nothing when the angle is zero, which
+  // is why it is conditional and why changing it from zero needs a restart.
+  dispDrv.full_refresh = settings.screenAngle != 0;
+  uiSetAngle(settings.screenAngle);
   lv_disp_drv_register(&dispDrv);
 
   static lv_indev_drv_t indevDrv;
@@ -733,13 +830,36 @@ void uiRender(const UiState &s) {
   }
 }
 
+void uiSetAngle(int16_t tenths) {
+  // Anything past a few degrees is a mount to fix, not a picture to bend, and
+  // beyond that the uncovered corners come into view on a screen that is not
+  // perfectly round. Clamped rather than rejected: a wrong number should not
+  // leave the screen unreadable.
+  if (tenths >  150) tenths =  150;
+  if (tenths < -150) tenths = -150;
+  rotTenths = tenths;
+  const float rad = tenths * 0.1f * 3.14159265f / 180.0f;
+  rotCos = (int32_t)(cosf(rad) * 65536.0f);
+  rotSin = (int32_t)(sinf(rad) * 65536.0f);
+}
+
 void uiSetRotation(bool upsideDown) {
   lv_disp_t *d = lv_disp_get_default();
   if (d) lv_disp_set_rotation(d, upsideDown ? LV_DISP_ROT_180 : LV_DISP_ROT_NONE);
 }
 
 void uiTick() {
-  if (buf1) lv_timer_handler();
+  if (!buf1) return;
+  // Drawing and flushing together, which is what a change actually costs
+  // before it is on the glass. The flush counter alone leaves out the render,
+  // and with full_refresh the render is a whole screen too.
+  const uint32_t t0 = micros();
+  lv_timer_handler();
+  const uint32_t spent = micros() - t0;
+  if (spent > 2000) {                 // idle passes do nothing; ignore them
+    drawMsTotal += (spent + 500) / 1000;
+    drawCount++;
+  }
 }
 
 Touch uiTakeTouch() {

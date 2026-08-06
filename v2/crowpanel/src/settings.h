@@ -27,6 +27,9 @@ struct Settings {
   uint8_t  brightness;           // backlight 10..255
   uint16_t dimAfterS;            // dim after this many idle seconds; 0 = never
   bool     rotated;              // screen rotated 180 degrees
+  // Fine correction for a panel that ended up a few degrees off in its
+  // mount, in tenths of a degree. 0 is the fast path: no rotation at all.
+  int16_t  screenAngle;
 
   // Screen off as soon as the main zone goes off, and on again when it
   // returns. Switch the amplifier off with the remote — or let your Apple TV do

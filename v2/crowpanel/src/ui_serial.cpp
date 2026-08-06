@@ -86,3 +86,6 @@ Touch uiTakeTouch() {
 }
 
 void uiSetRotation(bool) {}   // the serial view does not rotate
+void uiSetAngle(int16_t) {}   // nor by a few degrees
+void uiFlushStats(uint32_t &totalMs, uint32_t &frames) { totalMs = frames = 0; }
+void uiDrawStats(uint32_t &totalMs, uint32_t &passes) { totalMs = passes = 0; }

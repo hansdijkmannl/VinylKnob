@@ -87,6 +87,21 @@ void uiTick();                          // every loop; animations and touches
 // is the other way round and you want to try it.
 void uiSetRotation(bool upsideDown);
 
+// Fine correction, in tenths of a degree, for a panel sitting a few degrees
+// off in its mount. LVGL turns a display by whole quarters and cannot turn a
+// label at all, so this happens to the finished frame on its way to the glass
+// — which costs a second pass over the whole buffer. 0 skips it entirely.
+void uiSetAngle(int16_t tenths);
+
+// What that pass costs, as running totals: milliseconds spent in the flush
+// and frames put out since boot. Two reads and a subtraction give the
+// average over any window; reading does not disturb another reader.
+void uiFlushStats(uint32_t &totalMs, uint32_t &frames);
+
+// The same for drawing and flushing together, which is what a change costs
+// before it reaches the glass. Passes that did nothing are not counted.
+void uiDrawStats(uint32_t &totalMs, uint32_t &passes);
+
 // Touches the screen reports back to the logic.
 enum class Touch : uint8_t { None, InputLabel, Artwork, Confirm, Dismiss, Listen,
                              Pairing };

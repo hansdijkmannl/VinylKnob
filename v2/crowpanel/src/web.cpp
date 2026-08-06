@@ -97,6 +97,8 @@ dd{margin:0;color:var(--dim)}
     <div style="flex:1"><label>Orientation</label>
       <select id="rotated"><option value="0">normal</option>
       <option value="1">upside down</option></select></div>
+      <div style="flex:1"><label>Fine angle (&deg;)</label>
+        <input id="screenAngle" type="number" min="-15" max="15" step="0.1"></div>
     <div style="flex:1"><label>Dim after</label>
       <div class="sl"><input id="dimAfterS" type="range" min="0" max="300" step="15">
       <output id="oDim"></output></div></div>
@@ -224,6 +226,7 @@ async function boot(){
   // there threw a ReferenceError which meant the input list, the favourite
   // picker and the status row never appeared at all.
   $('rotated').value=S.rotated?'1':'0';
+  $('screenAngle').value=((S.screenAngle||0)/10).toFixed(1);
   $('offWithAmp').value=S.offWithAmp?'1':'0';
   inputs=S.inputs.map(b=>({code:b.code,label:b.label}));
   setFav(S.favouriteInput);
@@ -255,6 +258,7 @@ async function save(){
                   'volMaxDb','longPressMs','doublePressMs'])b[k]=parseInt($(k).value,10);
   b.encDivider=parseInt($('encDivider').value,10);
   b.rotated=$('rotated').value==='1';
+  b.screenAngle=Math.round(parseFloat($('screenAngle').value||'0')*10);
   b.offWithAmp=$('offWithAmp').value==='1';
   const r=await(await fetch('api/settings',{method:'POST',body:JSON.stringify(b)})).json();
   if(!r.ok){msg('Error: '+r.error,false);return}
@@ -357,6 +361,20 @@ static void handleState() {
   // and could until now only guess what was on it; with this field that copy is
   // right in the input list and with the screen off too.
   doc["screen"] = uiScreenName();
+
+  // What a frame costs on the glass. Running totals since boot: take two
+  // readings and divide the differences. Only interesting while working out
+  // whether the fine rotation is affordable, but it is two numbers and it saves
+  // guessing.
+  uint32_t totalMs = 0, frames = 0;
+  uiFlushStats(totalMs, frames);
+  doc["flushMs"]  = totalMs;
+  doc["flushes"]  = frames;
+  uint32_t drawMs = 0, passes = 0;
+  uiDrawStats(drawMs, passes);
+  doc["drawMs"]   = drawMs;
+  doc["draws"]    = passes;
+  doc["screenAngle"] = settings.screenAngle;
 
   String out;
   serializeJson(doc, out);

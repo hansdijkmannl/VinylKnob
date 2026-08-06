@@ -47,6 +47,7 @@ void settingsLoad() {
   settings.brightness = prefs.getUChar("bright", BACKLIGHT_LEVEL);
   settings.dimAfterS  = prefs.getUShort("dim", DEF_DIM_AFTER_S);
   settings.rotated    = prefs.getBool("rot", false);
+  settings.screenAngle = prefs.getShort("angle", 0);
   settings.offWithAmp = prefs.getBool("offamp", true);
 
   settings.avrPort        = prefs.getUShort("port",     settings.avrPort);
@@ -88,6 +89,7 @@ void settingsSave() {
   prefs.putUChar("bright", settings.brightness);
   prefs.putUShort("dim", settings.dimAfterS);
   prefs.putBool("rot", settings.rotated);
+  prefs.putShort("angle", settings.screenAngle);
   prefs.putBool("offamp", settings.offWithAmp);
   prefs.putUShort("port",     settings.avrPort);
   prefs.putUChar ("step",     settings.halfDbPerClick);
@@ -136,6 +138,7 @@ void settingsToJson(String &out) {
   doc["brightness"]     = settings.brightness;
   doc["dimAfterS"]      = settings.dimAfterS;
   doc["rotated"]        = settings.rotated;
+  doc["screenAngle"]    = settings.screenAngle;
   doc["offWithAmp"]     = settings.offWithAmp;
   doc["avrPort"]        = settings.avrPort;
   doc["halfDbPerClick"] = settings.halfDbPerClick;
@@ -193,6 +196,8 @@ bool settingsFromJson(const String &body, String &err, bool &wifiChanged) {
     settings.dimAfterS = constrain((int)doc["dimAfterS"], 0, 3600);
   if (doc["rotated"].is<bool>())
     settings.rotated = doc["rotated"];
+  if (!doc["screenAngle"].isNull())
+    settings.screenAngle = constrain((int)doc["screenAngle"], -150, 150);
   if (doc["offWithAmp"].is<bool>())
     settings.offWithAmp = doc["offWithAmp"];
 
