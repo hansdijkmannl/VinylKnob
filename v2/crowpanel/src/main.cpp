@@ -139,7 +139,7 @@ static void queueCommand(const char *cmd, uint32_t delayMs) {
   pendingAt = millis() + delayMs;
 }
 
-static void refreshUi();          // staat verderop; hier alvast bekend maken
+static void refreshUi();          // defined further down; declared here
 static void pickAlbum();
 
 // For web.cpp: the order is that of enum class Screen in ui.h.

@@ -10,8 +10,8 @@
 // shared helper instead of three places doing the same thing.
 //
 // The PCF8574 is quasi-bidirectional: a pin only reads correctly if you have
-// written a 1 to it first. So we keep a shadow byte in which
-// alle ingangen hoog blijven staan.
+// written a 1 to it first. So we keep a shadow byte in which every input
+// stays high.
 // ---------------------------------------------------------------------------
 
 void    pcfBegin();                          // Wire must already be started

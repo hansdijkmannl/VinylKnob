@@ -308,7 +308,7 @@ void uiBegin() {
   lv_obj_set_style_pad_top(lblInput, 10, 0);
   makeTappable(lblInput, Touch::InputLabel);
 
-  // -- laag 2: ingang kiezen -------------------------------------------------
+  // -- layer 2: choosing an input --------------------------------------------
   lyInputs = makeLayer();
   lblPickHead   = makeLabel(lyInputs, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0, -130);
   lblPickAbove = makeLabel(lyInputs, &lv_font_montserrat_20, COL_TRACK,   LV_ALIGN_CENTER, 0,  -62);
@@ -321,7 +321,7 @@ void uiBegin() {
   lv_obj_set_height(lblPickHead, 48);
   makeTappable(lblPickHead, Touch::Dismiss);
 
-  // -- laag 3: platenkast ----------------------------------------------------
+  // -- layer 3: the record shelf -----------------------------------------------
   //
   // The same arrangement as in the web interface: sleeves in a row, the jump
   // index as a ring of letters along the inner rim with the gap at the bottom.
@@ -412,7 +412,7 @@ void uiBegin() {
     lv_obj_add_flag(shelfRing[i], LV_OBJ_FLAG_HIDDEN);
   }
 
-  // -- laag 4: koppelen ------------------------------------------------------
+  // -- layer 4: linking ------------------------------------------------------
   lyQr = makeLayer();
   lv_obj_t *qKop = makeLabel(lyQr, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0, -130);
   lv_label_set_text(qKop, "UNKNOWN RECORD");

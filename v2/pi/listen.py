@@ -855,7 +855,7 @@ def main() -> None:
     app.on_startup.append(start)
     app.on_cleanup.append(stop)
 
-    async def draaien():
+    async def serve():
         # One application on two ports, not two applications. Port 80 used to
         # be a little portal with three links to the other pages; now that there
         # is only one page, that middle step is gone and the same interface
@@ -877,7 +877,7 @@ def main() -> None:
         await asyncio.Event().wait()
 
     try:
-        asyncio.run(draaien())
+        asyncio.run(serve())
     except KeyboardInterrupt:
         pass
 

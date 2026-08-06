@@ -4,7 +4,7 @@
 
 #include "config.h"
 
-// Alles hoog: uitgangen inactief, ingangen leesbaar.
+// Everything high: outputs inactive, inputs readable.
 static uint8_t shadow = 0xFF;
 
 static void flush() {

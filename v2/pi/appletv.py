@@ -175,7 +175,7 @@ class AppleTV:
             self.device.push_updater.start()
             self.error = ""
             # Fetch what is playing right away, rather than waiting for
-            # toevallig iets verandert.
+            # something to happen to change.
             try:
                 self._take_over(await self.device.metadata.playing())
             except Exception:                               # noqa: BLE001
@@ -205,8 +205,8 @@ class AppleTV:
         try:
             app = getattr(self.device.metadata, "app", None)
             self.app_id = (getattr(app, "identifier", None) or "") if app else ""
-            # .name geeft "YouTube"; str() zou "App: YouTube (com.google...)"
-            # and you do not want that on a 480-pixel screen.
+            # .name gives "YouTube"; str() would give "App: YouTube
+            # (com.google...)", and you do not want that on a 480-pixel screen.
             self.app = (getattr(app, "name", None) or "") if app else ""
         except Exception:                                   # noqa: BLE001
             self.app = ""
@@ -232,7 +232,7 @@ class AppleTV:
     # -- the connection itself ---------------------------------------------
     # pyatv reports a lost device through here. Previously nobody listened.
     def connection_lost(self, exception) -> None:
-        self.error = f"verbinding weggevallen: {type(exception).__name__}: {exception}"
+        self.error = f"connection dropped: {type(exception).__name__}: {exception}"
         self.device = None
         print(f"[appletv] {self.error}", flush=True)
 

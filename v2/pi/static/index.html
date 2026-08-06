@@ -143,7 +143,7 @@ dd{margin:0;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
 .kSleeve{width:104px;height:104px;border-radius:10px;flex:0 0 auto;opacity:.4;
  transform:scale(.8);transition:opacity .16s,transform .16s;background:#22222a;
  background-size:cover;background-position:center;box-shadow:0 8px 22px rgba(0,0,0,.55)}
-.kSleeve.nu{opacity:1;transform:scale(1.32)}
+.kSleeve.cur{opacity:1;transform:scale(1.32)}
 .kTitle{left:100px;top:352px;width:280px;text-align:center;font-size:19px;font-weight:600;
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kArtist{left:100px;top:380px;width:280px;text-align:center;font-size:14px;color:#8b8b96;
@@ -154,7 +154,7 @@ dd{margin:0;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
 .kLetters b{position:absolute;left:50%;top:50%;width:22px;margin:-11px 0 0 -11px;
  font-size:12px;font-weight:700;color:#7a7a86;line-height:22px;text-align:center;
  cursor:pointer;transform-origin:50% 50%;transition:color .12s,font-size .12s}
-.kLetters b.nu{color:#e8a33d;font-size:16px}
+.kLetters b.cur{color:#e8a33d;font-size:16px}
 
 .pMsg{left:0;top:0;width:480px;height:480px;background:#101014;display:none}
 .pMsgHead{position:absolute;left:75px;top:200px;width:330px;text-align:center;
@@ -765,8 +765,8 @@ function showLayer(id, visible) {
 // rather than at the next poll.
 let lastDrawn = null;
 
-function drawGlass(s, nu, panelbox, volMax) {
-  lastDrawn = [s, nu, panelbox, volMax];
+function drawGlass(s, np, panelbox, volMax) {
+  lastDrawn = [s, np, panelbox, volMax];
   // The message screens take priority, exactly as main.cpp picks them: no
   // Wi-Fi first, then no receiver, and otherwise the volume screen.
   //
@@ -784,19 +784,19 @@ function drawGlass(s, nu, panelbox, volMax) {
     return panelbox ? 'the panel is showing this message' : 'panel not reachable';
   }
 
-  const logo      = !!(nu && nu.logo);
-  const titel     = (nu && (nu.album || nu.title)) || '';
-  const artiest   = (nu && nu.artist) || '';
+  const logo      = !!(np && np.logo);
+  const title     = (np && (np.album || np.title)) || '';
+  const artist   = (np && np.artist) || '';
   const realArtwork = haveArtwork && !logo;
   // `turning` is always false here: that is the moment you are turning the
   // knob, and then you are not looking at your phone.
-  const showText = !!titel && !realArtwork;
-  const showVolume   = !showText && !titel;
+  const showText = !!title && !realArtwork;
+  const showVolume   = !showText && !title;
 
   showLayer('pVol', showVolume);
   showLayer('pTitle', showText);
   showLayer('pArtistName', showText);
-  showLayer('pSource', showText && !!(nu && nu.app) && !logo);
+  showLayer('pSource', showText && !!(np && np.app) && !logo);
   showLayer('pMuteFlag', !!panelbox.muted);
   // The plate behind the text goes as soon as there is a sleeve: then the
   // sleeve carries the image and a panel over it would only take away.
@@ -806,9 +806,9 @@ function drawGlass(s, nu, panelbox, volMax) {
   showLayer('pDisc', !haveArtwork);
 
   setText('pVol', panelbox.haveVolume ? panelbox.volDb.toFixed(1) : '--');
-  setText('pTitle', titel);
-  setText('pArtistName', artiest);
-  setText('pSource', (nu && nu.app) || '');
+  setText('pTitle', title);
+  setText('pArtistName', artist);
+  setText('pSource', (np && np.app) || '');
   setText('pInput', panelbox.inputLabel || '');
 
   const frac = panelbox.haveVolume
@@ -820,14 +820,14 @@ function drawGlass(s, nu, panelbox, volMax) {
 
   $('pSource').style.color   = accent;
   $('pInput').style.color = panelbox.powered ? accent : '#3a3a42';
-  $('pListen').style.color = (nu && nu.listening) ? accent : '#f2f2f4';
+  $('pListen').style.color = (np && np.listening) ? accent : '#f2f2f4';
   $('pDot').style.background = accent;
-  $('pDot').style.visibility = (nu && nu.linkable > 0) ? 'visible' : 'hidden';
-  $('pHot').style.visibility = (nu && nu.hot) ? 'visible' : 'hidden';
+  $('pDot').style.visibility = (np && np.linkable > 0) ? 'visible' : 'hidden';
+  $('pHot').style.visibility = (np && np.hot) ? 'visible' : 'hidden';
 
   return 'Live copy of the panel'
        + (panelbox.muted ? ' · muted' : '')
-       + (nu && nu.listening ? ' · listening' : '')
+       + (np && np.listening ? ' · listening' : '')
        + (!panelbox.powered ? ' · amplifier in standby' : '');
 }
 
@@ -837,10 +837,10 @@ TABS.now = {
     let s;
     try { s = await json('status'); } catch (e) { return; }
 
-    // Three sources: the ears for the levels, /nu for exactly what the panel
+    // Three sources: the ears for the levels, /now for exactly what the panel
     // receives, and the panel itself for volume, input and mute.
-    let nu = null, panelbox = null, volMax = -6;
-    try { nu = await json('now'); } catch (e) { /* then without it */ }
+    let np = null, panelbox = null, volMax = -6;
+    try { np = await json('now'); } catch (e) { /* then without it */ }
     try {
       panelbox = await json('panel/api/state');
       if (panelVolMax === null) {
@@ -853,17 +853,17 @@ TABS.now = {
     // The sleeve comes from /artwork, the same address the panel fetches it from
     // — own collection, artwork from the service, or the Apple TV's app logo.
     // One source, so no difference between this picture and the one on the knob.
-    const sleutel = (s.releaseId || '') + '|' + (s.artworkUrl || '') + '|' + (s.last || '');
-    if (sleutel !== artworkKey) {
-      artworkKey = sleutel;
+    const key = (s.releaseId || '') + '|' + (s.artworkUrl || '') + '|' + (s.last || '');
+    if (key !== artworkKey) {
+      artworkKey = key;
       const img = $('pArt');
       const redraw = () => { if (lastDrawn) setText('pCaption', drawGlass(...lastDrawn)); };
       img.onerror = () => { haveArtwork = false; accent = AC_FALLBACK; redraw(); };
       img.onload  = () => { haveArtwork = true;  accent = findAccent(img); redraw(); };
-      img.src = 'artwork?v=' + encodeURIComponent(sleutel);
+      img.src = 'artwork?v=' + encodeURIComponent(key);
     }
 
-    setText('pCaption', drawGlass(s, nu, panelbox, volMax));
+    setText('pCaption', drawGlass(s, np, panelbox, volMax));
 
     setText('mLevel', s.levelDb + ' dB');
     setText('mFloor', s.floorDb + ' dB');
@@ -950,9 +950,9 @@ async function loadQueue() {
     : '<p class="hint" style="margin:0">Nothing to link. Everything was recognised.</p>';
   refreshSelection();
 
-  const klaar = k.plays.filter(p => p.status !== 'unknown' && p.status !== 'discarded');
-  $('known').innerHTML = klaar.length
-    ? klaar.map(knownRow).join('')
+  const settled = k.plays.filter(p => p.status !== 'unknown' && p.status !== 'discarded');
+  $('known').innerHTML = settled.length
+    ? settled.map(knownRow).join('')
     : '<p class="hint" style="margin:0">Nothing recognised yet.</p>';
   refreshCounts();
 }
@@ -1044,11 +1044,11 @@ $('t-queue').addEventListener('click', async e => {
     loadQueue();
   } else if (d.save) {
     const box = $('manual-' + d.save);
-    const titel = box.querySelector('[data-album-title]').value.trim();
-    if (!titel) return;
+    const title = box.querySelector('[data-album-title]').value.trim();
+    if (!title) return;
     const fd = new FormData();
     fd.append('artist', box.querySelector('[data-album-artist]').value.trim());
-    fd.append('title', titel);
+    fd.append('title', title);
     const file = box.querySelector('[data-album-cover]').files[0];
     if (file) fd.append('cover', file);
     await fetch(`api/plays/${d.save}/manual`, {method: 'POST', body: fd});
@@ -1138,8 +1138,8 @@ function drawShelf() {
   }
   const n = shelf.length;
   const wrap = [-1, 0, 1].map(d => ((shelfIdx + d) % n + n) % n);
-  $('kRow').innerHTML = wrap.map((i, plek) =>
-    `<div class="kSleeve${plek === 1 ? ' nu' : ''}" data-goto="${i}"
+  $('kRow').innerHTML = wrap.map((i, slot) =>
+    `<div class="kSleeve${slot === 1 ? ' cur' : ''}" data-goto="${i}"
           style="background-image:url(${esc(shelf[i].cover || '')})"></div>`).join('');
   setText('kTitle', shelf[shelfIdx].title);
   setText('kArtist', shelf[shelfIdx].artist);
@@ -1153,13 +1153,13 @@ function drawShelf() {
 
   const hereLetter = shelfLetterAt(shelfIdx);
   for (const b of $('kLetters').children)
-    b.classList.toggle('now', b.dataset.letter === hereLetter);
+    b.classList.toggle('cur', b.dataset.letter === hereLetter);
 }
 
-function shelfMove(stappen) {
+function shelfMove(steps) {
   if (!shelf.length) return;
   const n = shelf.length;
-  shelfIdx = ((shelfIdx + stappen) % n + n) % n;
+  shelfIdx = ((shelfIdx + steps) % n + n) % n;
   drawShelf();
 }
 
@@ -1328,9 +1328,9 @@ async function panelState() {
   $('kRssi').className = 'pill' + (!s.ap && s.rssi < -72 ? ' bad' : '');
 }
 
-function panelMessage(tekst, goed) {
-  setText('kMsg', tekst);
-  $('kMsg').className = 'msg ' + (goed ? 'ok' : 'err');
+function panelMessage(text, ok) {
+  setText('kMsg', text);
+  $('kMsg').className = 'msg ' + (ok ? 'ok' : 'err');
 }
 
 on('kSave', 'click', async () => {

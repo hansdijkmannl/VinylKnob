@@ -30,7 +30,7 @@ static bool    loaded = false;
 static const size_t PIXELS = (size_t)SHELF_PX * SHELF_PX;
 
 struct Thumb {
-  int         album = -1;            // welke index hier in staat, -1 = leeg
+  int         album = -1;            // which index is in here, -1 = empty
   uint32_t    usedAt = 0;          // for eviction: how recently used
   bool        vol = false;
   uint16_t   *px = nullptr;
@@ -217,9 +217,9 @@ void shelfJump(int direction) {
 }
 
 // ---------------------------------------------------------------------------
-// De plaatjes
+// The pictures
 // ---------------------------------------------------------------------------
-static Thumb *zoek(int album) {
+static Thumb *findThumb(int album) {
   for (int i = 0; i < CACHE_N; i++)
     if (cache[i].album == album && cache[i].vol) return &cache[i];
   return nullptr;
@@ -229,7 +229,7 @@ static int visibleAt(int slot) { return wrap(current + slot - 1); }
 
 const lv_img_dsc_t *shelfArtworkAt(int slot) {
   if (!loaded || slot < 0 || slot > 2) return nullptr;
-  Thumb *p = zoek(visibleAt(slot));
+  Thumb *p = findThumb(visibleAt(slot));
   if (!p) return nullptr;
   p->usedAt = ++tick;
   return &p->dsc;
@@ -320,7 +320,7 @@ bool shelfLoop(const char *host, uint16_t port) {
   static const int ORDER[3] = {1, 2, 0};
   for (int i = 0; i < 3; i++) {
     const int album = visibleAt(ORDER[i]);
-    if (zoek(album)) continue;
+    if (findThumb(album)) continue;
     return fetchArtwork(host, port, album);
   }
   return false;

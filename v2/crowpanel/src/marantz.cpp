@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Talking to the receiver over telnet (port 23).
 //
-// De receiver stuurt statuswijzigingen ongevraagd over dezelfde verbinding.
+// The receiver pushes state changes over the same connection unasked.
 // Pick up the remote and an "MV52" arrives here unasked, and the screen follows
 // straight away.
 //

@@ -18,7 +18,7 @@ enum class KnobEvent : uint8_t {
   ShortPress,    // mute on/off
   DoublePress,   // jump to the favourite input
   LongPress,     // amplifier on/off
-  WifiReset,     // acht seconden vasthouden
+  WifiReset,     // holding for eight seconds
 };
 
 struct KnobInput {
