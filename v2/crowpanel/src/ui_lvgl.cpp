@@ -48,7 +48,7 @@ static lv_obj_t *lblPickHead, *lblPickAbove, *lblPickCurrent, *lblPickBelow;
 // The record shelf. As many letters as the alphabet plus one slot for anything
 // outside it; the ring can never need more places than that.
 #define SHELF_RING_MAX 27
-static lv_obj_t *shelfSlot[3], *shelfThumb[3], *shelfArc;
+static lv_obj_t *shelfSlot[3], *shelfThumb[3];
 static lv_obj_t *lblShelfHead, *lblShelfTitle, *lblShelfArtist, *lblShelfCount;
 static lv_obj_t *shelfBackPlate, *lblShelfBack;
 static lv_obj_t *shelfRing[SHELF_RING_MAX];
@@ -96,7 +96,7 @@ static void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
 }
 
 // ---------------------------------------------------------------------------
-// Bouwstenen
+// Building blocks
 // ---------------------------------------------------------------------------
 static lv_obj_t *makeLayer() {
   lv_obj_t *o = lv_obj_create(lv_scr_act());
@@ -333,23 +333,14 @@ void uiBegin() {
                          LV_ALIGN_CENTER, 0, -150);
   lv_label_set_text(lblShelfHead, "SHELF");
 
-  // The position arc, just inside the ring of letters.
-  shelfArc = lv_arc_create(lyBrowse);
-  lv_obj_set_size(shelfArc, 452, 452);
-  lv_obj_center(shelfArc);
-  lv_arc_set_bg_angles(shelfArc, 0, 360);
-  lv_arc_set_range(shelfArc, 0, 1000);
-  lv_obj_remove_style(shelfArc, NULL, LV_PART_KNOB);
-  lv_obj_clear_flag(shelfArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_width(shelfArc, 4, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(shelfArc, 4, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_opa(shelfArc, LV_OPA_20, LV_PART_MAIN);
-  lv_obj_set_style_arc_color(shelfArc, lv_color_hex(COL_TRACK), LV_PART_MAIN);
-  lv_obj_set_style_arc_color(shelfArc, lv_color_hex(COL_ACCENT), LV_PART_INDICATOR);
+  // No position arc around the rim. The letter ring already says roughly where
+  // you are and the count says it exactly, so a second amber thing at the edge
+  // was only competing with the letter you are on.
 
   // Three sleeves, all the same size. Which one is current you see from the
-  // border and the title below — not from the size, because then one step would
-  // need three new pictures instead of one.
+  // brightness and the title below — not from the size, because then one step
+  // would need three new pictures instead of one, and not from a coloured
+  // border either: on this screen amber means the letter you are at.
   static const int SHELF_X[3] = {-144, 0, 144};
   for (int i = 0; i < 3; i++) {
     shelfSlot[i] = lv_obj_create(lyBrowse);
@@ -370,8 +361,6 @@ void uiBegin() {
       lv_obj_set_style_img_recolor_opa(shelfThumb[i], LV_OPA_50, 0);
     }
   }
-  lv_obj_set_style_border_color(shelfSlot[1], lv_color_hex(COL_ACCENT), 0);
-  lv_obj_set_style_border_width(shelfSlot[1], 3, 0);
 
   lblShelfTitle   = makeLabel(lyBrowse, &lv_font_montserrat_20, COL_TEXT,
                              LV_ALIGN_CENTER, 0, 88);
@@ -669,8 +658,6 @@ void uiRender(const UiState &s) {
       lv_label_set_text(lblShelfTitle, shelfTitle(hier));
       lv_label_set_text(lblShelfArtist, shelfArtist(hier));
       lv_label_set_text_fmt(lblShelfCount, "%d / %d", hier + 1, n);
-
-      lv_arc_set_value(shelfArc, n > 1 ? (int16_t)((int32_t)hier * 1000 / (n - 1)) : 0);
 
       // The ring: one letter per initial that occurs in the shelf, spread over
       // 300 degrees with the gap at the bottom. Only repositioned when the list

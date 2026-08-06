@@ -148,8 +148,6 @@ dd{margin:0;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kArtist{left:100px;top:380px;width:280px;text-align:center;font-size:14px;color:#8b8b96;
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kBar{left:0;top:0;width:480px;height:480px;pointer-events:none}
-.kBar circle{transition:stroke-dashoffset .18s}
 .kLetters{left:0;top:0;width:480px;height:480px}
 .kLetters b{position:absolute;left:50%;top:50%;width:22px;margin:-11px 0 0 -11px;
  font-size:12px;font-weight:700;color:#7a7a86;line-height:22px;text-align:center;
@@ -365,11 +363,6 @@ button.danger{background:var(--warn);color:#fff}
       <div class="kTitle" id="kTitle">—</div>
       <div class="kArtist" id="kArtist"></div>
 
-      <svg class="kBar" viewBox="0 0 480 480">
-        <circle id="kBarFill" cx="240" cy="240" r="222"
-                fill="none" stroke="#e8a33d" stroke-width="4" stroke-linecap="round"
-                stroke-dasharray="0 1395" transform="rotate(-90 240 240)"/>
-      </svg>
       <div class="kLetters" id="kLetters"></div>
 
     </div></div>
@@ -1098,7 +1091,6 @@ on('collQ', 'keydown', e => { if (e.key === 'Enter') loadCollection(); });
 // legible there. The letters rotate with the rim: on a round screen that reads
 // better than upright letters along an arc.
 const RING_SPAN = 300, RING_START = -150, RING_R = 205;
-const BAR_R = 222, BAR_CIRCUMFERENCE = 2 * Math.PI * BAR_R;
 
 let shelf = [], shelfIdx = 0;
 
@@ -1143,13 +1135,6 @@ function drawShelf() {
           style="background-image:url(${esc(shelf[i].cover || '')})"></div>`).join('');
   setText('kTitle', shelf[shelfIdx].title);
   setText('kArtist', shelf[shelfIdx].artist);
-
-  // Where you are in the whole, as a short arc along the rim.
-  const fraction = n > 1 ? shelfIdx / (n - 1) : 0;
-  const thumbLen = Math.max(BAR_CIRCUMFERENCE * 0.03, 18);
-  const levelbar = $('kBarFill');
-  levelbar.setAttribute('stroke-dasharray', `${thumbLen} ${BAR_CIRCUMFERENCE - thumbLen}`);
-  levelbar.setAttribute('stroke-dashoffset', -(fraction * (BAR_CIRCUMFERENCE - thumbLen)));
 
   const hereLetter = shelfLetterAt(shelfIdx);
   for (const b of $('kLetters').children)
