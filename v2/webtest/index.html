@@ -93,7 +93,7 @@ function esc(s) {
 function render(results) {
   $('pair').innerHTML = results.map(r => {
     if (!r.matched) {
-      const why = r.error ? esc(r.error) : 'niets herkend';
+      const why = r.error ? esc(r.error) : 'nothing recognised';
       return card(r.engine,
         `<div class="disc empty"><span>?</span></div>
          <p class="title">&nbsp;</p><p class="artist" style="color:var(--dim)">${why}</p>
@@ -223,7 +223,7 @@ $('go').onclick = async () => {
       $('note').innerHTML =
         'AudD has no key yet, so only Shazam takes part. ' +
         'Get a trial key at audd.io and put it in ' +
-        '<code>audd_token.txt</code> naast <code>server.py</code>, ' +
+        '<code>audd_token.txt</code> next to <code>server.py</code>, ' +
         'or in the environment variable <code>AUDD_TOKEN</code>.';
     }
   } catch (e) { /* server not ready yet */ }

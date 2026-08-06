@@ -61,7 +61,7 @@ KnobInput knobPoll() {
   bool pressEdge = false, releaseEdge = false;
   if (now - lastButtonRead >= 5) {
     lastButtonRead = now;
-    const bool raw = pcfReadPin(PCF_PIN_BUTTON);      // hoog = los
+    const bool raw = pcfReadPin(PCF_PIN_BUTTON);      // high = released
     if (raw != swLastRead) {
       swLastRead   = raw;
       swLastChange = now;

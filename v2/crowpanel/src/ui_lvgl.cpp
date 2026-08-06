@@ -437,10 +437,10 @@ void uiBegin() {
 }
 
 // ---------------------------------------------------------------------------
-static void show(lv_obj_t *welke) {
+static void show(lv_obj_t *which) {
   lv_obj_t *alle[] = {lyNow, lyInputs, lyBrowse, lyQr, lyMsg};
   for (lv_obj_t *o : alle) {
-    if (o == welke) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+    if (o == which) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
     else            lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   }
 }
@@ -673,8 +673,8 @@ void uiRender(const UiState &s) {
 
       // The large letter only while jumping; main.cpp decides for how long.
       if (s.shelfLetter) {
-        char groot[2] = {s.shelfLetter, '\0'};
-        lv_label_set_text(lblShelfLetter, groot);
+        char big[2] = {s.shelfLetter, '\0'};
+        lv_label_set_text(lblShelfLetter, big);
         lv_obj_clear_flag(letterVeil, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lblShelfLetter, LV_OBJ_FLAG_HIDDEN);
       } else {

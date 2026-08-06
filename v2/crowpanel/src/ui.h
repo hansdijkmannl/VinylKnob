@@ -21,7 +21,7 @@
 enum class Screen : uint8_t {
   Volume,      // sleeve as the background, arc around the rim
   Inputs,      // ingangenlijst
-  Browse,      // platenkast doorbladeren
+  Browse,      // browsing the record shelf
   Pairing,     // QR code and address, when something is waiting to be linked
   Off,         // switched off; any touch or turn wakes it
   Setup,       // own access point, no Wi-Fi yet

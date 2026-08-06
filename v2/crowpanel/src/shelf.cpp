@@ -79,7 +79,7 @@ void shelfBegin() {
 }
 
 // ---------------------------------------------------------------------------
-// De lijst ophalen
+// Fetching the list
 // ---------------------------------------------------------------------------
 bool shelfLoad(const char *host, uint16_t port) {
   if (!host || !host[0] || WiFi.status() != WL_CONNECTED) return false;

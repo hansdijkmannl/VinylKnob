@@ -65,7 +65,7 @@ void avrReconnect() {
 }
 
 // ---------------------------------------------------------------------------
-// Antwoorden verwerken
+// Handling the answers
 // ---------------------------------------------------------------------------
 static void applyInput(const String &code) {
   strlcpy(avrState.input, code.c_str(), sizeof(avrState.input));

@@ -11,7 +11,7 @@ BrainState brainState;
 bool brainWantsToListen = true;   // main.cpp sets this from the current input
 
 static uint32_t nextPoll = 0;
-static uint8_t  missers       = 0;
+static uint8_t  misses       = 0;
 
 // The timeouts are deliberately short. This runs in the same loop that handles
 // the knob, so every millisecond spent waiting here is felt in the volume. A Pi
@@ -86,7 +86,7 @@ void brainLoop() {
   // Ease off after a few failures. Otherwise a Pi that is switched off holds
   // the loop up every few seconds.
   // Poll faster while the Pi is busy: that is when things actually change.
-  const uint32_t interval = (missers >= 3)      ? BRAIN_RETRY_MS
+  const uint32_t interval = (misses >= 3)      ? BRAIN_RETRY_MS
                           : brainState.listening ? BRAIN_BUSY_MS
                                                 : BRAIN_POLL_MS;
   nextPoll = now + interval;
@@ -101,22 +101,22 @@ void brainLoop() {
   HTTPClient http;
   http.setConnectTimeout(VERBIND_TIMEOUT_MS);
   http.setTimeout(READ_TIMEOUT_MS);
-  if (!http.begin(url)) { missers++; clear(); return; }
+  if (!http.begin(url)) { misses++; clear(); return; }
 
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
     http.end();
-    if (missers < 255) missers++;
+    if (misses < 255) misses++;
     clear();
     return;
   }
 
   JsonDocument doc;
-  const DeserializationError fout = deserializeJson(doc, http.getString());
+  const DeserializationError err = deserializeJson(doc, http.getString());
   http.end();
-  if (fout) { if (missers < 255) missers++; return; }
+  if (err) { if (misses < 255) misses++; return; }
 
-  missers = 0;
+  misses = 0;
 
   BrainState fresh;
   fresh.reachable = true;

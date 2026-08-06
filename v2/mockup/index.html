@@ -259,7 +259,7 @@ function backToNow(ms = 4000) {
 }
 
 // ---------------------------------------------------------------------------
-// Draaien
+// Turning
 // ---------------------------------------------------------------------------
 let turnFade = null;
 function turn(dir) {
@@ -300,7 +300,7 @@ function press() {
 
   if (S.view === 'inputs') {
     S.input = S.pick; S.view = 'now';
-    log(`Ingang gekozen: ${INPUTS[S.input]}.`);
+    log(`Input chosen: ${INPUTS[S.input]}.`);
   } else if (S.view === 'browse') {
     S.album = S.browse; S.view = 'now';
     log(`Chosen: ${ALBUMS[S.album].t}. Now go and put it on.`);

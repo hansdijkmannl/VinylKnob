@@ -60,7 +60,7 @@ static void findAccent() {
 
   const int BUCKETS = 24;
   float weight[BUCKETS] = {0};
-  const int step = 6;                   // ~6400 monsters, ruim genoeg
+  const int step = 6;                   // ~6400 samples, ample
 
   for (int y = 0; y < ARTWORK_PX; y += step) {
     for (int x = 0; x < ARTWORK_PX; x += step) {

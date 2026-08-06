@@ -23,9 +23,9 @@ void uiBegin() {
 static const char *screenName(Screen s) {
   switch (s) {
     case Screen::Volume:  return "VOLUME";
-    case Screen::Inputs:  return "INGANG";
-    case Screen::Browse:  return "PLATENKAST";
-    case Screen::Pairing: return "KOPPELEN";
+    case Screen::Inputs:  return "INPUT";
+    case Screen::Browse:  return "SHELF";
+    case Screen::Pairing: return "LINK";
     case Screen::Setup:   return "SETUP";
     case Screen::NoAvr:   return "NO RECEIVER";
   }

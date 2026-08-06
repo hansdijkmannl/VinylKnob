@@ -225,7 +225,7 @@ class Ears:
             # floor stands still — otherwise it creeps up during a long side and
             # the margin disappears exactly where you need it.
             if self.floor_db <= -98.0:
-                self.floor_db = level               # eerste blok: hier beginnen
+                self.floor_db = level               # first block: start here
             elif level < self.floor_db:
                 self.floor_db = level
             elif level < self.floor_db + FLOOR_QUIET_DB:
@@ -263,13 +263,13 @@ class Ears:
                     print("[listen] quiet for a long time, cleared the screen", flush=True)
                     print("[ears] quiet, ready for the next side", flush=True)
 
-            gevraagd = self.force.is_set()
+            asked = self.force.is_set()
 
             # Asking by hand is always allowed; starting on its own only when
             # the panel says a record is on and the amplifier is running.
-            mag = ((self.panel_wants or time.monotonic() > self.panel_until)
+            allowed = ((self.panel_wants or time.monotonic() > self.panel_until)
                    and self.amplifier_on)
-            begint = (mag
+            starts = (allowed
                       and self.loud_since is not None
                       and now - self.loud_since > START_S
                       and not self.playing)
@@ -277,15 +277,15 @@ class Ears:
             # A failed lookup: it is still playing, so somewhere further into
             # the record may well work. Waiting for silence would mean seeing
             # nothing for a whole side.
-            retry = (mag and self.retry_at is not None and now >= self.retry_at
+            retry = (allowed and self.retry_at is not None and now >= self.retry_at
                        and self.loud_since is not None)
             if retry:
                 self.retry_at = None
 
-            if gevraagd or begint or retry:
+            if asked or starts or retry:
                 self.force.clear()
                 self.listening = True
-                if not gevraagd and not retry:
+                if not asked and not retry:
                     # The needle just landed; let it settle before we sample.
                     await self.slik(proc, SETTLE_S)
                 pcm = await self.hap(proc, CLIP_S)
@@ -352,7 +352,7 @@ class Ears:
                 self.last = "unknown, put in the queue"
                 self.retry_at = self.clock + RETRY_S
             else:
-                self.last = (f"{self.misses}x niets herkend — "
+                self.last = (f"{self.misses}x nothing recognised — "
                                 "waiting for silence")
                 self.retry_at = None
         print(f"[listen] {self.last}", flush=True)
@@ -399,7 +399,7 @@ async def count_linkable() -> int:
                 body = await r.json()
         ears.linkable = len(body.get("plays", []))
     except Exception:                                       # noqa: BLE001
-        pass                                                # oude telling houden
+        pass                                                # keep the old count
     ears.linkable_until = time.monotonic() + 30
     return ears.linkable
 
@@ -424,8 +424,8 @@ async def api_now(request):
 
     Deliberately separate from /status: that one is for people and full of dB
     values, this is what a microcontroller with 480x480 pixels needs and nothing
-    more. Short keys and flat text, so the ESP32 can read it with a handful of
-    JSON-buffer kan lezen.
+    more. Short keys and flat text, so the ESP32 can read it with a small JSON
+    buffer.
     """
     # Only count what comes from the panel, which you can tell by `listen`:
     # only the panel sends that parameter (see brain.cpp). Since the web
@@ -604,7 +604,7 @@ async def api_link(request):
     ears.artist = rel["artist"]
     ears.title = rel["title"]
     ears.album = rel["title"]
-    ears.last = f"{rel['artist']} — {rel['title']} (zelf gekoppeld)"
+    ears.last = f"{rel['artist']} — {rel['title']} (linked by hand)"
     ears.cover_cache_src, ears.cover_cache = "", b""
     ears.open_play_id = None
     ears.linkable_until = 0.0                    # fetch the count again
@@ -660,7 +660,7 @@ async def api_shelf_cover(request):
 # The alternative was asking for an IP during setup, which is a poor question:
 # at that moment the panel usually has no network yet, so you would be typing
 # an address that does not exist.
-PANEL = os.environ.get("PANEL_HOST", os.environ.get("PANEEL_HOST", ""))
+PANEL = os.environ.get("PANEL_HOST", "")
 
 
 def panel_host() -> str:

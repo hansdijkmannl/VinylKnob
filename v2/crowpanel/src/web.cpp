@@ -257,7 +257,7 @@ async function save(){
   b.rotated=$('rotated').value==='1';
   b.offWithAmp=$('offWithAmp').value==='1';
   const r=await(await fetch('api/settings',{method:'POST',body:JSON.stringify(b)})).json();
-  if(!r.ok){msg('Fout: '+r.error,false);return}
+  if(!r.ok){msg('Error: '+r.error,false);return}
   $('wifiPass').value='';
   msg(r.wifiChanged?'Saved. Restart needed for the new Wi-Fi.':'Saved.',true);
 }

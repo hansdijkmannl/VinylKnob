@@ -31,12 +31,12 @@ from aiohttp import web                                   # noqa: E402
 _run_app = web.run_app
 
 
-def _run_app_overal(app, **kw):
+def _run_app_everywhere(app, **kw):
     kw["host"] = "0.0.0.0"
     return _run_app(app, **kw)
 
 
-web.run_app = _run_app_overal
+web.run_app = _run_app_everywhere
 
 import server                                             # noqa: E402
 

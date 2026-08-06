@@ -728,7 +728,7 @@ function findAccent(afbeelding) {
 
   let best = -1, top = 0;
   for (let i = 0; i < BUCKETS; i++) if (weights[i] > top) { top = weights[i]; best = i; }
-  if (best < 0 || top < 2.0) return AC_GREY;      // zwart-wit of heel donker
+  if (best < 0 || top < 2.0) return AC_GREY;      // black and white, or very dark
 
   const hue = (best + 0.5) / BUCKETS * 6, S = 0.72, V = 0.98;
   const C = V * S, X = C * (1 - Math.abs((hue % 2) - 1)), m = V - C;
@@ -853,7 +853,7 @@ TABS.now = {
     // The sleeve comes from /artwork, the same address the panel fetches it from
     // — own collection, artwork from the service, or the Apple TV's app logo.
     // One source, so no difference between this picture and the one on the knob.
-    const key = (s.releaseId || '') + '|' + (s.artworkUrl || '') + '|' + (s.last || '');
+    const key = (s.releaseId || '') + '|' + (s.coverUrl || '') + '|' + (s.last || '');
     if (key !== artworkKey) {
       artworkKey = key;
       const img = $('pArt');
