@@ -1,0 +1,46 @@
+[Unit]
+Description=MarantzKnob ears - listens along and asks the brain for a lookup
+After=marantzknob-brain.service sound.target
+Wants=marantzknob-brain.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__ROOT__/v2/pi
+ExecStart=__ROOT__/.venv/bin/python __ROOT__/v2/pi/listen.py
+Restart=always
+RestartSec=10
+
+# This service serves the web interface, on port 80 as well, so the Pi's address
+# alone is enough to reach it. Without this line an ordinary user may not listen
+# there and only 8791 is left.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+Environment=PYTHONUNBUFFERED=1
+Environment=BRAIN_URL=http://127.0.0.1:8790
+
+# The panel's address is normally discovered, not configured: it polls this
+# service every four seconds and every request carries its address. Only set
+# this if you have more than one panel, or want to reach one that is not
+# polling yet.
+#Environment=PANEL_HOST=192.168.1.50
+
+# Which recording card. install.sh fills in whatever arecord -l found;
+# if it is wrong, this is the line to change.
+Environment=MIC_DEVICE=__MIC__
+
+# The threshold follows the room, but these numbers decide when a lookup
+# happens. Triggering too eagerly: raise TRIGGER_DB. Missing the start of a
+# side: lower START_SECONDS.
+Environment=TRIGGER_DB=6
+Environment=START_SECONDS=2.5
+Environment=SETTLE_SECONDS=4
+Environment=CLIP_SECONDS=15
+Environment=QUIET_SECONDS=15
+Environment=RETRY_SECONDS=60
+# How long the sleeve stays after the last sound. Separate from QUIET_SECONDS,
+# because with a weak signal a soft passage already drops below the threshold.
+Environment=COVER_HOLD_SECONDS=300
+
+[Install]
+WantedBy=multi-user.target

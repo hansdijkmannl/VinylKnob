@@ -1,0 +1,886 @@
+#!/usr/bin/env python3
+"""
+The device's ears: listens along on the USB microphone and asks the brain for a
+lookup as soon as something starts playing.
+
+Why not on a timer — see ../PLAN.md. shazamio is an unofficial client with no
+key: a handful of lookups an evening does not stand out, one a minute does. It
+is also simply pointless, because a side lasts twenty minutes and does not
+change its name in the meantime.
+
+So listening happens on an event: **sound after silence**. That is exactly the
+moment you put the needle down, and it works without this service knowing
+anything about the amplifier — which matters, because the receiver allows only
+one telnet session and the panel owns it.
+
+The threshold is not fixed but follows the room: the noise floor tracks the
+quiet and we trigger on a jump above it. That way the same number works in a
+silent room and next to an open window.
+
+This service also serves the web interface: one page with tabs, in
+static/index.html. It lives here rather than with the brain because the
+microphone, the Apple TV and the proxy to the panel are all here; the brain
+supplies only its API, passed through under /api/.
+
+Runs as a systemd service — see marantzknob-listen.service.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import io
+import os
+import pathlib
+import time
+import wave
+
+import numpy as np
+import appicon
+from appletv import AppleTV
+from aiohttp import ClientSession, ClientTimeout, web
+
+# Artwork is resized here and not on the panel: an ESP32 scaling a 600-pixel
+# JPEG costs memory and time it does not have, while the Pi does it in tens of
+# milliseconds.
+COVER_PX = int(os.environ.get("COVER_PX", "480"))
+
+# -- settings, every one overridable through the environment ----------------
+BRAIN        = os.environ.get("BRAIN_URL", "http://127.0.0.1:8790")
+MIC_DEVICE_NAME     = os.environ.get("MIC_DEVICE", "plughw:1,0")
+RATE        = int(os.environ.get("MIC_RATE", "44100"))
+PORT        = int(os.environ.get("LISTEN_PORT", "8791"))
+
+BLOCK_S       = 0.1                     # how often we measure the level
+CLIP_S   = float(os.environ.get("CLIP_SECONDS", "8"))
+SETTLE_S    = float(os.environ.get("SETTLE_SECONDS", "4"))    # let the needle settle
+START_S      = float(os.environ.get("START_SECONDS", "2.5"))   # sound this long = playing
+QUIET_S     = float(os.environ.get("QUIET_SECONDS", "15"))    # silence this long = side over
+RETRY_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # after a failed lookup
+
+# How many times in a row we retry when nothing is recognised.
+#
+# Without a limit this runs for as long as there is any sound, and that is
+# exactly what happened: a talking video on the Apple TV produced forty-five
+# lookups in a single morning, one every seventy-five seconds, all empty.
+# Retrying does help for a record — the first sample can be a quiet intro — but
+# if three fail there is no record playing, and attempts four through
+# twenty-five will not change that. Waiting for real silence is the right move:
+# that is the signal something new can begin.
+MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "3"))
+
+# How long the sleeve stays after it goes quiet. Deliberately much longer than
+# QUIET_SECONDS: that number decides when listening may resume, and you want it
+# short. Clearing the picture is a different question — with a marginal signal a
+# soft passage already drops below the threshold, and then the sleeve vanishes
+# while the record plays on. Five minutes of silence is genuinely over.
+COVER_HOLD_S = float(os.environ.get("COVER_HOLD_SECONDS", "300"))
+TRIGGER_DB    = float(os.environ.get("TRIGGER_DB", "12"))       # above the noise floor
+# The noise floor falls quickly and rises very slowly. That is not the same as
+# the tenth percentile over the last minute, and the difference matters: play a
+# minute of continuous music and that music *becomes* the tenth percentile, so
+# the measured margin drops to zero. Exactly why a perfectly audible record kept
+# staying under the threshold.
+FLOOR_RISE_DB = 0.02          # per 0.1 s block, so ~0.2 dB per second
+FLOOR_QUIET_DB  = 6.0           # this close to the floor counts as "the room"
+
+BYTES_PER_BLOCK = int(RATE * BLOCK_S) * 2       # 16-bit mono
+
+
+# From here the Pi puts its fan on the highest step; throttling only starts at
+# 80. Below this, warm is just warm and the screen need say nothing about it — a
+# permanent temperature readout on a screen meant for album art is clutter, a
+# warning when it matters is not.
+HOT_C = float(os.environ.get("WARN_TEMP_C", "75"))
+
+
+def pi_heat() -> dict:
+    """Temperature, fan speed, and whether it is being throttled."""
+    out = {"tempC": None, "fanRpm": None, "throttled": False, "hot": False}
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp") as f:
+            out["tempC"] = round(int(f.read()) / 1000, 1)
+    except Exception:                                       # noqa: BLE001
+        pass
+    for pad in ("/sys/class/hwmon/hwmon0/fan1_input",
+                "/sys/class/hwmon/hwmon1/fan1_input",
+                "/sys/class/hwmon/hwmon2/fan1_input"):
+        try:
+            with open(pad) as f:
+                out["fanRpm"] = int(f.read())
+                break
+        except Exception:                                   # noqa: BLE001
+            continue
+    try:
+        with open("/sys/devices/platform/soc/soc:firmware/get_throttled") as f:
+            out["throttled"] = int(f.read().strip(), 16) != 0
+    except Exception:                                       # noqa: BLE001
+        pass
+    out["hot"] = bool(out["throttled"] or (out["tempC"] or 0) >= HOT_C)
+    return out
+
+
+def db(rms: float) -> float:
+    return 20.0 * np.log10(max(rms, 1e-9))
+
+
+def to_wav(pcm: bytes) -> bytes:
+    """The brain wants a plain 16-bit WAV; arecord delivers bare PCM."""
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(pcm)
+    return out.getvalue()
+
+
+class Ears:
+    def __init__(self) -> None:
+        self.floor_db = -99.0                 # tracks the quiet, not the music
+        self.loud_since: float | None = None
+        self.quiet_since: float | None = 0.0
+        self.playing = False                    # something is on; do not ask again
+        self.listening = False                 # recording or looking up right now
+
+        # The panel says on every poll whether listening makes sense: with the
+        # receiver on anything but the turntable there is nothing to recognise.
+        # If that word goes stale (panel off, cable out) we listen on our own
+        # again — otherwise a broken panel would take recognition down with it.
+        self.panel_wants = True
+        self.panel_until = 0.0
+
+        # Is the amplifier on? A record you cannot hear is not playing, so any
+        # sound in the room is by definition something else. Only block when we
+        # are certain: if the panel cannot reach the receiver, "off" is a guess
+        # and we keep listening.
+        self.amplifier_on = True
+        self.retry_at: float | None = None  # try again after a miss
+        self.misses = 0                      # in a row, with no silence between
+
+        # The last lookup that came up empty. While it stands you can point at
+        # an album on the panel and link the two — right while the record is
+        # still spinning, instead of working through a queue on your phone in
+        # the evening. It is also the moment when the clip still belongs to the
+        # sound you are hearing.
+        self.open_play_id: int | None = None
+        self.force = asyncio.Event()
+        self.last = "nothing heard yet"
+        self.release_id: int | None = None     # artwork from your own shelf
+        self.cover_url: str | None = None       # artwork from the service, second choice
+        self.artist = ""                      # separate fields, for the panel
+        self.title = ""
+        self.album = ""
+        self.level_db = -99.0
+
+        # How often the panel asked for /nu. Purely diagnostic: it lets /status
+        # show whether the panel really reaches you, without writing a log line
+        # every four seconds.
+        self.panel_polls = 0
+        self.last_panel_ip = ""
+
+        self.cover_cache_src = ""               # scaled sleeve, one record deep
+        self.cover_cache: bytes = b""
+        self.linkable = 0                       # records waiting to be linked
+        self.linkable_until = 0.0                 # how long that count is valid
+
+        # The clock counts audio, not wall time: every block is exactly BLOCK_S
+        # of sound. That is not the same thing. If arecord falls behind, or the
+        # system clock jumps, the thresholds below still hold — with time.time()
+        # a hiccup could skip a side or ask again in the middle of one.
+        self.clock = 0.0
+
+    # -- recording ---------------------------------------------------------
+    async def start_arecord(self):
+        return await asyncio.create_subprocess_exec(
+            "arecord", "-D", MIC_DEVICE_NAME, "-f", "S16_LE", "-r", str(RATE),
+            "-c", "1", "-t", "raw", "-q",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+
+    async def draai(self) -> None:
+        while True:
+            proc = await self.start_arecord()
+            try:
+                await self.lus(proc)
+            except (asyncio.IncompleteReadError, ConnectionResetError):
+                print("[listen] microphone dropped out, retrying in 5 s", flush=True)
+            except Exception as e:                              # noqa: BLE001
+                print(f"[listen] error: {e!r}", flush=True)
+            finally:
+                if proc.returncode is None:
+                    proc.kill()
+                await proc.wait()
+            await asyncio.sleep(5)
+
+    async def lus(self, proc) -> None:
+        while True:
+            block = await proc.stdout.readexactly(BYTES_PER_BLOCK)
+            self.clock += BLOCK_S
+            mon = np.frombuffer(block, dtype="<i2").astype(np.float32) / 32768.0
+            level = db(float(np.sqrt(np.mean(mon * mon))))
+            self.level_db = level
+
+            # The floor follows the quiet, not the music. Straight down with
+            # it; but up only while the level sits close to the floor, because
+            # then it is the room that got louder. With music over the top the
+            # floor stands still — otherwise it creeps up during a long side and
+            # the margin disappears exactly where you need it.
+            if self.floor_db <= -98.0:
+                self.floor_db = level               # eerste blok: hier beginnen
+            elif level < self.floor_db:
+                self.floor_db = level
+            elif level < self.floor_db + FLOOR_QUIET_DB:
+                self.floor_db += FLOOR_RISE_DB
+
+            nu = self.clock
+            luid = level > self.floor_db + TRIGGER_DB
+
+            if luid:
+                self.quiet_since = None
+                if self.loud_since is None:
+                    self.loud_since = nu
+            else:
+                self.loud_since = None
+                if self.quiet_since is None:
+                    self.quiet_since = nu
+                # Quiet long enough: the side is over, we may ask again.
+                if self.playing and nu - self.quiet_since > QUIET_S:
+                    self.playing = False
+                    self.retry_at = None
+                    # Silence draws a line under what was. What comes next is a
+                    # new event and deserves a full set of attempts again.
+                    self.misses = 0
+
+                # Clear the picture much later. That keeps the sleeve up
+                # through a soft passage, and drops it when the record is
+                # werkelijk af is.
+                if self.artist and nu - self.quiet_since > COVER_HOLD_S:
+                    self.release_id = None
+                    self.cover_url = None
+                    self.artist = self.title = self.album = ""
+                    # Drop the open link too: what you would point at now no
+                    # longer belongs to sound from a quarter of an hour ago.
+                    self.open_play_id = None
+                    print("[listen] quiet for a long time, cleared the screen", flush=True)
+                    print("[ears] quiet, ready for the next side", flush=True)
+
+            gevraagd = self.force.is_set()
+
+            # Asking by hand is always allowed; starting on its own only when
+            # the panel says a record is on and the amplifier is running.
+            mag = ((self.panel_wants or time.monotonic() > self.panel_until)
+                   and self.amplifier_on)
+            begint = (mag
+                      and self.loud_since is not None
+                      and nu - self.loud_since > START_S
+                      and not self.playing)
+
+            # A failed lookup: it is still playing, so somewhere further into
+            # the record may well work. Waiting for silence would mean seeing
+            # nothing for a whole side.
+            retry = (mag and self.retry_at is not None and nu >= self.retry_at
+                       and self.loud_since is not None)
+            if retry:
+                self.retry_at = None
+
+            if gevraagd or begint or retry:
+                self.force.clear()
+                self.listening = True
+                if not gevraagd and not retry:
+                    # The needle just landed; let it settle before we sample.
+                    await self.slik(proc, SETTLE_S)
+                pcm = await self.hap(proc, CLIP_S)
+                self.playing = True
+                self.loud_since = None
+                try:
+                    await self.vraag(to_wav(pcm))
+                finally:
+                    self.listening = False
+
+    async def slik(self, proc, seconden: float) -> None:
+        n = int(seconden / BLOCK_S)
+        for _ in range(n):
+            await proc.stdout.readexactly(BYTES_PER_BLOCK)
+            self.clock += BLOCK_S
+
+    async def hap(self, proc, seconden: float) -> bytes:
+        n = int(seconden / BLOCK_S)
+        out = []
+        for _ in range(n):
+            out.append(await proc.stdout.readexactly(BYTES_PER_BLOCK))
+            self.clock += BLOCK_S
+        return b"".join(out)
+
+    # -- asking the brain --------------------------------------------------
+    async def vraag(self, wav: bytes) -> None:
+        print(f"[ears] {len(wav)//1024} kB to the brain", flush=True)
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=60)) as s:
+                async with s.post(f"{BRAIN}/api/listen", data=wav,
+                                  headers={"Content-Type": "audio/wav"}) as r:
+                    body = await r.json()
+        except Exception as e:                                  # noqa: BLE001
+            self.last = f"brain unreachable: {e!r}"
+            print(f"[listen] {self.last}", flush=True)
+            return
+
+        rel = body.get("release")
+        treffer = next((r for r in body.get("results", []) if r.get("matched")), {})
+
+        # Only update when something was genuinely recognised. A failed lookup
+        # does not mean a different record is on — it is still playing, and one
+        # stretch of it happened not to match. Clearing would make the sleeve
+        # vanish in the middle of a side, which is exactly what
+        # gebeurde toen de herkansing na 60 seconden niets opleverde.
+        if body.get("matched"):
+            self.misses = 0
+            self.open_play_id = None
+            self.release_id = rel["id"] if rel else None
+            self.cover_url = treffer.get("cover") or None
+            self.artist = treffer.get("artist") or (rel["artist"] if rel else "")
+            self.title = treffer.get("title") or ""
+            self.album = (rel["title"] if rel else "") or treffer.get("album") or ""
+
+        if body.get("matched") and rel:
+            self.last = f"{rel['artist']} — {rel['title']}"
+        elif body.get("matched"):
+            self.last = (f"{treffer.get('artist','?')} — "
+                            f"{treffer.get('title','?')} (not on the shelf)")
+        else:
+            self.open_play_id = body.get("playId")
+            self.misses += 1
+            if self.misses < MAX_RETRIES:
+                self.last = "unknown, put in the queue"
+                self.retry_at = self.clock + RETRY_S
+            else:
+                self.last = (f"{self.misses}x niets herkend — "
+                                "waiting for silence")
+                self.retry_at = None
+        print(f"[listen] {self.last}", flush=True)
+
+
+ears = Ears()
+atv = AppleTV()
+
+
+async def api_listen_now(_request):
+    """Listen right now, whatever the threshold thinks."""
+    ears.force.set()
+    return web.json_response({"ok": True})
+
+
+HERE = pathlib.Path(__file__).parent
+
+
+async def index(_request):
+    """The whole web interface: one page with tabs.
+
+    It sits as a file next to this code rather than as a string inside it,
+    because it is hundreds of lines of HTML and CSS and that does not belong in
+    the middle of the microphone logic.
+
+    The page itself fetches three things from the same address: /status and the
+    Apple TV from this service, /api/* from the brain, and /paneel/* from the
+    panel. How that works is in the forwarding helper below.
+    """
+    return web.FileResponse(HERE / "static" / "index.html")
+
+
+async def count_linkable() -> int:
+    """How many records are waiting to be linked.
+
+    Cached for half a minute, because the panel asks every four seconds and the
+    queue changes a couple of times an evening at most.
+    """
+    if time.monotonic() < ears.linkable_until:
+        return ears.linkable
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=5)) as s:
+            async with s.get(f"{BRAIN}/api/plays?status=unknown&limit=99") as r:
+                body = await r.json()
+        ears.linkable = len(body.get("plays", []))
+    except Exception:                                       # noqa: BLE001
+        pass                                                # oude telling houden
+    ears.linkable_until = time.monotonic() + 30
+    return ears.linkable
+
+
+def _shrink_bytes(data: bytes, px: int | None = None) -> bytes:
+    """Vierkant bijsnijden en terugbrengen tot px (standaard HOES_PX)."""
+    from PIL import Image
+    px = px or COVER_PX
+    image = Image.open(io.BytesIO(data)).convert("RGB")
+    kant = min(image.size)
+    links = (image.width - kant) // 2
+    above = (image.height - kant) // 2
+    image = image.crop((links, above, links + kant, above + kant))
+    image = image.resize((px, px), Image.LANCZOS)
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=82, optimize=True)
+    return out.getvalue()
+
+
+async def api_nu(request):
+    """What is playing, in the shortest possible form — for the panel.
+
+    Deliberately separate from /status: that one is for people and full of dB
+    values, this is what a microcontroller with 480x480 pixels needs and nothing
+    more. Short keys and flat text, so the ESP32 can read it with a handful of
+    JSON-buffer kan lezen.
+    """
+    # Only count what comes from the panel, which you can tell by `listen`:
+    # only the panel sends that parameter (see brain.cpp). Since the web
+    # interface started using this endpoint too — to show exactly what is on the
+    # screen — counting those would muddy the diagnostic: "panel polls" would
+    # then say as much about your phone as about the panel.
+    if "listen" in request.query:
+        ears.panel_polls += 1
+        ears.last_panel_ip = request.remote or "?"
+        ears.panel_wants = request.query["listen"] not in ("0", "false", "nee")
+        ears.panel_until = time.monotonic() + 60
+
+    # With the receiver on anything but the turntable, the Apple TV is the
+    # source — if it is paired and playing something. That beats listening in:
+    # the device *knows* what it is doing, artwork included.
+    # Report it even when nothing is playing but an app is open: that the Apple
+    # TV is sitting on YouTube is information in itself, and the alternative is
+    # falling back to a microphone that has no business there.
+    if not ears.panel_wants and atv.device is not None and (
+            atv.artist or atv.title or atv.app_id):
+        return web.json_response({
+            "linkable": await count_linkable(),
+            "artist": atv.artist,
+            "title": atv.title,
+            "album": atv.album or atv.title,
+            "artwork": bool(atv.artwork) or bool(await appicon.icon(atv.app_id)),
+            # A logo is not artwork but a stand-in: the panel hides text behind
+            # real artwork, but with a logo the title belongs on screen —
+            # otherwise you see a brand and not what is playing.
+            "logo": not atv.artwork and bool(await appicon.icon(atv.app_id)),
+            "onShelf": False,
+            "playing": atv.playing_now,
+            "listening": False,
+            "source": "appletv",
+            "app": atv.app,
+            "hot": pi_heat()["hot"],
+        })
+    return web.json_response({
+        "linkable": await count_linkable(),
+        "artist": ears.artist,
+        "title": ears.title,
+        "album": ears.album,
+        "artwork": bool(ears.release_id or ears.cover_url),   # is there anything on /artwork
+        "onShelf": ears.release_id is not None,  # gevonden in de eigen collectie
+        "playing": ears.playing,
+        "listening": ears.listening,
+        # Is there an open lookup that came up empty? Then you can point at an
+        # album on the panel and hang it on that.
+        "canLink": ears.open_play_id is not None,
+        "hot": pi_heat()["hot"],
+    })
+
+
+async def api_cover(_request):
+    """Artwork, passed through from the brain.
+
+    This way the panel only has to know one address. It fetches here rather than
+    from the brain directly, which saves a second port in its settings and a
+    second place where something can break.
+    """
+    # Your own shelf first, then whatever the service supplied. That second one
+    # is not an afterthought: anything you do *not* own on vinyl — radio,
+    # streaming, someone else's record — only gets artwork that way.
+    # The Apple TV takes priority while the turntable is not the source, and
+    # then exclusively. Falling through to the record path served the previous
+    # LP's sleeve for a YouTube video with no image, which is worse than none.
+    if not ears.panel_wants and atv.device is not None:
+        if atv.artwork:
+            small = await asyncio.to_thread(_shrink_bytes, atv.artwork)
+            return web.Response(body=small, content_type="image/jpeg")
+        # No image for this title — YouTube does not supply one. Fall back to
+        # the app's logo, fetched from Apple's own search endpoint.
+        logo = await appicon.icon(atv.app_id)
+        if logo:
+            return web.Response(body=logo, content_type="image/jpeg")
+        raise web.HTTPNotFound()
+
+    if ears.release_id is not None:
+        source = f"{BRAIN}/api/cover/{ears.release_id}"
+    elif ears.cover_url:
+        source = ears.cover_url
+    else:
+        raise web.HTTPNotFound()
+
+    if ears.cover_cache_src == source and ears.cover_cache:
+        return web.Response(body=ears.cover_cache, content_type="image/jpeg")
+
+    async with ClientSession(timeout=ClientTimeout(total=15)) as s:
+        async with s.get(source) as r:
+            if r.status != 200:
+                raise web.HTTPNotFound()
+            raw = await r.read()
+
+    # Crop square and scale to COVER_PX. The panel then decodes one-to-one into
+    # a buffer it can reserve in advance.
+    small = await asyncio.to_thread(_shrink_bytes, raw)
+    ears.cover_cache_src, ears.cover_cache = source, small
+    return web.Response(body=small, content_type="image/jpeg")
+
+
+# -- the record shelf, for the panel ----------------------------------------
+#
+# The panel has eight megabytes of PSRAM and a collection can run to hundreds of
+# albums. The artwork does not fit — one 480-pixel sleeve is already 460 kB —
+# but the names do. So the panel gets the list in one go and the pictures one at
+# a time, and only for the three actually on screen.
+#
+# The list goes as flat text rather than JSON: an ESP32 parsing 40 kB of JSON
+# spends seconds on it, while splitting lines on a tab costs almost nothing. One
+# line per album, sorted by artist the way the brain already
+# sorteert.
+SHELF_PX = int(os.environ.get("SHELF_PX", "138"))
+SHELF_CACHE = HERE.parent / "brain" / "data" / "shelfcovers"
+
+
+async def api_shelf(_request):
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=30)) as s:
+            async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
+                body = await r.json()
+    except Exception as e:                                  # noqa: BLE001
+        raise web.HTTPBadGateway(text=f"brain not reachable: {e!r}")
+
+    lines = []
+    for rel in body.get("releases", []):
+        # Strip tabs out of the values, or the splitting goes wrong.
+        artist = (rel.get("artist") or "").replace("\t", " ").strip()
+        title = (rel.get("title") or "").replace("\t", " ").strip()
+        lines.append(f"{rel['id']}\t{artist}\t{title}")
+    return web.Response(text="\n".join(lines), content_type="text/plain")
+
+
+async def api_link(request):
+    """Link the album you pointed at on the panel to whatever is playing.
+
+    This is the queue, but at the right moment. Normally you link a clip to a
+    half-remembered record with your phone in the evening; this way you do it
+    with the needle still down and the sleeve in your hand.
+
+    The brain does the real work: linking, and recording the saved clip as
+    fingerprints against that release. That makes the same side recognisable
+    locally next time, with no service involved — precisely the lesson only you
+    kon geven.
+    """
+    if ears.open_play_id is None:
+        return web.json_response({"ok": False, "error": "niets om te koppelen"},
+                                 status=409)
+    try:
+        rel_id = int(request.query.get("id", ""))
+    except ValueError:
+        return web.json_response({"ok": False, "error": "no id"}, status=400)
+
+    play_id = ears.open_play_id
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=30)) as s:
+            # Check the album exists before linking, not after. The other way
+            # round, a wrong number would hang a listen on nothing — and worse,
+            # store the clip as fingerprints against a release that does not
+            # exist. A link is permanent; you do not make one on good
+            # vertrouwen.
+            async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
+                lijst = (await r.json()).get("releases", [])
+            rel = next((x for x in lijst if x["id"] == rel_id), None)
+            if rel is None:
+                return web.json_response(
+                    {"ok": False, "error": f"album {rel_id} does not exist"}, status=404)
+
+            async with s.post(f"{BRAIN}/api/plays/{play_id}/link",
+                              json={"releaseId": rel_id}) as r:
+                out = await r.json()
+    except Exception as e:                                  # noqa: BLE001
+        return web.json_response({"ok": False, "error": f"{e!r}"}, status=502)
+
+    ears.release_id = rel_id
+    ears.cover_url = None
+    ears.artist = rel["artist"]
+    ears.title = rel["title"]
+    ears.album = rel["title"]
+    ears.last = f"{rel['artist']} — {rel['title']} (zelf gekoppeld)"
+    ears.cover_cache_src, ears.cover_cache = "", b""
+    ears.open_play_id = None
+    ears.linkable_until = 0.0                    # fetch the count again
+
+    print(f"[listen] {ears.last}, {out.get('hashes', 0)} fingerprints",
+          flush=True)
+    return web.json_response({"ok": True, "hashes": out.get("hashes", 0),
+                              "artist": ears.artist, "title": ears.title})
+
+
+async def api_shelf_cover(request):
+    """One sleeve, small enough for the panel to decode.
+
+    Scaling on the ESP32 would cost memory and time it does not have, and here
+    it is a matter of milliseconds — the same trade-off as /artwork.
+    """
+    try:
+        rel_id = int(request.query.get("id", ""))
+        # Up to 480, because picking an album in the shelf brings that same
+        # sleeve back full-screen on the volume view.
+        px = min(int(request.query.get("px", SHELF_PX)), 480)
+    except ValueError:
+        raise web.HTTPBadRequest(text="id and px must be numbers")
+
+    SHELF_CACHE.mkdir(parents=True, exist_ok=True)
+    pad = SHELF_CACHE / f"{rel_id}-{px}.jpg"
+    if pad.exists():
+        return web.FileResponse(pad)
+
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=20)) as s:
+            async with s.get(f"{BRAIN}/api/cover/{rel_id}") as r:
+                if r.status != 200:
+                    raise web.HTTPNotFound()
+                raw = await r.read()
+    except web.HTTPException:
+        raise
+    except Exception as e:                                  # noqa: BLE001
+        raise web.HTTPBadGateway(text=f"fetching the sleeve failed: {e!r}")
+
+    small = await asyncio.to_thread(_shrink_bytes, raw, px)
+    pad.write_bytes(small)
+    return web.Response(body=small, content_type="image/jpeg")
+
+
+# Where the panel lives.
+#
+# You should not have to configure this. The panel polls /nu every four seconds
+# and every one of those requests carries its address, so the Pi simply
+# remembers who called. Setting PANEL_HOST overrides that — useful if you have
+# two panels, or if you want to reach one that is not polling yet.
+#
+# The alternative was asking for an IP during setup, which is a poor question:
+# at that moment the panel usually has no network yet, so you would be typing
+# an address that does not exist.
+PANEL = os.environ.get("PANEL_HOST", os.environ.get("PANEEL_HOST", ""))
+
+
+def panel_host() -> str:
+    return PANEL or ears.last_panel_ip
+
+
+async def _forward(request, target: str, what: str):
+    """Pass a request through unchanged and hand back the answer.
+
+    This is what puts the whole web interface on one address while the three
+    parts stay where they belong: the queue and the collection in the brain, the
+    settings on the panel itself, the microphone here. The browser sees none of
+    it, and that is the point — otherwise you would be carrying three port
+    numbers around in your head.
+
+    Note: Content-Type goes along exactly as it arrived. When adding a record by
+    hand that is multipart *with* its boundary, and dropping it makes the form
+    unreadable at the other end.
+    """
+    if request.query_string:
+        target += "?" + request.query_string
+
+    body = await request.read() if request.method != "GET" else None
+    kop = {}
+    if request.headers.get("Content-Type"):
+        kop["Content-Type"] = request.headers["Content-Type"]
+
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=60)) as s:
+            async with s.request(request.method, target, data=body, headers=kop) as r:
+                raw = await r.read()
+                return web.Response(body=raw, status=r.status,
+                                    content_type=r.content_type)
+    except Exception as e:                                  # noqa: BLE001
+        raise web.HTTPBadGateway(text=f"{what} not reachable: {e!r}")
+
+
+async def brain_proxy(request):
+    """/api/* belongs to the brain, one port along on the same Pi."""
+    return await _forward(request, f"{BRAIN}/api/{request.match_info['tail']}",
+                           "brain")
+
+
+async def panel_proxy(request):
+    """Pass the panel through.
+
+    The panel's own page uses relative paths, so hanging it under /paneel/ works
+    without rewriting anything — both for the panel's own page and for the
+    rebuilt version in the tabs here.
+    """
+    host = panel_host()
+    if not host:
+        raise web.HTTPServiceUnavailable(
+            text="the panel has not been seen yet; it announces itself as soon "
+                 "as it polls this Pi")
+    return await _forward(request,
+                           f"http://{host}/{request.match_info.get('tail', '')}",
+                           "paneel")
+
+
+async def panel_root(request):
+    # Without the trailing slash the relative paths do not resolve.
+    if not request.path.endswith("/"):
+        raise web.HTTPFound(request.path + "/")
+    return await panel_proxy(request)
+
+
+# -- Apple TV ---------------------------------------------------------------
+async def atv_scan(_request):
+    return web.json_response({"devices": await atv.scan()})
+
+
+async def atv_pair(request):
+    body = await request.json()
+    return web.json_response(await atv.pair_start(body.get("id", "")))
+
+
+async def atv_pin(request):
+    body = await request.json()
+    return web.json_response(await atv.pair_pin(str(body.get("pin", ""))))
+
+
+async def atv_forget(_request):
+    await atv.forget()
+    return web.json_response({"ok": True})
+
+
+async def atv_status(_request):
+    g = atv.paired()
+    return web.json_response({
+        "paired": bool(g),
+        "name": (g or {}).get("naam", ""),
+        "connected": atv.device is not None,
+        "playing": atv.playing_now,
+        "artist": atv.artist,
+        "title": atv.title,
+        "album": atv.album,
+        "artwork": bool(atv.artwork),
+        "artworkBytes": len(atv.artwork),
+        "app": atv.app,
+        "appId": atv.app_id,
+        "error": atv.error,
+        # How old this information is. Without it, a frozen connection looks
+        # exactly like an Apple TV that has been playing the same video for an
+        # hour — and that is the difference you want to be able to see.
+        "ageSeconds": (round(time.monotonic() - atv.last_update)
+                     if atv.last_update else None),
+    })
+
+
+async def api_status(_request):
+    return web.json_response({
+        "levelDb": round(ears.level_db, 1),
+        "floorDb": round(ears.floor_db, 1),
+        "thresholdDb": round(ears.floor_db + TRIGGER_DB, 1),
+        "playing": ears.playing,
+        "listening": ears.listening,
+        "last": ears.last,
+        "releaseId": ears.release_id,
+        "coverUrl": ears.cover_url,
+        "micDevice": MIC_DEVICE_NAME,
+        "listeningAllowed": ((ears.panel_wants or time.monotonic() > ears.panel_until)
+                                and ears.amplifier_on),
+        "amplifierOn": ears.amplifier_on,
+        "misses": ears.misses,
+        "maxRetries": MAX_RETRIES,
+        "pi": pi_heat(),
+        "panelPolls": ears.panel_polls,
+        "panelFrom": ears.last_panel_ip,
+    })
+
+
+async def watch_amplifier() -> None:
+    """Track whether the amplifier is on, away from the audio loop.
+
+    Separate, and not inside lus(): that reads a block every tenth of a second
+    and no network request belongs in between. Ten seconds is ample — nobody
+    switches the amplifier on and off between two sides.
+    """
+    while True:
+        host = panel_host()
+        if host:
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=4)) as s:
+                    async with s.get(f"http://{host}/api/state") as r:
+                        st = await r.json()
+                # Only shut the gate when we are sure: no connection to the
+                # receiver means the panel does not know either.
+                ears.amplifier_on = not (st.get("connected") and
+                                           not st.get("powered"))
+            except Exception:                                   # noqa: BLE001
+                ears.amplifier_on = True      # panel gone: do not guess
+        await asyncio.sleep(10)
+
+
+async def start(app):
+    app["oren"] = asyncio.create_task(ears.draai())
+    app["avr"] = asyncio.create_task(watch_amplifier())
+    if atv.paired():
+        app["atv"] = asyncio.create_task(atv.connect())
+        app["atv_bewaking"] = asyncio.create_task(atv.watch())
+
+
+async def stop(app):
+    for name in ("oren", "avr", "atv_bewaking"):
+        if name in app:
+            app[name].cancel()
+
+
+def main() -> None:
+    app = web.Application()
+    app.router.add_get("/", index)
+    app.router.add_post("/listen", api_listen_now)
+    app.router.add_get("/status", api_status)
+    app.router.add_get("/now", api_nu)
+    app.router.add_get("/artwork", api_cover)
+    app.router.add_get("/shelf", api_shelf)
+    app.router.add_get("/shelfcover", api_shelf_cover)
+    app.router.add_post("/link", api_link)
+    app.router.add_get("/appletv/scan", atv_scan)
+    app.router.add_get("/appletv/status", atv_status)
+    app.router.add_post("/appletv/pair", atv_pair)
+    app.router.add_post("/appletv/pin", atv_pin)
+    app.router.add_post("/appletv/forget", atv_forget)
+
+    # The two forwarding routes. They come last because they end in a wildcard
+    # en anders de vaste routes hierboven zouden opslokken.
+    app.router.add_route("*", "/api/{tail:.*}", brain_proxy)
+    app.router.add_route("*", "/panel", panel_root)
+    app.router.add_route("*", "/panel/{tail:.*}", panel_proxy)
+
+    app.on_startup.append(start)
+    app.on_cleanup.append(stop)
+
+    async def draaien():
+        # One application on two ports, not two applications. Port 80 used to
+        # be a little portal with three links to the other pages; now that there
+        # is only one page, that middle step is gone and the same interface
+        # simply listens on both.
+        runner = web.AppRunner(app)
+        await runner.setup()
+        await web.TCPSite(runner, "0.0.0.0", PORT).start()
+        print(f"[ears] microphone {MIC_DEVICE_NAME}, brain at {BRAIN}, "
+              f"panel {PANEL or 'auto'}, port {PORT}", flush=True)
+
+        # Port 80 is a bonus: if it fails (no permission) the rest keeps
+        # running rather than the service falling over.
+        try:
+            await web.TCPSite(runner, "0.0.0.0", 80).start()
+            print("[ears] also on port 80", flush=True)
+        except Exception as e:                              # noqa: BLE001
+            print(f"[ears] no port 80: {e!r}", flush=True)
+
+        await asyncio.Event().wait()
+
+    try:
+        asyncio.run(draaien())
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

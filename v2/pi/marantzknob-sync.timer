@@ -1,0 +1,13 @@
+[Unit]
+Description=MarantzKnob - update the Discogs collection daily
+
+[Timer]
+# At night, with jitter so that not everyone hits Discogs at the same moment.
+# Persistent: if the Pi was off, it catches up at boot instead of skipping a
+# day.
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

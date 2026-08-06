@@ -32,7 +32,7 @@ your collection, the panel's settings, and the system.
 
 ## Two versions
 
-**`luxe/` is the one described above**, and the one that gets the work: a round
+**`v2/` is the one described above**, and the one that gets the work: a round
 480×480 touchscreen with a rotary ring, plus a Raspberry Pi that listens.
 
 **`src/` is version 1**: a bare ESP32 with a rotary encoder. No screen, no
@@ -42,7 +42,7 @@ project if the knob is all you want. See [docs/version-1.md](docs/version-1.md).
 ## What you need
 
 Around €150. The full list with the reasoning behind each part is in
-[luxe/BOM.md](luxe/BOM.md).
+[v2/BOM.md](v2/BOM.md).
 
 | Part | What to look for |
 |---|---|
@@ -66,18 +66,18 @@ Network Control* to **Always On**, or the port disappears in standby.
 
 1. **Print the enclosure** — `3D Print/`. It is not finished; see
    [Known rough edges](#known-rough-edges).
-2. **Flash the panel** — see [luxe/crowpanel/README.md](luxe/crowpanel/README.md).
+2. **Flash the panel** — see [v2/crowpanel/README.md](v2/crowpanel/README.md).
    Needs PlatformIO. It boots into its own access point called
    `MarantzKnob-setup`; connect to it, fill in your network and your receiver's
    address, save.
-3. **Set up the Pi** — `luxe/pi/installeer.sh` does the lot: packages,
+3. **Set up the Pi** — `v2/pi/install.sh` does the lot: packages,
    virtualenv, both services, the microphone. It prints the address to open when
    it is done.
 4. **Add your collection** — open the web interface, Collection tab, enter your
    Discogs username and a personal access token (Discogs → Settings →
    Developers), press Sync. After that it re-syncs itself daily.
 
-Step by step, with photos: [luxe/OPBOUW.md](luxe/OPBOUW.md).
+Step by step, with photos: [v2/BUILD.md](v2/BUILD.md).
 
 ## How it fits together
 
@@ -90,7 +90,7 @@ Three parts, each doing what it is good at:
    └──────┬──────┘
           │ HTTP :8791    ┌───────────────┐
           ├──────────────▶│ ears          │  microphone, Apple TV,
-          │               │ luister.py    │  web interface
+          │               │ listen.py    │  web interface
    USB    │               └───────┬───────┘
    power  │                       │ HTTP :8790
           │               ┌───────▼───────┐
@@ -108,7 +108,7 @@ Your browser only ever sees one address: `/api/*` is passed through to the brain
 and `/paneel/*` to the panel, so three services look like one page.
 
 The design decisions, and why they went the way they did, are in
-[luxe/PLAN.md](luxe/PLAN.md).
+[v2/PLAN.md](v2/PLAN.md).
 
 ## Recognition, honestly
 
@@ -150,11 +150,11 @@ still spinning, and every link teaches the local database one more side.
 
 | | |
 |---|---|
-| `luxe/crowpanel/` | ESP32 firmware — display, encoder, telnet to the receiver |
-| `luxe/pi/` | the ears: microphone, Apple TV, web interface, installer |
-| `luxe/brein/` | the brain: recognition, Discogs, fingerprints, database |
-| `luxe/recognizer/` | standalone fingerprinting prototype, with its own notes |
-| `luxe/mockup/` | the interface sketch the design came from |
+| `v2/crowpanel/` | ESP32 firmware — display, encoder, telnet to the receiver |
+| `v2/pi/` | the ears: microphone, Apple TV, web interface, installer |
+| `v2/brain/` | the brain: recognition, Discogs, fingerprints, database |
+| `v2/recognizer/` | standalone fingerprinting prototype, with its own notes |
+| `v2/mockup/` | the interface sketch the design came from |
 | `src/` | version 1 firmware |
 | `3D Print/` | enclosure |
 | `tools/` | `avr.sh` — poke the receiver's telnet port by hand |

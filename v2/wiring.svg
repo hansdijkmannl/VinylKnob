@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="826" viewBox="0 0 1060 826" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="pijl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c2451f"/>
+    </marker>
+    <marker id="pijlgrijs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6a6a76"/>
+    </marker>
+    <style>
+      .box   { fill:#fff; stroke:#3a3a42; stroke-width:2; rx:10 }
+      .name   { font-size:17px; font-weight:600; fill:#1c1c22 }
+      .sub    { font-size:13px; fill:#6a6a76 }
+      .port  { font-size:12px; fill:#3a3a42 }
+      .cable  { stroke:#c2451f; stroke-width:3; fill:none }
+      .data   { stroke:#6a6a76; stroke-width:2; fill:none; stroke-dasharray:7 5 }
+      .head    { font-size:13px; font-weight:600; fill:#c2451f }
+      .headg   { font-size:13px; font-weight:600; fill:#6a6a76 }
+      .title  { font-size:22px; font-weight:700; fill:#1c1c22 }
+      .note    { font-size:13px; fill:#3a3a42 }
+      .notestrong   { font-size:13px; font-weight:600; fill:#1c1c22 }
+      .mono   { font-size:12px; fill:#3a3a42; font-family:ui-monospace,Menlo,monospace }
+    </style>
+  </defs>
+
+  <rect width="1060" height="826" fill="#fbfaf7"/>
+  <text x="40" y="46" class="title">MarantzKnob — wiring</text>
+  <text x="40" y="70" class="sub">The CrowPanel has no USB-C. Everything runs through 4-pin JST MX1.25 connectors.</text>
+
+  <!-- wall socket -->
+  <rect x="40" y="270" width="96" height="76" class="box"/>
+  <text x="88" y="303" class="name" text-anchor="middle">230 V</text>
+  <text x="88" y="324" class="sub" text-anchor="middle">wall socket</text>
+
+  <!-- voeding -->
+  <rect x="196" y="248" width="188" height="120" class="box"/>
+  <text x="290" y="280" class="name" text-anchor="middle">InnoMaker 27 W</text>
+  <text x="290" y="303" class="sub" text-anchor="middle">USB-C PD</text>
+  <text x="290" y="330" class="notestrong" text-anchor="middle">5,1 V — 5 A</text>
+  <text x="290" y="352" class="sub" text-anchor="middle">do not swap for a 3 A one</text>
+
+  <line x1="140" y1="308" x2="192" y2="308" class="cable" marker-end="url(#pijl)"/>
+
+  <!-- Pi 5 -->
+  <rect x="444" y="176" width="252" height="292" class="box"/>
+  <text x="570" y="208" class="name" text-anchor="middle">Raspberry Pi 5 — 1 GB</text>
+  <text x="570" y="229" class="sub" text-anchor="middle">OS Lite 64-bit, headless</text>
+
+  <rect x="444" y="288" width="14" height="34" fill="#3a3a42"/>
+  <text x="470" y="304" class="port">USB-C  power in</text>
+  <text x="470" y="320" class="sub">negotiates 5 V / 5 A</text>
+
+  <rect x="682" y="252" width="14" height="34" fill="#2f6fb0"/>
+  <text x="672" y="268" class="port" text-anchor="end">USB-A</text>
+  <text x="672" y="284" class="sub" text-anchor="end">→ CrowPanel</text>
+
+  <rect x="682" y="368" width="14" height="34" fill="#3a3a42"/>
+  <text x="672" y="384" class="port" text-anchor="end">USB-A</text>
+  <text x="672" y="400" class="sub" text-anchor="end">→ microphone</text>
+
+  <text x="570" y="440" class="sub" text-anchor="middle">40-pin header — see the alternative below</text>
+  <text x="570" y="458" class="sub" text-anchor="middle">Wi-Fi → Shazam, Discogs, web interface</text>
+
+  <line x1="388" y1="308" x2="440" y2="305" class="cable" marker-end="url(#pijl)"/>
+
+  <!-- CrowPanel -->
+  <rect x="780" y="188" width="240" height="166" class="box"/>
+  <text x="906" y="220" class="name" text-anchor="middle">CrowPanel 2.1"</text>
+  <text x="906" y="241" class="sub" text-anchor="middle">ESP32-S3, round 480×480</text>
+  <text x="906" y="268" class="notestrong" text-anchor="middle">~1 A at full brightness</text>
+  <text x="906" y="296" class="sub" text-anchor="middle">USB-5V-IN, UART and I2C</text>
+  <text x="906" y="314" class="sub" text-anchor="middle">are all three on a</text>
+  <text x="906" y="332" class="sub" text-anchor="middle">4-pin JST MX1.25</text>
+  <rect x="766" y="252" width="14" height="34" fill="#c2451f"/>
+
+  <path d="M700,269 L762,269" class="cable" marker-end="url(#pijl)"/>
+  <text x="737" y="248" class="head" text-anchor="middle">USB-5V-IN</text>
+
+  <text x="900" y="378" class="notestrong" text-anchor="middle">USB-A → JST MX1.25, 4-pin</text>
+  <text x="900" y="397" class="sub" text-anchor="middle">GND · D+ · D− · VCC</text>
+  <text x="900" y="415" class="sub" text-anchor="middle">power and data, four wires</text>
+
+  <!-- microfoon -->
+  <rect x="780" y="440" width="240" height="94" class="box"/>
+  <text x="900" y="472" class="name" text-anchor="middle">USB lavalier microphone</text>
+  <text x="900" y="494" class="sub" text-anchor="middle">YFYWINSH, ordinary USB-A</text>
+  <text x="900" y="516" class="sub" text-anchor="middle">capsule loose behind the opening</text>
+  <rect x="766" y="470" width="14" height="34" fill="#3a3a42"/>
+
+  <path d="M700,385 L734,385 L734,487 L762,487" class="cable" marker-end="url(#pijl)"/>
+
+  <!-- native USB -->
+  <rect x="40" y="422" width="380" height="112" fill="#fff" stroke="#d8d8de" stroke-width="2" rx="10"/>
+  <text x="60" y="450" class="notestrong">It is real USB, not a serial bridge</text>
+  <text x="60" y="474" class="mono">USB-D−  →  R43  →  GPIO19/USB_D−</text>
+  <text x="60" y="494" class="mono">USB-D+  →  R44  →  GPIO20/USB_D+</text>
+  <text x="60" y="518" class="sub">No CH340 or CP2102 on the board: the S3's native USB.</text>
+
+  <!-- stroombudget -->
+  <rect x="40" y="560" width="490" height="132" fill="#fff" stroke="#e8a33d" stroke-width="2" rx="10"/>
+  <text x="60" y="588" class="notestrong">Why that 27 W supply really matters</text>
+  <text x="60" y="612" class="note">The Pi 5 caps its USB ports at <tspan class="notestrong">600 mA together</tspan>. Not enough</text>
+  <text x="60" y="632" class="note">for the CrowPanel on its own. That limit only rises to <tspan class="notestrong">1.6 A</tspan></text>
+  <text x="60" y="652" class="note">once the Pi has negotiated <tspan class="notestrong">5 V at 5 A</tspan> with a PD supply.</text>
+  <text x="60" y="676" class="sub">CrowPanel ~1000 mA + microphone ~50 mA = ~1050 of the 1600 mA.</text>
+
+  <!-- alternatief UART -->
+  <rect x="556" y="560" width="464" height="132" fill="#fff" stroke="#d8d8de" stroke-width="2" rx="10"/>
+  <text x="576" y="588" class="notestrong">Alternative: the UART connector on the 40-pin header</text>
+  <text x="576" y="612" class="mono">CrowPanel UART      Pi 5 header</text>
+  <text x="576" y="631" class="mono">5V   ────────────   pin 4   (5V)</text>
+  <text x="576" y="650" class="mono">GND  ────────────   pin 6   (GND)</text>
+  <text x="576" y="669" class="mono">RX   ────────────   pin 8   (TXD)      TX → pin 10 (RXD)</text>
+
+  <!-- flashen -->
+  <rect x="40" y="718" width="980" height="86" fill="#fff" stroke="#d8d8de" stroke-width="2" rx="10"/>
+  <text x="60" y="746" class="notestrong">Flashing: hold BOOT down</text>
+  <text x="60" y="768" class="note">RESET and GPIO0 are on the 12-pin FPC, <tspan class="notestrong">not</tspan> on the 4-pin USB connector. So there is no auto-reset.</text>
+  <text x="60" y="788" class="note">Hold the BOOT button while you plug the cable in, let go, and upload.</text>
+</svg>

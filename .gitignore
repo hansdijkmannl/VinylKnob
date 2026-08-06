@@ -17,8 +17,8 @@ __pycache__/
 # The database, the cached artwork and the saved recordings. All of it is
 # either personal (your collection, your listening history) or rebuildable
 # (covers re-download on demand). Neither belongs in a repository.
-luxe/brein/data/
-luxe/pi/data/
+v2/brain/data/
+v2/pi/data/
 *.db
 *.db-journal
 *.db-wal
@@ -34,7 +34,7 @@ appletv.json
 # /Volumes/Opslag is exFAT, so macOS writes a "._name" sidecar next to every
 # file to hold the metadata the filesystem cannot store. They are invisible in
 # Finder, they are not part of the project, and they break C/C++ builds when a
-# toolchain globs *.c — see the note in luxe/crowpanel/platformio.ini.
+# toolchain globs *.c — see the note in v2/crowpanel/platformio.ini.
 ._*
 .DS_Store
 .Spotlight-V100
