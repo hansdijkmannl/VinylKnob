@@ -420,6 +420,8 @@ button.danger{background:var(--warn);color:#fff}
       <div><label for="rotated">Orientation</label>
         <select id="rotated"><option value="0">normal</option>
         <option value="1">upside down</option></select></div>
+        <div><label for="screenAngle">Fine angle (&deg;)</label>
+          <input id="screenAngle" type="number" min="-15" max="15" step="0.1"></div>
       <div><label for="dimAfterS">Dim after</label>
         <div class="sl"><input id="dimAfterS" type="range" min="0" max="300" step="15">
         <output id="oDim"></output></div></div>
@@ -429,6 +431,11 @@ button.danger{background:var(--warn);color:#fff}
       <option value="1">screen off when the amplifier goes off</option>
       <option value="0">always on</option>
     </select>
+    <p class="hint">A <b>fine angle</b> corrects a panel that ended up a few degrees
+    off in its mount. It turns the finished picture, text and all, which costs about
+    17% more per redraw — measured, not guessed. Zero is the fast path and changes
+    nothing; going from zero to any other value needs a restart, and there is a
+    button for that below.</p>
     <p class="hint">The main zone going off is the signal — so switching off with the remote
     works, and so does the Apple TV turning the receiver off over HDMI. Touching the glass or
     turning the knob wakes it again, and so does switching the amplifier back on.</p>
@@ -1263,6 +1270,7 @@ async function loadPanel() {
   for (const k of P_TEXT.concat(P_NUMBER)) if ($(k)) $(k).value = S[k];
   $('encDivider').value = String(S.encDivider || 4);
   $('rotated').value = S.rotated ? '1' : '0';
+  $('screenAngle').value = ((S.screenAngle || 0) / 10).toFixed(1);
   $('offWithAmp').value = S.offWithAmp ? '1' : '0';
   inputs = (S.inputs || []).map(b => ({code: b.code, label: b.label}));
   favourite = S.favouriteInput;
@@ -1337,6 +1345,7 @@ on('kSave', 'click', async () => {
   const b = {inputs: inputs, favouriteInput: parseInt($('favouriteInput').value, 10),
              encDivider: parseInt($('encDivider').value, 10),
              rotated: $('rotated').value === '1',
+             screenAngle: Math.round(parseFloat($('screenAngle').value || '0') * 10),
              offWithAmp: $('offWithAmp').value === '1'};
   for (const k of P_TEXT) b[k] = $(k).value;
   b.wifiPass = $('wifiPass').value;
