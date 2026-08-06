@@ -23,8 +23,8 @@ from __future__ import annotations
 import pathlib
 import sys
 
-BREIN = pathlib.Path(__file__).resolve().parent.parent / "brein"
-sys.path.insert(0, str(BREIN))
+BRAIN = pathlib.Path(__file__).resolve().parent.parent / "brein"
+sys.path.insert(0, str(BRAIN))
 
 from aiohttp import web                                   # noqa: E402
 

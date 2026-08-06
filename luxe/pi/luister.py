@@ -35,27 +35,27 @@ import time
 import wave
 
 import numpy as np
-import appicoon
+import appicon
 from appletv import AppleTV
 from aiohttp import ClientSession, ClientTimeout, web
 
 # De hoes wordt hier verkleind en niet op het paneel: een ESP32 die een JPEG van
 # 600 pixels moet schalen kost geheugen en tijd die hij niet heeft, terwijl de Pi
 # het in tientallen milliseconden doet.
-HOES_PX = int(os.environ.get("COVER_PX", "480"))
+COVER_PX = int(os.environ.get("COVER_PX", "480"))
 
 # -- instellingen, allemaal te overschrijven met omgevingsvariabelen ---------
-BREIN        = os.environ.get("BREIN_URL", "http://127.0.0.1:8790")
-APPARAAT     = os.environ.get("MIC_DEVICE", "plughw:1,0")
-TEMPO        = int(os.environ.get("MIC_RATE", "44100"))
-POORT        = int(os.environ.get("LUISTER_PORT", "8791"))
+BRAIN        = os.environ.get("BREIN_URL", "http://127.0.0.1:8790")
+MIC_DEVICE_NAME     = os.environ.get("MIC_DEVICE", "plughw:1,0")
+RATE        = int(os.environ.get("MIC_RATE", "44100"))
+PORT        = int(os.environ.get("LUISTER_PORT", "8791"))
 
-BLOK_S       = 0.1                     # zo vaak meten we het niveau
-FRAGMENT_S   = float(os.environ.get("CLIP_SECONDS", "8"))
-AANLOOP_S    = float(os.environ.get("SETTLE_SECONDS", "4"))    # naald laten zakken
+BLOCK_S       = 0.1                     # zo vaak meten we het niveau
+CLIP_S   = float(os.environ.get("CLIP_SECONDS", "8"))
+SETTLE_S    = float(os.environ.get("SETTLE_SECONDS", "4"))    # naald laten zakken
 START_S      = float(os.environ.get("START_SECONDS", "2.5"))   # zo lang geluid = het speelt
-STILTE_S     = float(os.environ.get("QUIET_SECONDS", "15"))    # zo lang stil = kant is klaar
-HERKANS_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # na een mislukte opzoeking
+QUIET_S     = float(os.environ.get("QUIET_SECONDS", "15"))    # zo lang stil = kant is klaar
+RETRY_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # na een mislukte opzoeking
 
 # Hoe vaak achter elkaar we het opnieuw proberen als er niets herkend wordt.
 #
@@ -66,39 +66,39 @@ HERKANS_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # na een mislukte
 # lukt het drie keer niet, dan ligt er geen plaat en gaan pogingen vier tot
 # vijfentwintig daar niets aan veranderen. Wachten op echte stilte is dan de
 # juiste zet: dat is het teken dat er iets nieuws kan beginnen.
-MAX_HERKANSEN = int(os.environ.get("MAX_RETRIES", "3"))
+MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "3"))
 
 # Hoe lang de hoes blijft staan nadat het stil werd. Bewust veel langer dan
 # QUIET_SECONDS: dat getal bepaalt wanneer er weer geluisterd mag worden, en dat
 # wil je kort. Maar het beeld leegmaken is iets anders — bij een marginaal
 # signaal zakt een zachte passage al onder de drempel, en dan verdwijnt de hoes
 # terwijl de plaat gewoon doorspeelt. Vijf minuten stilte is pas echt afgelopen.
-BEELD_HOUD_S = float(os.environ.get("COVER_HOLD_SECONDS", "300"))
-SPRONG_DB    = float(os.environ.get("TRIGGER_DB", "12"))       # boven de ruisvloer
+COVER_HOLD_S = float(os.environ.get("COVER_HOLD_SECONDS", "300"))
+TRIGGER_DB    = float(os.environ.get("TRIGGER_DB", "12"))       # boven de ruisvloer
 # De ruisvloer volgt snel naar beneden en heel langzaam omhoog. Dat is niet
 # hetzelfde als het tiende percentiel over de laatste minuut, en het verschil
 # doet ertoe: speelt er een minuut aaneengesloten muziek, dan wórdt die muziek
 # het tiende percentiel en zakt de gemeten marge naar nul. Precies de reden dat
 # een plaat die prima te horen is toch onder de drempel bleef.
-VLOER_STIJG_DB = 0.02          # per blok van 0,1 s, dus ~0,2 dB per seconde
-VLOER_STIL_DB  = 6.0           # zo dicht bij de vloer telt als "kamer"
+FLOOR_RISE_DB = 0.02          # per blok van 0,1 s, dus ~0,2 dB per seconde
+FLOOR_QUIET_DB  = 6.0           # zo dicht bij de vloer telt als "kamer"
 
-BYTES_PER_BLOK = int(TEMPO * BLOK_S) * 2       # 16 bits mono
+BYTES_PER_BLOCK = int(RATE * BLOCK_S) * 2       # 16 bits mono
 
 
 # Vanaf hier zet de Pi zijn ventilator op de hoogste stand; knijpen begint pas
 # bij 80. Onder deze grens is warm gewoon warm en hoeft het scherm er niets over
 # te zeggen — een permanente temperatuurmeter op een scherm voor albumhoezen is
 # rommel, een waarschuwing als het ertoe doet niet.
-HEET_C = float(os.environ.get("WARN_TEMP_C", "75"))
+HOT_C = float(os.environ.get("WARN_TEMP_C", "75"))
 
 
-def pi_warmte() -> dict:
+def pi_heat() -> dict:
     """Temperatuur, ventilator en of er geknepen wordt."""
-    uit = {"tempC": None, "fanRpm": None, "geknepen": False, "heet": False}
+    out = {"tempC": None, "fanRpm": None, "geknepen": False, "heet": False}
     try:
         with open("/sys/class/thermal/thermal_zone0/temp") as f:
-            uit["tempC"] = round(int(f.read()) / 1000, 1)
+            out["tempC"] = round(int(f.read()) / 1000, 1)
     except Exception:                                       # noqa: BLE001
         pass
     for pad in ("/sys/class/hwmon/hwmon0/fan1_input",
@@ -106,56 +106,56 @@ def pi_warmte() -> dict:
                 "/sys/class/hwmon/hwmon2/fan1_input"):
         try:
             with open(pad) as f:
-                uit["fanRpm"] = int(f.read())
+                out["fanRpm"] = int(f.read())
                 break
         except Exception:                                   # noqa: BLE001
             continue
     try:
         with open("/sys/devices/platform/soc/soc:firmware/get_throttled") as f:
-            uit["geknepen"] = int(f.read().strip(), 16) != 0
+            out["geknepen"] = int(f.read().strip(), 16) != 0
     except Exception:                                       # noqa: BLE001
         pass
-    uit["heet"] = bool(uit["geknepen"] or (uit["tempC"] or 0) >= HEET_C)
-    return uit
+    out["heet"] = bool(out["geknepen"] or (out["tempC"] or 0) >= HOT_C)
+    return out
 
 
 def db(rms: float) -> float:
     return 20.0 * np.log10(max(rms, 1e-9))
 
 
-def naar_wav(pcm: bytes) -> bytes:
+def to_wav(pcm: bytes) -> bytes:
     """Het brein wil een gewone 16-bits WAV; arecord levert kale PCM."""
-    uit = io.BytesIO()
-    with wave.open(uit, "wb") as w:
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(TEMPO)
+        w.setframerate(RATE)
         w.writeframes(pcm)
-    return uit.getvalue()
+    return out.getvalue()
 
 
-class Oren:
+class Ears:
     def __init__(self) -> None:
-        self.vloer_db = -99.0                 # volgt de stilte, niet de muziek
-        self.luid_sinds: float | None = None
-        self.stil_sinds: float | None = 0.0
-        self.bezig = False                    # er speelt iets, niet opnieuw vragen
-        self.luistert = False                 # nú aan het opnemen of opzoeken
+        self.floor_db = -99.0                 # volgt de stilte, niet de muziek
+        self.loud_since: float | None = None
+        self.quiet_since: float | None = 0.0
+        self.playing = False                    # er speelt iets, niet opnieuw vragen
+        self.listening = False                 # nú aan het opnemen of opzoeken
 
         # Het paneel vertelt bij elke peiling of luisteren zinvol is: staat de
         # receiver niet op de platenspeler, dan valt er niets te herkennen. Loopt
         # die melding af (paneel uit, kabel eruit), dan luisteren we weer op
         # eigen houtje — anders zou een stuk paneel de herkenning meenemen.
-        self.paneel_wil = True
-        self.paneel_tot = 0.0
+        self.panel_wants = True
+        self.panel_until = 0.0
 
         # Staat de versterker aan? Een plaat die je niet kunt horen draait niet,
         # dus dan is elk geluid in de kamer per definitie iets anders. Alleen
         # blokkeren als we het zéker weten: kan het paneel de receiver niet
         # bereiken, dan is "uit" een gok en luisteren we gewoon door.
-        self.versterker_aan = True
-        self.herkans_op: float | None = None  # opnieuw proberen na een misser
-        self.missers = 0                      # op rij, zonder tussenliggende stilte
+        self.amplifier_on = True
+        self.retry_at: float | None = None  # opnieuw proberen na een misser
+        self.misses = 0                      # op rij, zonder tussenliggende stilte
 
         # De laatste opzoeking die niets opleverde. Zolang die er staat kun je
         # vanaf het paneel een album aanwijzen en dat eraan koppelen — precies
@@ -163,37 +163,37 @@ class Oren:
         # telefoon door een wachtrij. En dat is ook het moment waarop het
         # fragment nog bij het geluid hoort dat je hoort.
         self.open_play_id: int | None = None
-        self.forceer = asyncio.Event()
-        self.laatste = "nog niets gehoord"
+        self.force = asyncio.Event()
+        self.last = "nog niets gehoord"
         self.release_id: int | None = None     # hoes uit je eigen kast
-        self.hoes_url: str | None = None       # hoes van de dienst, als tweede keus
-        self.artiest = ""                      # los, voor het CrowPanel
-        self.titel = ""
+        self.cover_url: str | None = None       # hoes van de dienst, als tweede keus
+        self.artist = ""                      # los, voor het CrowPanel
+        self.title = ""
         self.album = ""
-        self.niveau_db = -99.0
+        self.level_db = -99.0
 
         # Hoe vaak het CrowPanel om /nu vroeg. Puur diagnostisch: zo zie je op
         # /status of het paneel je werkelijk bereikt, zonder elke vier seconden
         # een regel in het logboek te zetten.
-        self.vragen_paneel = 0
-        self.laatste_paneel = ""
+        self.panel_polls = 0
+        self.last_panel_ip = ""
 
-        self.hoes_cache_bron = ""               # verkleinde hoes, één plaat diep
-        self.hoes_cache: bytes = b""
-        self.koppelen = 0                       # platen die op koppeling wachten
-        self.koppelen_tot = 0.0                 # tot wanneer die telling geldt
+        self.cover_cache_src = ""               # verkleinde hoes, één plaat diep
+        self.cover_cache: bytes = b""
+        self.linkable = 0                       # platen die op koppeling wachten
+        self.linkable_until = 0.0                 # tot wanneer die telling geldt
 
         # De klok telt geluid, niet wandtijd: elk blok is precies BLOK_S aan
         # audio. Dat is niet hetzelfde. Loopt arecord even achter of springt
         # het systeem in de tijd, dan blijven de drempels hieronder kloppen —
         # met time.time() zou een hapering een kant kunnen overslaan of juist
         # midden in een plaat opnieuw laten vragen.
-        self.klok = 0.0
+        self.clock = 0.0
 
     # -- opname ------------------------------------------------------------
     async def start_arecord(self):
         return await asyncio.create_subprocess_exec(
-            "arecord", "-D", APPARAAT, "-f", "S16_LE", "-r", str(TEMPO),
+            "arecord", "-D", MIC_DEVICE_NAME, "-f", "S16_LE", "-r", str(RATE),
             "-c", "1", "-t", "raw", "-q",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
@@ -214,114 +214,114 @@ class Oren:
 
     async def lus(self, proc) -> None:
         while True:
-            blok = await proc.stdout.readexactly(BYTES_PER_BLOK)
-            self.klok += BLOK_S
-            mon = np.frombuffer(blok, dtype="<i2").astype(np.float32) / 32768.0
-            niveau = db(float(np.sqrt(np.mean(mon * mon))))
-            self.niveau_db = niveau
+            block = await proc.stdout.readexactly(BYTES_PER_BLOCK)
+            self.clock += BLOCK_S
+            mon = np.frombuffer(block, dtype="<i2").astype(np.float32) / 32768.0
+            level = db(float(np.sqrt(np.mean(mon * mon))))
+            self.level_db = level
 
             # De vloer volgt de stilte, niet de muziek. Meteen mee omlaag; maar
             # omhoog alleen zolang het niveau dicht bij de vloer ligt, want dan
             # is het de kamer die luider werd. Zit er muziek overheen, dan staat
             # de vloer stil — anders kruipt hij tijdens een lange kant omhoog en
             # verdwijnt de marge waar je hem juist nodig hebt.
-            if self.vloer_db <= -98.0:
-                self.vloer_db = niveau               # eerste blok: hier beginnen
-            elif niveau < self.vloer_db:
-                self.vloer_db = niveau
-            elif niveau < self.vloer_db + VLOER_STIL_DB:
-                self.vloer_db += VLOER_STIJG_DB
+            if self.floor_db <= -98.0:
+                self.floor_db = level               # eerste blok: hier beginnen
+            elif level < self.floor_db:
+                self.floor_db = level
+            elif level < self.floor_db + FLOOR_QUIET_DB:
+                self.floor_db += FLOOR_RISE_DB
 
-            nu = self.klok
-            luid = niveau > self.vloer_db + SPRONG_DB
+            nu = self.clock
+            luid = level > self.floor_db + TRIGGER_DB
 
             if luid:
-                self.stil_sinds = None
-                if self.luid_sinds is None:
-                    self.luid_sinds = nu
+                self.quiet_since = None
+                if self.loud_since is None:
+                    self.loud_since = nu
             else:
-                self.luid_sinds = None
-                if self.stil_sinds is None:
-                    self.stil_sinds = nu
+                self.loud_since = None
+                if self.quiet_since is None:
+                    self.quiet_since = nu
                 # Lang genoeg stil: de kant is afgelopen, we mogen weer vragen.
-                if self.bezig and nu - self.stil_sinds > STILTE_S:
-                    self.bezig = False
-                    self.herkans_op = None
+                if self.playing and nu - self.quiet_since > QUIET_S:
+                    self.playing = False
+                    self.retry_at = None
                     # Stilte is de streep onder wat er was. Wat hierna komt is
                     # een nieuwe gebeurtenis en verdient weer een volle kans.
-                    self.missers = 0
+                    self.misses = 0
 
                 # Het beeld pas veel later wissen. Zo blijft de hoes staan
                 # tijdens een zachte passage, en verdwijnt hij als de plaat er
                 # werkelijk af is.
-                if self.artiest and nu - self.stil_sinds > BEELD_HOUD_S:
+                if self.artist and nu - self.quiet_since > COVER_HOLD_S:
                     self.release_id = None
-                    self.hoes_url = None
-                    self.artiest = self.titel = self.album = ""
+                    self.cover_url = None
+                    self.artist = self.title = self.album = ""
                     # Ook de koppeling laten vallen: wat je nu zou aanwijzen
                     # hoort niet meer bij het geluid van een kwartier geleden.
                     self.open_play_id = None
                     print("[luister] lang stil, beeld leeggemaakt", flush=True)
                     print("[luister] stilte, klaar voor de volgende kant", flush=True)
 
-            gevraagd = self.forceer.is_set()
+            gevraagd = self.force.is_set()
 
             # Zelf aftikken mag altijd; vanzelf beginnen alleen als het paneel
             # zegt dat er een plaat op ligt én de versterker aanstaat.
-            mag = ((self.paneel_wil or time.monotonic() > self.paneel_tot)
-                   and self.versterker_aan)
+            mag = ((self.panel_wants or time.monotonic() > self.panel_until)
+                   and self.amplifier_on)
             begint = (mag
-                      and self.luid_sinds is not None
-                      and nu - self.luid_sinds > START_S
-                      and not self.bezig)
+                      and self.loud_since is not None
+                      and nu - self.loud_since > START_S
+                      and not self.playing)
 
             # Mislukte opzoeking: het blijft spelen, dus een stuk verderop in de
             # plaat kan best lukken. Wachten tot het stil is zou betekenen dat je
             # een hele kant lang niets meer te zien krijgt.
-            herkans = (mag and self.herkans_op is not None and nu >= self.herkans_op
-                       and self.luid_sinds is not None)
-            if herkans:
-                self.herkans_op = None
+            retry = (mag and self.retry_at is not None and nu >= self.retry_at
+                       and self.loud_since is not None)
+            if retry:
+                self.retry_at = None
 
-            if gevraagd or begint or herkans:
-                self.forceer.clear()
-                self.luistert = True
-                if not gevraagd and not herkans:
+            if gevraagd or begint or retry:
+                self.force.clear()
+                self.listening = True
+                if not gevraagd and not retry:
                     # De naald staat er net op; even laten zakken voor we happen.
-                    await self.slik(proc, AANLOOP_S)
-                pcm = await self.hap(proc, FRAGMENT_S)
-                self.bezig = True
-                self.luid_sinds = None
+                    await self.slik(proc, SETTLE_S)
+                pcm = await self.hap(proc, CLIP_S)
+                self.playing = True
+                self.loud_since = None
                 try:
-                    await self.vraag(naar_wav(pcm))
+                    await self.vraag(to_wav(pcm))
                 finally:
-                    self.luistert = False
+                    self.listening = False
 
     async def slik(self, proc, seconden: float) -> None:
-        n = int(seconden / BLOK_S)
+        n = int(seconden / BLOCK_S)
         for _ in range(n):
-            await proc.stdout.readexactly(BYTES_PER_BLOK)
-            self.klok += BLOK_S
+            await proc.stdout.readexactly(BYTES_PER_BLOCK)
+            self.clock += BLOCK_S
 
     async def hap(self, proc, seconden: float) -> bytes:
-        n = int(seconden / BLOK_S)
-        uit = []
+        n = int(seconden / BLOCK_S)
+        out = []
         for _ in range(n):
-            uit.append(await proc.stdout.readexactly(BYTES_PER_BLOK))
-            self.klok += BLOK_S
-        return b"".join(uit)
+            out.append(await proc.stdout.readexactly(BYTES_PER_BLOCK))
+            self.clock += BLOCK_S
+        return b"".join(out)
 
     # -- het brein vragen --------------------------------------------------
     async def vraag(self, wav: bytes) -> None:
         print(f"[luister] {len(wav)//1024} kB naar het brein", flush=True)
         try:
             async with ClientSession(timeout=ClientTimeout(total=60)) as s:
-                async with s.post(f"{BREIN}/api/listen", data=wav,
+                async with s.post(f"{BRAIN}/api/listen", data=wav,
                                   headers={"Content-Type": "audio/wav"}) as r:
                     body = await r.json()
         except Exception as e:                                  # noqa: BLE001
-            self.laatste = f"brein onbereikbaar: {e!r}"
-            print(f"[luister] {self.laatste}", flush=True)
+            self.last = f"brein onbereikbaar: {e!r}"
+            print(f"[luister] {self.last}", flush=True)
             return
 
         rel = body.get("release")
@@ -333,43 +333,43 @@ class Oren:
         # de hoes midden in een kant laten verdwijnen, en dat is precies wat er
         # gebeurde toen de herkansing na 60 seconden niets opleverde.
         if body.get("matched"):
-            self.missers = 0
+            self.misses = 0
             self.open_play_id = None
             self.release_id = rel["id"] if rel else None
-            self.hoes_url = treffer.get("cover") or None
-            self.artiest = treffer.get("artist") or (rel["artist"] if rel else "")
-            self.titel = treffer.get("title") or ""
+            self.cover_url = treffer.get("cover") or None
+            self.artist = treffer.get("artist") or (rel["artist"] if rel else "")
+            self.title = treffer.get("title") or ""
             self.album = (rel["title"] if rel else "") or treffer.get("album") or ""
 
         if body.get("matched") and rel:
-            self.laatste = f"{rel['artist']} — {rel['title']}"
+            self.last = f"{rel['artist']} — {rel['title']}"
         elif body.get("matched"):
-            self.laatste = (f"{treffer.get('artist','?')} — "
+            self.last = (f"{treffer.get('artist','?')} — "
                             f"{treffer.get('title','?')} (niet in de kast)")
         else:
             self.open_play_id = body.get("playId")
-            self.missers += 1
-            if self.missers < MAX_HERKANSEN:
-                self.laatste = "onbekend, in de wachtrij gezet"
-                self.herkans_op = self.klok + HERKANS_S
+            self.misses += 1
+            if self.misses < MAX_RETRIES:
+                self.last = "onbekend, in de wachtrij gezet"
+                self.retry_at = self.clock + RETRY_S
             else:
-                self.laatste = (f"{self.missers}x niets herkend — "
+                self.last = (f"{self.misses}x niets herkend — "
                                 "wachten tot het stil wordt")
-                self.herkans_op = None
-        print(f"[luister] {self.laatste}", flush=True)
+                self.retry_at = None
+        print(f"[luister] {self.last}", flush=True)
 
 
-oren = Oren()
+ears = Ears()
 atv = AppleTV()
 
 
-async def api_luister(_request):
+async def api_listen_now(_request):
     """Nu meteen luisteren, ongeacht wat de drempel vindt."""
-    oren.forceer.set()
+    ears.force.set()
     return web.json_response({"ok": True})
 
 
-HIER = pathlib.Path(__file__).parent
+HERE = pathlib.Path(__file__).parent
 
 
 async def index(_request):
@@ -383,41 +383,41 @@ async def index(_request):
     Apple TV van deze dienst, /api/* van het brein en /paneel/* van het paneel.
     Waarom dat mag: zie de doorgeeflus hieronder.
     """
-    return web.FileResponse(HIER / "static" / "index.html")
+    return web.FileResponse(HERE / "static" / "index.html")
 
 
-async def tel_koppelen() -> int:
+async def count_linkable() -> int:
     """Hoeveel platen wachten er op een koppeling.
 
     Met een cache van een halve minuut, want het paneel vraagt elke vier
     seconden en de wachtrij verandert hooguit een paar keer per avond.
     """
-    if time.monotonic() < oren.koppelen_tot:
-        return oren.koppelen
+    if time.monotonic() < ears.linkable_until:
+        return ears.linkable
     try:
         async with ClientSession(timeout=ClientTimeout(total=5)) as s:
-            async with s.get(f"{BREIN}/api/plays?status=unknown&limit=99") as r:
+            async with s.get(f"{BRAIN}/api/plays?status=unknown&limit=99") as r:
                 body = await r.json()
-        oren.koppelen = len(body.get("plays", []))
+        ears.linkable = len(body.get("plays", []))
     except Exception:                                       # noqa: BLE001
         pass                                                # oude telling houden
-    oren.koppelen_tot = time.monotonic() + 30
-    return oren.koppelen
+    ears.linkable_until = time.monotonic() + 30
+    return ears.linkable
 
 
-def _verklein_bytes(data: bytes, px: int | None = None) -> bytes:
+def _shrink_bytes(data: bytes, px: int | None = None) -> bytes:
     """Vierkant bijsnijden en terugbrengen tot px (standaard HOES_PX)."""
     from PIL import Image
-    px = px or HOES_PX
-    beeld = Image.open(io.BytesIO(data)).convert("RGB")
-    kant = min(beeld.size)
-    links = (beeld.width - kant) // 2
-    boven = (beeld.height - kant) // 2
-    beeld = beeld.crop((links, boven, links + kant, boven + kant))
-    beeld = beeld.resize((px, px), Image.LANCZOS)
-    uit = io.BytesIO()
-    beeld.save(uit, "JPEG", quality=82, optimize=True)
-    return uit.getvalue()
+    px = px or COVER_PX
+    image = Image.open(io.BytesIO(data)).convert("RGB")
+    kant = min(image.size)
+    links = (image.width - kant) // 2
+    above = (image.height - kant) // 2
+    image = image.crop((links, above, links + kant, above + kant))
+    image = image.resize((px, px), Image.LANCZOS)
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=82, optimize=True)
+    return out.getvalue()
 
 
 async def api_nu(request):
@@ -434,10 +434,10 @@ async def api_nu(request):
     # schermpje staat — zou meetellen de diagnose juist vertroebelen: dan zegt
     # "paneel polls" evenveel over je telefoon als over het paneel.
     if "luister" in request.query:
-        oren.vragen_paneel += 1
-        oren.laatste_paneel = request.remote or "?"
-        oren.paneel_wil = request.query["luister"] not in ("0", "false", "nee")
-        oren.paneel_tot = time.monotonic() + 60
+        ears.panel_polls += 1
+        ears.last_panel_ip = request.remote or "?"
+        ears.panel_wants = request.query["luister"] not in ("0", "false", "nee")
+        ears.panel_until = time.monotonic() + 60
 
     # Staat de receiver niet op de platenspeler, dan is de Apple TV de bron —
     # als die gekoppeld is en iets afspeelt. Dat is beter dan meeluisteren:
@@ -445,42 +445,42 @@ async def api_nu(request):
     # Ook melden als er niets speelt maar er wel een app open staat: dat de
     # Apple TV op YouTube staat is op zichzelf al informatie, en anders val je
     # terug op de microfoon die daar niets te zoeken heeft.
-    if not oren.paneel_wil and atv.apparaat is not None and (
-            atv.artiest or atv.titel or atv.app_id):
+    if not ears.panel_wants and atv.device is not None and (
+            atv.artist or atv.title or atv.app_id):
         return web.json_response({
-            "koppelen": await tel_koppelen(),
-            "artiest": atv.artiest,
-            "titel": atv.titel,
-            "album": atv.album or atv.titel,
-            "hoes": bool(atv.hoes) or bool(await appicoon.icoon(atv.app_id)),
+            "koppelen": await count_linkable(),
+            "artiest": atv.artist,
+            "titel": atv.title,
+            "album": atv.album or atv.title,
+            "hoes": bool(atv.artwork) or bool(await appicon.icon(atv.app_id)),
             # Een logo is geen hoes maar een plaatsvervanger: het paneel verbergt
             # tekst achter een echte hoes, maar bij een logo hoort de titel er
             # juist bij — anders zie je een merk en niet wat er draait.
-            "logo": not atv.hoes and bool(await appicoon.icoon(atv.app_id)),
+            "logo": not atv.artwork and bool(await appicon.icon(atv.app_id)),
             "kast": False,
-            "speelt": atv.speelt,
+            "speelt": atv.playing_now,
             "luistert": False,
             "bron": "appletv",
             "app": atv.app,
-            "heet": pi_warmte()["heet"],
+            "heet": pi_heat()["heet"],
         })
     return web.json_response({
-        "koppelen": await tel_koppelen(),
-        "artiest": oren.artiest,
-        "titel": oren.titel,
-        "album": oren.album,
-        "hoes": bool(oren.release_id or oren.hoes_url),   # staat er iets op /hoes
-        "kast": oren.release_id is not None,  # gevonden in de eigen collectie
-        "speelt": oren.bezig,
-        "luistert": oren.luistert,
+        "koppelen": await count_linkable(),
+        "artiest": ears.artist,
+        "titel": ears.title,
+        "album": ears.album,
+        "hoes": bool(ears.release_id or ears.cover_url),   # staat er iets op /hoes
+        "kast": ears.release_id is not None,  # gevonden in de eigen collectie
+        "speelt": ears.playing,
+        "luistert": ears.listening,
         # Staat er een opzoeking open die niets opleverde? Dan kun je vanaf het
         # paneel een album aanwijzen en dat eraan hangen.
-        "koppelbaar": oren.open_play_id is not None,
-        "heet": pi_warmte()["heet"],
+        "koppelbaar": ears.open_play_id is not None,
+        "heet": pi_heat()["heet"],
     })
 
 
-async def api_hoes(_request):
+async def api_cover(_request):
     """De hoes, doorgegeven van het brein.
 
     Zo hoeft het paneel maar één adres te kennen. Het haalt hem hier op en niet
@@ -493,38 +493,38 @@ async def api_hoes(_request):
     # Apple TV gaat voor zolang de platenspeler niet aan de beurt is — en dan
     # ook uitsluitend. Doorvallen naar de plaatroute gaf de hoes van de vorige
     # LP bij een YouTube-video zonder afbeelding, en dat is erger dan niets.
-    if not oren.paneel_wil and atv.apparaat is not None:
-        if atv.hoes:
-            klein = await asyncio.to_thread(_verklein_bytes, atv.hoes)
-            return web.Response(body=klein, content_type="image/jpeg")
+    if not ears.panel_wants and atv.device is not None:
+        if atv.artwork:
+            small = await asyncio.to_thread(_shrink_bytes, atv.artwork)
+            return web.Response(body=small, content_type="image/jpeg")
         # Geen afbeelding bij deze titel — YouTube geeft er geen door. Dan het
         # logo van de app, opgehaald bij Apple's eigen zoekingang.
-        logo = await appicoon.icoon(atv.app_id)
+        logo = await appicon.icon(atv.app_id)
         if logo:
             return web.Response(body=logo, content_type="image/jpeg")
         raise web.HTTPNotFound()
 
-    if oren.release_id is not None:
-        bron = f"{BREIN}/api/cover/{oren.release_id}"
-    elif oren.hoes_url:
-        bron = oren.hoes_url
+    if ears.release_id is not None:
+        source = f"{BRAIN}/api/cover/{ears.release_id}"
+    elif ears.cover_url:
+        source = ears.cover_url
     else:
         raise web.HTTPNotFound()
 
-    if oren.hoes_cache_bron == bron and oren.hoes_cache:
-        return web.Response(body=oren.hoes_cache, content_type="image/jpeg")
+    if ears.cover_cache_src == source and ears.cover_cache:
+        return web.Response(body=ears.cover_cache, content_type="image/jpeg")
 
     async with ClientSession(timeout=ClientTimeout(total=15)) as s:
-        async with s.get(bron) as r:
+        async with s.get(source) as r:
             if r.status != 200:
                 raise web.HTTPNotFound()
-            rauw = await r.read()
+            raw = await r.read()
 
     # Vierkant bijsnijden en terugbrengen tot HOES_PX. Het paneel decodeert dan
     # één op één in een buffer die het van tevoren kan reserveren.
-    klein = await asyncio.to_thread(_verklein_bytes, rauw)
-    oren.hoes_cache_bron, oren.hoes_cache = bron, klein
-    return web.Response(body=klein, content_type="image/jpeg")
+    small = await asyncio.to_thread(_shrink_bytes, raw)
+    ears.cover_cache_src, ears.cover_cache = source, small
+    return web.Response(body=small, content_type="image/jpeg")
 
 
 # -- de platenkast voor het paneel ------------------------------------------
@@ -538,28 +538,28 @@ async def api_hoes(_request):
 # ontleden is daar seconden mee bezig, terwijl regels splitsen op een tab bijna
 # niets kost. Eén regel per album, oplopend op artiest zoals het brein hem al
 # sorteert.
-KAST_PX = int(os.environ.get("SHELF_PX", "138"))
-KAST_CACHE = HIER.parent / "brein" / "data" / "kasthoezen"
+SHELF_PX = int(os.environ.get("SHELF_PX", "138"))
+SHELF_CACHE = HERE.parent / "brein" / "data" / "kasthoezen"
 
 
-async def api_kast(_request):
+async def api_shelf(_request):
     try:
         async with ClientSession(timeout=ClientTimeout(total=30)) as s:
-            async with s.get(f"{BREIN}/api/collection?q=&limit=5000") as r:
+            async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
                 body = await r.json()
     except Exception as e:                                  # noqa: BLE001
         raise web.HTTPBadGateway(text=f"brein niet bereikbaar: {e!r}")
 
-    regels = []
+    lines = []
     for rel in body.get("releases", []):
         # Tabs uit de veldwaarden halen, anders loopt het splitsen mis.
-        artiest = (rel.get("artist") or "").replace("\t", " ").strip()
-        titel = (rel.get("title") or "").replace("\t", " ").strip()
-        regels.append(f"{rel['id']}\t{artiest}\t{titel}")
-    return web.Response(text="\n".join(regels), content_type="text/plain")
+        artist = (rel.get("artist") or "").replace("\t", " ").strip()
+        title = (rel.get("title") or "").replace("\t", " ").strip()
+        lines.append(f"{rel['id']}\t{artist}\t{title}")
+    return web.Response(text="\n".join(lines), content_type="text/plain")
 
 
-async def api_koppel(request):
+async def api_link(request):
     """Het album dat je op het paneel aanwees koppelen aan wat er nu speelt.
 
     Dit is de wachtrij, maar dan op het juiste moment. Normaal koppel je 's
@@ -571,7 +571,7 @@ async def api_koppel(request):
     volgende keer lokaal herkend, zonder dienst — precies de les die alleen jij
     kon geven.
     """
-    if oren.open_play_id is None:
+    if ears.open_play_id is None:
         return web.json_response({"ok": False, "fout": "niets om te koppelen"},
                                  status=409)
     try:
@@ -579,7 +579,7 @@ async def api_koppel(request):
     except ValueError:
         return web.json_response({"ok": False, "fout": "geen id"}, status=400)
 
-    play_id = oren.open_play_id
+    play_id = ears.open_play_id
     try:
         async with ClientSession(timeout=ClientTimeout(total=30)) as s:
             # Eerst opzoeken of dit album bestaat, dan pas koppelen. Andersom
@@ -587,36 +587,36 @@ async def api_koppel(request):
             # en, erger, het fragment als vingerafdruk bij een release zetten
             # die er niet is. Een koppeling is blijvend; die maak je niet op goed
             # vertrouwen.
-            async with s.get(f"{BREIN}/api/collection?q=&limit=5000") as r:
+            async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
                 lijst = (await r.json()).get("releases", [])
             rel = next((x for x in lijst if x["id"] == rel_id), None)
             if rel is None:
                 return web.json_response(
                     {"ok": False, "fout": f"album {rel_id} bestaat niet"}, status=404)
 
-            async with s.post(f"{BREIN}/api/plays/{play_id}/link",
+            async with s.post(f"{BRAIN}/api/plays/{play_id}/link",
                               json={"releaseId": rel_id}) as r:
-                uit = await r.json()
+                out = await r.json()
     except Exception as e:                                  # noqa: BLE001
         return web.json_response({"ok": False, "fout": f"{e!r}"}, status=502)
 
-    oren.release_id = rel_id
-    oren.hoes_url = None
-    oren.artiest = rel["artist"]
-    oren.titel = rel["title"]
-    oren.album = rel["title"]
-    oren.laatste = f"{rel['artist']} — {rel['title']} (zelf gekoppeld)"
-    oren.hoes_cache_bron, oren.hoes_cache = "", b""
-    oren.open_play_id = None
-    oren.koppelen_tot = 0.0                    # telling opnieuw ophalen
+    ears.release_id = rel_id
+    ears.cover_url = None
+    ears.artist = rel["artist"]
+    ears.title = rel["title"]
+    ears.album = rel["title"]
+    ears.last = f"{rel['artist']} — {rel['title']} (zelf gekoppeld)"
+    ears.cover_cache_src, ears.cover_cache = "", b""
+    ears.open_play_id = None
+    ears.linkable_until = 0.0                    # telling opnieuw ophalen
 
-    print(f"[luister] {oren.laatste}, {uit.get('hashes', 0)} vingerafdrukken",
+    print(f"[luister] {ears.last}, {out.get('hashes', 0)} vingerafdrukken",
           flush=True)
-    return web.json_response({"ok": True, "hashes": uit.get("hashes", 0),
-                              "artiest": oren.artiest, "titel": oren.titel})
+    return web.json_response({"ok": True, "hashes": out.get("hashes", 0),
+                              "artiest": ears.artist, "titel": ears.title})
 
 
-async def api_kasthoes(request):
+async def api_shelf_cover(request):
     """Eén hoes, klein genoeg om op het paneel te decoderen.
 
     Twee maten: de plaat in het midden staat groter dan die ernaast. Schalen op
@@ -627,29 +627,29 @@ async def api_kasthoes(request):
         rel_id = int(request.query.get("id", ""))
         # Tot 480, want kies je een album in de kast dan komt diezelfde hoes
         # schermvullend terug op het volumescherm.
-        px = min(int(request.query.get("px", KAST_PX)), 480)
+        px = min(int(request.query.get("px", SHELF_PX)), 480)
     except ValueError:
         raise web.HTTPBadRequest(text="id en px moeten getallen zijn")
 
-    KAST_CACHE.mkdir(parents=True, exist_ok=True)
-    pad = KAST_CACHE / f"{rel_id}-{px}.jpg"
+    SHELF_CACHE.mkdir(parents=True, exist_ok=True)
+    pad = SHELF_CACHE / f"{rel_id}-{px}.jpg"
     if pad.exists():
         return web.FileResponse(pad)
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=20)) as s:
-            async with s.get(f"{BREIN}/api/cover/{rel_id}") as r:
+            async with s.get(f"{BRAIN}/api/cover/{rel_id}") as r:
                 if r.status != 200:
                     raise web.HTTPNotFound()
-                rauw = await r.read()
+                raw = await r.read()
     except web.HTTPException:
         raise
     except Exception as e:                                  # noqa: BLE001
         raise web.HTTPBadGateway(text=f"hoes ophalen mislukt: {e!r}")
 
-    klein = await asyncio.to_thread(_verklein_bytes, rauw, px)
-    pad.write_bytes(klein)
-    return web.Response(body=klein, content_type="image/jpeg")
+    small = await asyncio.to_thread(_shrink_bytes, raw, px)
+    pad.write_bytes(small)
+    return web.Response(body=small, content_type="image/jpeg")
 
 
 # Where the panel lives.
@@ -662,14 +662,14 @@ async def api_kasthoes(request):
 # The alternative was asking for an IP during setup, which is a poor question:
 # at that moment the panel usually has no network yet, so you would be typing
 # an address that does not exist.
-PANEEL = os.environ.get("PANEL_HOST", os.environ.get("PANEEL_HOST", ""))
+PANEL = os.environ.get("PANEL_HOST", os.environ.get("PANEEL_HOST", ""))
 
 
-def paneel_host() -> str:
-    return PANEEL or oren.laatste_paneel
+def panel_host() -> str:
+    return PANEL or ears.last_panel_ip
 
 
-async def _doorgeef(request, doel: str, wat: str):
+async def _forward(request, target: str, what: str):
     """Een verzoek onveranderd doorzetten en het antwoord teruggeven.
 
     Zo staat de hele webinterface op één adres terwijl de drie delen blijven
@@ -682,7 +682,7 @@ async def _doorgeef(request, doel: str, wat: str):
     weggooien maakt het formulier onleesbaar aan de andere kant.
     """
     if request.query_string:
-        doel += "?" + request.query_string
+        target += "?" + request.query_string
 
     body = await request.read() if request.method != "GET" else None
     kop = {}
@@ -691,42 +691,42 @@ async def _doorgeef(request, doel: str, wat: str):
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=60)) as s:
-            async with s.request(request.method, doel, data=body, headers=kop) as r:
-                rauw = await r.read()
-                return web.Response(body=rauw, status=r.status,
+            async with s.request(request.method, target, data=body, headers=kop) as r:
+                raw = await r.read()
+                return web.Response(body=raw, status=r.status,
                                     content_type=r.content_type)
     except Exception as e:                                  # noqa: BLE001
-        raise web.HTTPBadGateway(text=f"{wat} niet bereikbaar: {e!r}")
+        raise web.HTTPBadGateway(text=f"{what} niet bereikbaar: {e!r}")
 
 
-async def brein_proxy(request):
+async def brain_proxy(request):
     """/api/* hoort bij het brein, een poort verderop op dezelfde Pi."""
-    return await _doorgeef(request, f"{BREIN}/api/{request.match_info['staart']}",
+    return await _forward(request, f"{BRAIN}/api/{request.match_info['staart']}",
                            "brein")
 
 
-async def paneel_proxy(request):
+async def panel_proxy(request):
     """Het CrowPanel doorgeven.
 
     De pagina van het paneel gebruikt relatieve paden, dus hem onder /paneel/
     hangen werkt zonder er iets aan te herschrijven — zowel voor de eigen
     pagina van het paneel als voor de tabbladversie hier.
     """
-    host = paneel_host()
+    host = panel_host()
     if not host:
         raise web.HTTPServiceUnavailable(
             text="the panel has not been seen yet; it announces itself as soon "
                  "as it polls this Pi")
-    return await _doorgeef(request,
+    return await _forward(request,
                            f"http://{host}/{request.match_info.get('staart', '')}",
                            "paneel")
 
 
-async def paneel_wortel(request):
+async def panel_root(request):
     # Zonder afsluitende schuine streep kloppen de relatieve paden niet.
     if not request.path.endswith("/"):
         raise web.HTTPFound(request.path + "/")
-    return await paneel_proxy(request)
+    return await panel_proxy(request)
 
 
 # -- Apple TV ---------------------------------------------------------------
@@ -736,65 +736,65 @@ async def atv_scan(_request):
 
 async def atv_pair(request):
     body = await request.json()
-    return web.json_response(await atv.koppel_start(body.get("id", "")))
+    return web.json_response(await atv.pair_start(body.get("id", "")))
 
 
 async def atv_pin(request):
     body = await request.json()
-    return web.json_response(await atv.koppel_pin(str(body.get("pin", ""))))
+    return web.json_response(await atv.pair_pin(str(body.get("pin", ""))))
 
 
-async def atv_vergeet(_request):
-    await atv.vergeet()
+async def atv_forget(_request):
+    await atv.forget()
     return web.json_response({"ok": True})
 
 
 async def atv_status(_request):
-    g = atv.gekoppeld()
+    g = atv.paired()
     return web.json_response({
         "gekoppeld": bool(g),
         "naam": (g or {}).get("naam", ""),
-        "verbonden": atv.apparaat is not None,
-        "speelt": atv.speelt,
-        "artiest": atv.artiest,
-        "titel": atv.titel,
+        "verbonden": atv.device is not None,
+        "speelt": atv.playing_now,
+        "artiest": atv.artist,
+        "titel": atv.title,
         "album": atv.album,
-        "hoes": bool(atv.hoes),
-        "hoesBytes": len(atv.hoes),
+        "hoes": bool(atv.artwork),
+        "hoesBytes": len(atv.artwork),
         "app": atv.app,
         "appId": atv.app_id,
-        "fout": atv.fout,
+        "fout": atv.error,
         # Hoe oud deze gegevens zijn. Zonder dit ziet een bevroren verbinding
         # er precies hetzelfde uit als een Apple TV die al een uur dezelfde
         # video speelt, en dat verschil wil je juist kunnen zien.
-        "seconden": (round(time.monotonic() - atv.laatste_update)
-                     if atv.laatste_update else None),
+        "seconden": (round(time.monotonic() - atv.last_update)
+                     if atv.last_update else None),
     })
 
 
 async def api_status(_request):
     return web.json_response({
-        "niveauDb": round(oren.niveau_db, 1),
-        "ruisvloerDb": round(oren.vloer_db, 1),
-        "drempelDb": round(oren.vloer_db + SPRONG_DB, 1),
-        "speelt": oren.bezig,
-        "luistert": oren.luistert,
-        "laatste": oren.laatste,
-        "releaseId": oren.release_id,
-        "hoesUrl": oren.hoes_url,
-        "apparaat": APPARAAT,
-        "luisterenToegestaan": ((oren.paneel_wil or time.monotonic() > oren.paneel_tot)
-                                and oren.versterker_aan),
-        "versterkerAan": oren.versterker_aan,
-        "missers": oren.missers,
-        "maxHerkansen": MAX_HERKANSEN,
-        "pi": pi_warmte(),
-        "paneelVragen": oren.vragen_paneel,
-        "paneelVan": oren.laatste_paneel,
+        "niveauDb": round(ears.level_db, 1),
+        "ruisvloerDb": round(ears.floor_db, 1),
+        "drempelDb": round(ears.floor_db + TRIGGER_DB, 1),
+        "speelt": ears.playing,
+        "luistert": ears.listening,
+        "laatste": ears.last,
+        "releaseId": ears.release_id,
+        "hoesUrl": ears.cover_url,
+        "apparaat": MIC_DEVICE_NAME,
+        "luisterenToegestaan": ((ears.panel_wants or time.monotonic() > ears.panel_until)
+                                and ears.amplifier_on),
+        "versterkerAan": ears.amplifier_on,
+        "missers": ears.misses,
+        "maxHerkansen": MAX_RETRIES,
+        "pi": pi_heat(),
+        "paneelVragen": ears.panel_polls,
+        "paneelVan": ears.last_panel_ip,
     })
 
 
-async def bewaak_versterker() -> None:
+async def watch_amplifier() -> None:
     """Bijhouden of de versterker aanstaat, los van de audiolus.
 
     Apart en niet in lus(): daar wordt elke tiende seconde een blok gelezen, en
@@ -802,7 +802,7 @@ async def bewaak_versterker() -> None:
     zet de versterker niet aan en uit tussen twee kanten door.
     """
     while True:
-        host = paneel_host()
+        host = panel_host()
         if host:
             try:
                 async with ClientSession(timeout=ClientTimeout(total=4)) as s:
@@ -810,48 +810,48 @@ async def bewaak_versterker() -> None:
                         st = await r.json()
                 # Alleen bij zekerheid dichtzetten: geen verbinding met de
                 # receiver betekent dat het paneel het ook niet weet.
-                oren.versterker_aan = not (st.get("connected") and
+                ears.amplifier_on = not (st.get("connected") and
                                            not st.get("powered"))
             except Exception:                                   # noqa: BLE001
-                oren.versterker_aan = True      # paneel weg: niet gaan raden
+                ears.amplifier_on = True      # paneel weg: niet gaan raden
         await asyncio.sleep(10)
 
 
 async def start(app):
-    app["oren"] = asyncio.create_task(oren.draai())
-    app["avr"] = asyncio.create_task(bewaak_versterker())
-    if atv.gekoppeld():
-        app["atv"] = asyncio.create_task(atv.verbind())
-        app["atv_bewaking"] = asyncio.create_task(atv.bewaak())
+    app["oren"] = asyncio.create_task(ears.draai())
+    app["avr"] = asyncio.create_task(watch_amplifier())
+    if atv.paired():
+        app["atv"] = asyncio.create_task(atv.connect())
+        app["atv_bewaking"] = asyncio.create_task(atv.watch())
 
 
 async def stop(app):
-    for naam in ("oren", "avr", "atv_bewaking"):
-        if naam in app:
-            app[naam].cancel()
+    for name in ("oren", "avr", "atv_bewaking"):
+        if name in app:
+            app[name].cancel()
 
 
 def main() -> None:
     app = web.Application()
     app.router.add_get("/", index)
-    app.router.add_post("/luister", api_luister)
+    app.router.add_post("/luister", api_listen_now)
     app.router.add_get("/status", api_status)
     app.router.add_get("/nu", api_nu)
-    app.router.add_get("/hoes", api_hoes)
-    app.router.add_get("/kast", api_kast)
-    app.router.add_get("/kasthoes", api_kasthoes)
-    app.router.add_post("/koppel", api_koppel)
+    app.router.add_get("/hoes", api_cover)
+    app.router.add_get("/kast", api_shelf)
+    app.router.add_get("/kasthoes", api_shelf_cover)
+    app.router.add_post("/koppel", api_link)
     app.router.add_get("/appletv/scan", atv_scan)
     app.router.add_get("/appletv/status", atv_status)
     app.router.add_post("/appletv/pair", atv_pair)
     app.router.add_post("/appletv/pin", atv_pin)
-    app.router.add_post("/appletv/vergeet", atv_vergeet)
+    app.router.add_post("/appletv/vergeet", atv_forget)
 
     # De twee doorgeefroutes. Ze staan achteraan omdat ze met een joker eindigen
     # en anders de vaste routes hierboven zouden opslokken.
-    app.router.add_route("*", "/api/{staart:.*}", brein_proxy)
-    app.router.add_route("*", "/paneel", paneel_wortel)
-    app.router.add_route("*", "/paneel/{staart:.*}", paneel_proxy)
+    app.router.add_route("*", "/api/{staart:.*}", brain_proxy)
+    app.router.add_route("*", "/paneel", panel_root)
+    app.router.add_route("*", "/paneel/{staart:.*}", panel_proxy)
 
     app.on_startup.append(start)
     app.on_cleanup.append(stop)
@@ -863,9 +863,9 @@ def main() -> None:
         # dezelfde interface gewoon op allebei.
         runner = web.AppRunner(app)
         await runner.setup()
-        await web.TCPSite(runner, "0.0.0.0", POORT).start()
-        print(f"[luister] microfoon {APPARAAT}, brein op {BREIN}, "
-              f"panel {PANEEL or 'auto'}, port {POORT}", flush=True)
+        await web.TCPSite(runner, "0.0.0.0", PORT).start()
+        print(f"[luister] microfoon {MIC_DEVICE_NAME}, brein op {BRAIN}, "
+              f"panel {PANEL or 'auto'}, port {PORT}", flush=True)
 
         # Poort 80 is een extraatje: lukt het niet (geen rechten), dan blijft de
         # rest gewoon draaien in plaats van dat de dienst omvalt.

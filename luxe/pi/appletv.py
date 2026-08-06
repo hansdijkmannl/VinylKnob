@@ -23,8 +23,8 @@ import time
 import pyatv
 from pyatv.const import Protocol
 
-HIER = pathlib.Path(__file__).parent
-SLEUTELS = HIER.parent / "brein" / "data" / "appletv.json"
+HERE = pathlib.Path(__file__).parent
+CREDENTIALS = HERE.parent / "brein" / "data" / "appletv.json"
 
 # Hoe vaak we controleren of de verbinding nog echt leeft.
 #
@@ -33,177 +33,177 @@ SLEUTELS = HIER.parent / "brein" / "data" / "appletv.json"
 # geen duwtjes meer binnen, `self.apparaat` bleef gevuld, en het paneel toonde
 # een nacht lang de titel van de laatste video van de vorige avond. Een
 # afwezige melding is geen bewijs dat het goed gaat, dus vragen we het gewoon.
-BEWAAK_S = 60.0
+WATCH_S = 60.0
 
 # Zonder deze twee valt er niets te lezen: Companion levert de bediening,
 # AirPlay het "nu aan het spelen" met de hoes.
-NODIG = (Protocol.AirPlay, Protocol.Companion)
+REQUIRED = (Protocol.AirPlay, Protocol.Companion)
 
 
-def _laad() -> dict:
+def _load() -> dict:
     try:
-        return json.loads(SLEUTELS.read_text())
+        return json.loads(CREDENTIALS.read_text())
     except Exception:                                       # noqa: BLE001
         return {}
 
 
-def _bewaar(gegevens: dict) -> None:
-    SLEUTELS.parent.mkdir(parents=True, exist_ok=True)
-    SLEUTELS.write_text(json.dumps(gegevens, indent=2))
+def _save(data: dict) -> None:
+    CREDENTIALS.parent.mkdir(parents=True, exist_ok=True)
+    CREDENTIALS.write_text(json.dumps(data, indent=2))
 
 
 class AppleTV:
     def __init__(self) -> None:
-        self.apparaat = None            # verbonden pyatv-interface
-        self.bezig_koppelen = None      # lopende koppelsessie
-        self.koppel_naam = ""
-        self.artiest = ""
-        self.titel = ""
+        self.device = None            # verbonden pyatv-interface
+        self.pairing = None      # lopende koppelsessie
+        self.pairing_name = ""
+        self.artist = ""
+        self.title = ""
         self.album = ""
-        self.speelt = False
-        self.hoes: bytes = b""
+        self.playing_now = False
+        self.artwork: bytes = b""
         self.app = ""
         self.app_id = ""
-        self.fout = ""
-        self.laatste_update = 0.0       # wanneer er voor het laatst iets binnenkwam
+        self.error = ""
+        self.last_update = 0.0       # wanneer er voor het laatst iets binnenkwam
 
     # -- ontdekken en koppelen --------------------------------------------
     async def scan(self) -> list[dict]:
-        gevonden = await pyatv.scan(asyncio.get_event_loop(), timeout=5)
-        uit = []
-        for a in gevonden:
+        found = await pyatv.scan(asyncio.get_event_loop(), timeout=5)
+        out = []
+        for a in found:
             # Alleen apparaten die kunnen vertellen wat ze spelen. Een HomePod
             # in de lijst zetten die dat niet levert is alleen verwarrend.
-            protocollen = {s.protocol for s in a.services}
-            if Protocol.AirPlay not in protocollen:
+            protocols = {s.protocol for s in a.services}
+            if Protocol.AirPlay not in protocols:
                 continue
-            uit.append({
+            out.append({
                 "id": str(a.identifier),
                 "naam": a.name,
                 "model": str(a.device_info),
                 "adres": str(a.address),
             })
-        return uit
+        return out
 
-    async def koppel_start(self, identifier: str) -> dict:
-        await self.koppel_stop()
-        gevonden = await pyatv.scan(asyncio.get_event_loop(), timeout=5,
+    async def pair_start(self, identifier: str) -> dict:
+        await self.pair_stop()
+        found = await pyatv.scan(asyncio.get_event_loop(), timeout=5,
                                     identifier=identifier)
-        if not gevonden:
+        if not found:
             return {"ok": False, "fout": "apparaat niet gevonden"}
 
-        self.koppel_naam = gevonden[0].name
-        self._conf = gevonden[0]
-        self._resterend = [p for p in NODIG
-                           if p in {s.protocol for s in gevonden[0].services}]
-        return await self._volgende_protocol()
+        self.pairing_name = found[0].name
+        self._conf = found[0]
+        self._remaining = [p for p in REQUIRED
+                           if p in {s.protocol for s in found[0].services}]
+        return await self._next_protocol()
 
-    async def _volgende_protocol(self) -> dict:
+    async def _next_protocol(self) -> dict:
         """Elk protocol wil zijn eigen pincode; hier gaan we ze langs."""
-        if not self._resterend:
-            _bewaar({"id": str(self._conf.identifier), "naam": self.koppel_naam,
-                     **self._verzameld})
-            await self.verbind()
-            return {"ok": True, "klaar": True, "naam": self.koppel_naam}
+        if not self._remaining:
+            _save({"id": str(self._conf.identifier), "naam": self.pairing_name,
+                     **self._collected})
+            await self.connect()
+            return {"ok": True, "klaar": True, "naam": self.pairing_name}
 
-        protocol = self._resterend[0]
-        self.bezig_koppelen = await pyatv.pair(self._conf, protocol,
+        protocol = self._remaining[0]
+        self.pairing = await pyatv.pair(self._conf, protocol,
                                                asyncio.get_event_loop())
-        await self.bezig_koppelen.begin()
+        await self.pairing.begin()
         return {"ok": True, "klaar": False, "protocol": protocol.name,
-                "naam": self.koppel_naam,
-                "resterend": len(self._resterend)}
+                "naam": self.pairing_name,
+                "resterend": len(self._remaining)}
 
-    async def koppel_pin(self, pin: str) -> dict:
-        if not self.bezig_koppelen:
+    async def pair_pin(self, pin: str) -> dict:
+        if not self.pairing:
             return {"ok": False, "fout": "geen koppeling bezig"}
-        self.bezig_koppelen.pin(pin)
+        self.pairing.pin(pin)
         try:
-            await self.bezig_koppelen.finish()
+            await self.pairing.finish()
         except Exception as e:                              # noqa: BLE001
             return {"ok": False, "fout": f"{type(e).__name__}: {e}"}
 
-        protocol = self._resterend.pop(0)
-        if not hasattr(self, "_verzameld"):
-            self._verzameld = {}
-        self._verzameld[protocol.name] = self.bezig_koppelen.service.credentials
-        await self.bezig_koppelen.close()
-        self.bezig_koppelen = None
-        return await self._volgende_protocol()
+        protocol = self._remaining.pop(0)
+        if not hasattr(self, "_collected"):
+            self._collected = {}
+        self._collected[protocol.name] = self.pairing.service.credentials
+        await self.pairing.close()
+        self.pairing = None
+        return await self._next_protocol()
 
-    async def koppel_stop(self) -> None:
-        if self.bezig_koppelen:
+    async def pair_stop(self) -> None:
+        if self.pairing:
             try:
-                await self.bezig_koppelen.close()
+                await self.pairing.close()
             except Exception:                               # noqa: BLE001
                 pass
-            self.bezig_koppelen = None
-        self._verzameld = {}
+            self.pairing = None
+        self._collected = {}
 
-    def gekoppeld(self) -> dict | None:
-        g = _laad()
+    def paired(self) -> dict | None:
+        g = _load()
         return g if g.get("id") else None
 
-    async def vergeet(self) -> None:
-        await self.ontkoppel()
-        SLEUTELS.unlink(missing_ok=True)
+    async def forget(self) -> None:
+        await self.disconnect()
+        CREDENTIALS.unlink(missing_ok=True)
 
     # -- verbinding en wat er speelt --------------------------------------
-    async def verbind(self) -> bool:
-        g = self.gekoppeld()
+    async def connect(self) -> bool:
+        g = self.paired()
         if not g:
             return False
-        await self.ontkoppel()
+        await self.disconnect()
         try:
-            gevonden = await pyatv.scan(asyncio.get_event_loop(), timeout=5,
+            found = await pyatv.scan(asyncio.get_event_loop(), timeout=5,
                                         identifier=g["id"])
-            if not gevonden:
-                self.fout = "apparaat staat niet op het netwerk"
+            if not found:
+                self.error = "apparaat staat niet op het netwerk"
                 return False
-            conf = gevonden[0]
-            for naam, sleutel in g.items():
-                if naam in ("id", "naam"):
+            conf = found[0]
+            for name, key in g.items():
+                if name in ("id", "naam"):
                     continue
-                conf.set_credentials(Protocol[naam], sleutel)
-            self.apparaat = await pyatv.connect(conf, asyncio.get_event_loop())
+                conf.set_credentials(Protocol[name], key)
+            self.device = await pyatv.connect(conf, asyncio.get_event_loop())
             # Twee luisteraars, en de tweede is geen luxe: de push-updater meldt
             # alleen wát er speelt, de apparaatluisteraar meldt dát de
             # verbinding weg is. Zonder die tweede blijft een verbroken
             # verbinding onzichtbaar en bevriest het scherm op de laatste titel.
-            self.apparaat.listener = self
-            self.apparaat.push_updater.listener = self
-            self.apparaat.push_updater.start()
-            self.fout = ""
+            self.device.listener = self
+            self.device.push_updater.listener = self
+            self.device.push_updater.start()
+            self.error = ""
             # Meteen ophalen wat er nu speelt, in plaats van wachten tot er
             # toevallig iets verandert.
             try:
-                self._neem_over(await self.apparaat.metadata.playing())
+                self._take_over(await self.device.metadata.playing())
             except Exception:                               # noqa: BLE001
                 pass
             return True
         except Exception as e:                              # noqa: BLE001
-            self.fout = f"{type(e).__name__}: {e}"
+            self.error = f"{type(e).__name__}: {e}"
             return False
 
-    async def ontkoppel(self) -> None:
-        if self.apparaat:
+    async def disconnect(self) -> None:
+        if self.device:
             try:
-                self.apparaat.close()
+                self.device.close()
             except Exception:                               # noqa: BLE001
                 pass
-            self.apparaat = None
-        self.artiest = self.titel = self.album = ""
-        self.speelt = False
-        self.hoes = b""
+            self.device = None
+        self.artist = self.title = self.album = ""
+        self.playing_now = False
+        self.artwork = b""
 
     # -- pyatv duwt wijzigingen hierheen ----------------------------------
-    def _neem_over(self, status) -> None:
+    def _take_over(self, status) -> None:
         """Eén plek waar de velden gevuld worden, voor duwtjes én controles."""
         # De app is bruikbaar als er verder niets is: bij YouTube blijft het
         # bij titel en kanaal, want er komt geen video-identificatie mee waarmee
         # je een thumbnail zou kunnen opzoeken.
         try:
-            app = getattr(self.apparaat.metadata, "app", None)
+            app = getattr(self.device.metadata, "app", None)
             self.app_id = (getattr(app, "identifier", None) or "") if app else ""
             # .name geeft "YouTube"; str() zou "App: YouTube (com.google...)"
             # opleveren en dat wil je niet op een scherm van 480 pixels.
@@ -211,37 +211,37 @@ class AppleTV:
         except Exception:                                   # noqa: BLE001
             self.app = ""
 
-        nieuw = (status.artist or "", status.title or "", status.album or "")
-        veranderd = nieuw != (self.artiest, self.titel, self.album)
-        self.artiest, self.titel, self.album = nieuw
-        self.speelt = status.device_state is not None and str(
+        fresh = (status.artist or "", status.title or "", status.album or "")
+        veranderd = fresh != (self.artist, self.title, self.album)
+        self.artist, self.title, self.album = fresh
+        self.playing_now = status.device_state is not None and str(
             status.device_state).lower().endswith("playing")
-        self.laatste_update = time.monotonic()
+        self.last_update = time.monotonic()
         # De hoes alleen opnieuw ophalen als er werkelijk iets anders speelt;
         # de bewaking komt elke minuut langs en dat is geen reden om elke
         # minuut een afbeelding op te vragen.
         if veranderd:
-            asyncio.create_task(self._haal_hoes())
+            asyncio.create_task(self._fetch_artwork())
 
     def playstatus_update(self, _updater, status) -> None:
-        self._neem_over(status)
+        self._take_over(status)
 
     def playstatus_error(self, _updater, exception) -> None:
-        self.fout = f"{type(exception).__name__}: {exception}"
+        self.error = f"{type(exception).__name__}: {exception}"
 
     # -- de verbinding zelf ------------------------------------------------
     # pyatv meldt hierlangs dat het apparaat weg is. Voorheen luisterde niemand.
     def connection_lost(self, exception) -> None:
-        self.fout = f"verbinding weggevallen: {type(exception).__name__}: {exception}"
-        self.apparaat = None
-        print(f"[appletv] {self.fout}", flush=True)
+        self.error = f"verbinding weggevallen: {type(exception).__name__}: {exception}"
+        self.device = None
+        print(f"[appletv] {self.error}", flush=True)
 
     def connection_closed(self) -> None:
-        self.fout = "verbinding gesloten door het apparaat"
-        self.apparaat = None
-        print(f"[appletv] {self.fout}", flush=True)
+        self.error = "verbinding gesloten door het apparaat"
+        self.device = None
+        print(f"[appletv] {self.error}", flush=True)
 
-    async def bewaak(self) -> None:
+    async def watch(self) -> None:
         """Blijven controleren, en opnieuw verbinden als het nodig is.
 
         Naast de meldingen hierboven, niet in plaats daarvan: die vangen een
@@ -250,42 +250,42 @@ class AppleTV:
         wat er gebeurde, en het bleef een nacht lang onopgemerkt.
         """
         while True:
-            await asyncio.sleep(BEWAAK_S)
+            await asyncio.sleep(WATCH_S)
             # Alles afgevangen: een bewaker die zelf stilletjes kan omvallen is
             # erger dan geen bewaker, want dan lijkt het nog steeds goed te gaan.
             try:
-                await self.controleer()
+                await self.check_once()
             except asyncio.CancelledError:
                 raise
             except Exception as e:                          # noqa: BLE001
                 print(f"[appletv] bewaking struikelde: {type(e).__name__}: {e}",
                       flush=True)
 
-    async def controleer(self) -> None:
+    async def check_once(self) -> None:
         """Eén ronde van de bewaking. Apart, zodat hij te testen is."""
-        if not self.gekoppeld():
+        if not self.paired():
             return
-        if self.apparaat is None:
-            await self.verbind()
+        if self.device is None:
+            await self.connect()
             return
         try:
             status = await asyncio.wait_for(
-                self.apparaat.metadata.playing(), timeout=10)
-            self._neem_over(status)
+                self.device.metadata.playing(), timeout=10)
+            self._take_over(status)
         except Exception as e:                              # noqa: BLE001
             print(f"[appletv] reageert niet ({type(e).__name__}), "
                   "opnieuw verbinden", flush=True)
-            await self.verbind()
+            await self.connect()
 
-    async def _haal_hoes(self) -> None:
-        if not self.apparaat:
+    async def _fetch_artwork(self) -> None:
+        if not self.device:
             return
         try:
-            kunst = await self.apparaat.metadata.artwork(width=480, height=480)
-            self.hoes = kunst.bytes if kunst else b""
-            if not self.hoes:
+            kunst = await self.device.metadata.artwork(width=480, height=480)
+            self.artwork = kunst.bytes if kunst else b""
+            if not self.artwork:
                 print("[appletv] geen afbeelding bij deze titel", flush=True)
         except Exception as e:                              # noqa: BLE001
-            self.hoes = b""
+            self.artwork = b""
             print(f"[appletv] hoes ophalen mislukt: {type(e).__name__}: {e}",
                   flush=True)
