@@ -1,16 +1,16 @@
 """
-Wat er op de Apple TV speelt, rechtstreeks van het apparaat.
+What is playing on the Apple TV, straight from the device.
 
-De microfoon is voor platen. Voor alles wat over HDMI binnenkomt is meeluisteren
-onzin: de Apple TV wéét wat hij afspeelt, inclusief de hoes, en pyatv vraagt het
-gewoon. Geen herkenning, geen ruisvloer, geen Shazam.
+The microphone is for records. For anything arriving over HDMI, listening in is
+nonsense: the Apple TV *knows* what it is playing, artwork included, and pyatv
+simply asks. No recognition, no noise floor, no Shazam.
 
-Koppelen gaat via de webinterface en niet via de opdrachtregel: er verschijnt een
-pincode op de tv en die tik je in op je telefoon. De sleutels komen in
-data/appletv.json en overleven een herstart.
+Pairing happens through the web interface rather than the command line: a PIN
+appears on the television and you type it on your phone. The credentials land in
+data/appletv.json and survive a restart.
 
-Let op: een app mag zijn gegevens afschermen. Netflix doet dat; Apple TV+, Music
-en de meeste andere niet. Daar valt van deze kant niets aan te doen.
+Note: an app may withhold its metadata. Netflix does; Apple TV+, Music and most
+others do not. There is nothing to be done about that from this side.
 """
 
 from __future__ import annotations
@@ -26,17 +26,17 @@ from pyatv.const import Protocol
 HERE = pathlib.Path(__file__).parent
 CREDENTIALS = HERE.parent / "brein" / "data" / "appletv.json"
 
-# Hoe vaak we controleren of de verbinding nog echt leeft.
+# How often we check that the connection is genuinely alive.
 #
-# Dit is er niet voor niets. Een Apple TV die gaat slapen verbreekt de
-# verbinding, en dat gebeurde zonder dat er iets van te merken was: er kwamen
-# geen duwtjes meer binnen, `self.apparaat` bleef gevuld, en het paneel toonde
-# een nacht lang de titel van de laatste video van de vorige avond. Een
-# afwezige melding is geen bewijs dat het goed gaat, dus vragen we het gewoon.
+# This is not idle. An Apple TV going to sleep drops the connection, and that
+# happened with nothing to show for it: no more push updates arrived,
+# `self.device` stayed populated, and the panel showed the title of the previous
+# evening's last video all night. An absent error is no proof that things are
+# fine, so we simply ask.
 WATCH_S = 60.0
 
-# Zonder deze twee valt er niets te lezen: Companion levert de bediening,
-# AirPlay het "nu aan het spelen" met de hoes.
+# Without these two there is nothing to read: Companion provides control,
+# AirPlay the "now playing" with its artwork.
 REQUIRED = (Protocol.AirPlay, Protocol.Companion)
 
 
@@ -54,8 +54,8 @@ def _save(data: dict) -> None:
 
 class AppleTV:
     def __init__(self) -> None:
-        self.device = None            # verbonden pyatv-interface
-        self.pairing = None      # lopende koppelsessie
+        self.device = None            # the connected pyatv interface
+        self.pairing = None           # pairing session in progress
         self.pairing_name = ""
         self.artist = ""
         self.title = ""
@@ -65,15 +65,15 @@ class AppleTV:
         self.app = ""
         self.app_id = ""
         self.error = ""
-        self.last_update = 0.0       # wanneer er voor het laatst iets binnenkwam
+        self.last_update = 0.0       # when something last came in
 
-    # -- ontdekken en koppelen --------------------------------------------
+    # -- discovery and pairing ---------------------------------------------
     async def scan(self) -> list[dict]:
         found = await pyatv.scan(asyncio.get_event_loop(), timeout=5)
         out = []
         for a in found:
-            # Alleen apparaten die kunnen vertellen wat ze spelen. Een HomePod
-            # in de lijst zetten die dat niet levert is alleen verwarrend.
+            # Only devices that can say what they are playing. Listing a
+            # HomePod that cannot is merely confusing.
             protocols = {s.protocol for s in a.services}
             if Protocol.AirPlay not in protocols:
                 continue
@@ -90,7 +90,7 @@ class AppleTV:
         found = await pyatv.scan(asyncio.get_event_loop(), timeout=5,
                                     identifier=identifier)
         if not found:
-            return {"ok": False, "fout": "apparaat niet gevonden"}
+            return {"ok": False, "fout": "device not found"}
 
         self.pairing_name = found[0].name
         self._conf = found[0]
@@ -99,7 +99,7 @@ class AppleTV:
         return await self._next_protocol()
 
     async def _next_protocol(self) -> dict:
-        """Elk protocol wil zijn eigen pincode; hier gaan we ze langs."""
+        """Each protocol wants its own PIN; this walks through them."""
         if not self._remaining:
             _save({"id": str(self._conf.identifier), "naam": self.pairing_name,
                      **self._collected})
@@ -116,7 +116,7 @@ class AppleTV:
 
     async def pair_pin(self, pin: str) -> dict:
         if not self.pairing:
-            return {"ok": False, "fout": "geen koppeling bezig"}
+            return {"ok": False, "fout": "no pairing in progress"}
         self.pairing.pin(pin)
         try:
             await self.pairing.finish()
@@ -148,7 +148,7 @@ class AppleTV:
         await self.disconnect()
         CREDENTIALS.unlink(missing_ok=True)
 
-    # -- verbinding en wat er speelt --------------------------------------
+    # -- the connection, and what is playing -------------------------------
     async def connect(self) -> bool:
         g = self.paired()
         if not g:
@@ -158,7 +158,7 @@ class AppleTV:
             found = await pyatv.scan(asyncio.get_event_loop(), timeout=5,
                                         identifier=g["id"])
             if not found:
-                self.error = "apparaat staat niet op het netwerk"
+                self.error = "device is not on the network"
                 return False
             conf = found[0]
             for name, key in g.items():
@@ -166,15 +166,15 @@ class AppleTV:
                     continue
                 conf.set_credentials(Protocol[name], key)
             self.device = await pyatv.connect(conf, asyncio.get_event_loop())
-            # Twee luisteraars, en de tweede is geen luxe: de push-updater meldt
-            # alleen wát er speelt, de apparaatluisteraar meldt dát de
-            # verbinding weg is. Zonder die tweede blijft een verbroken
-            # verbinding onzichtbaar en bevriest het scherm op de laatste titel.
+            # Two listeners, and the second is not a luxury: the push updater
+            # reports only *what* is playing, the device listener reports *that*
+            # the connection is gone. Without the second, a dropped connection
+            # stays invisible and the screen freezes on the last title.
             self.device.listener = self
             self.device.push_updater.listener = self
             self.device.push_updater.start()
             self.error = ""
-            # Meteen ophalen wat er nu speelt, in plaats van wachten tot er
+            # Fetch what is playing right away, rather than waiting for
             # toevallig iets verandert.
             try:
                 self._take_over(await self.device.metadata.playing())
@@ -196,17 +196,17 @@ class AppleTV:
         self.playing_now = False
         self.artwork = b""
 
-    # -- pyatv duwt wijzigingen hierheen ----------------------------------
+    # -- pyatv pushes changes to here --------------------------------------
     def _take_over(self, status) -> None:
-        """Eén plek waar de velden gevuld worden, voor duwtjes én controles."""
-        # De app is bruikbaar als er verder niets is: bij YouTube blijft het
-        # bij titel en kanaal, want er komt geen video-identificatie mee waarmee
-        # je een thumbnail zou kunnen opzoeken.
+        """One place where the fields get filled, for pushes and checks alike."""
+        # The app name is useful when there is nothing else: with YouTube you
+        # get title and channel and no more, because no video identifier comes
+        # along that you could look a thumbnail up with.
         try:
             app = getattr(self.device.metadata, "app", None)
             self.app_id = (getattr(app, "identifier", None) or "") if app else ""
             # .name geeft "YouTube"; str() zou "App: YouTube (com.google...)"
-            # opleveren en dat wil je niet op een scherm van 480 pixels.
+            # and you do not want that on a 480-pixel screen.
             self.app = (getattr(app, "name", None) or "") if app else ""
         except Exception:                                   # noqa: BLE001
             self.app = ""
@@ -217,9 +217,9 @@ class AppleTV:
         self.playing_now = status.device_state is not None and str(
             status.device_state).lower().endswith("playing")
         self.last_update = time.monotonic()
-        # De hoes alleen opnieuw ophalen als er werkelijk iets anders speelt;
-        # de bewaking komt elke minuut langs en dat is geen reden om elke
-        # minuut een afbeelding op te vragen.
+        # Only re-fetch the artwork when something genuinely different is
+        # playing; the watchdog comes past every minute and that is no reason to
+        # request an image every minute.
         if veranderd:
             asyncio.create_task(self._fetch_artwork())
 
@@ -229,30 +229,30 @@ class AppleTV:
     def playstatus_error(self, _updater, exception) -> None:
         self.error = f"{type(exception).__name__}: {exception}"
 
-    # -- de verbinding zelf ------------------------------------------------
-    # pyatv meldt hierlangs dat het apparaat weg is. Voorheen luisterde niemand.
+    # -- the connection itself ---------------------------------------------
+    # pyatv reports a lost device through here. Previously nobody listened.
     def connection_lost(self, exception) -> None:
         self.error = f"verbinding weggevallen: {type(exception).__name__}: {exception}"
         self.device = None
         print(f"[appletv] {self.error}", flush=True)
 
     def connection_closed(self) -> None:
-        self.error = "verbinding gesloten door het apparaat"
+        self.error = "connection closed by the device"
         self.device = None
         print(f"[appletv] {self.error}", flush=True)
 
     async def watch(self) -> None:
-        """Blijven controleren, en opnieuw verbinden als het nodig is.
+        """Keep checking, and reconnect when needed.
 
-        Naast de meldingen hierboven, niet in plaats daarvan: die vangen een
-        nette afsluiting, dit vangt ook het geval waarin de verbinding technisch
-        overeind staat maar er niets meer doorheen komt. Dat laatste is precies
-        wat er gebeurde, en het bleef een nacht lang onopgemerkt.
+        Alongside the callbacks above, not instead of them: those catch a clean
+        shutdown, this also catches the case where the connection is technically
+        up but nothing comes through any more. That last one is exactly what
+        happened, and it went unnoticed for a night.
         """
         while True:
             await asyncio.sleep(WATCH_S)
-            # Alles afgevangen: een bewaker die zelf stilletjes kan omvallen is
-            # erger dan geen bewaker, want dan lijkt het nog steeds goed te gaan.
+            # Everything caught: a watchdog that can quietly fall over itself
+            # is worse than none, because it still looks like things are fine.
             try:
                 await self.check_once()
             except asyncio.CancelledError:
@@ -262,7 +262,7 @@ class AppleTV:
                       flush=True)
 
     async def check_once(self) -> None:
-        """Eén ronde van de bewaking. Apart, zodat hij te testen is."""
+        """One round of the watchdog. Separate, so that it can be tested."""
         if not self.paired():
             return
         if self.device is None:
@@ -273,8 +273,8 @@ class AppleTV:
                 self.device.metadata.playing(), timeout=10)
             self._take_over(status)
         except Exception as e:                              # noqa: BLE001
-            print(f"[appletv] reageert niet ({type(e).__name__}), "
-                  "opnieuw verbinden", flush=True)
+            print(f"[appletv] not responding ({type(e).__name__}), "
+                  "reconnecting", flush=True)
             await self.connect()
 
     async def _fetch_artwork(self) -> None:
@@ -284,7 +284,7 @@ class AppleTV:
             kunst = await self.device.metadata.artwork(width=480, height=480)
             self.artwork = kunst.bytes if kunst else b""
             if not self.artwork:
-                print("[appletv] geen afbeelding bij deze titel", flush=True)
+                print("[appletv] no image for this title", flush=True)
         except Exception as e:                              # noqa: BLE001
             self.artwork = b""
             print(f"[appletv] hoes ophalen mislukt: {type(e).__name__}: {e}",

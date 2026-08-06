@@ -1,17 +1,17 @@
 """
-Het icoon van de app die op de Apple TV draait.
+The icon of whichever app is running on the Apple TV.
 
-Bij een YouTube-video komt er geen afbeelding mee — die app geeft er geen door.
-Een leeg scherm is dan zonde, en de appnaam in letters is maar half zo duidelijk
-als het logo dat je kent. Apple heeft daar een openbare zoekingang voor: geef de
-bundelnaam en je krijgt het icoon uit de App Store, zonder sleutel.
+A YouTube video comes with no image — that app supplies none. An empty screen is
+a waste, and the app name in letters is half as recognisable as the logo you
+know. Apple has a public search endpoint for exactly this: give it the bundle
+identifier and you get the App Store icon back, no key required.
 
-Wat er terugkomt is een vierkant icoon, geen schermvullende hoes. Daarom wordt
-het hier op een donkere ondergrond gezet met ruimte eromheen: dan valt het op
-zijn plek naast de echte hoezen in plaats van als opgeblazen postzegel.
+What comes back is a square icon, not a full-bleed sleeve. So it is placed on a
+dark field with room around it: that way it sits alongside the real artwork
+rather than looking like a blown-up postage stamp.
 
-Apple's eigen apps staan niet in de winkel en leveren dus niets. Daar blijft de
-naam op het scherm staan, en dat is precies goed.
+Apple's own apps are not in the store and return nothing. There the name stays
+on screen, which is exactly right.
 """
 
 from __future__ import annotations
@@ -25,12 +25,12 @@ CACHE = pathlib.Path(__file__).parent.parent / "brein" / "data" / "appicons"
 OWN = CACHE / "eigen"
 SEARCH_URL = "https://itunes.apple.com/lookup"
 
-FIELD = 480          # zelfde maat als een hoes, zodat het paneel niets hoeft te weten
-ICON_URL = 130         # het logo zelf; de rest is lucht en ruimte voor tekst
+FIELD = 480          # same size as a sleeve, so the panel need know nothing
+ICON_URL = 130         # the logo itself; the rest is air and room for text
 
-# Het logo staat bovenin en niet in het midden: daaronder komen de titel en de
-# artiest, en die willen die ruimte hebben. Op een rond scherm is er op deze
-# hoogte nog ruim 300 pixels breed, dus het logo valt er niet af.
+# The logo sits near the top rather than centred: the title and artist go below
+# it and want that room. On a round screen there is still over 300 pixels of
+# width at this height, so the logo does not fall off the edge.
 TOP = 66
 
 
@@ -52,15 +52,15 @@ def _compose(raw: bytes) -> bytes:
     from PIL import Image, ImageDraw
 
     source = Image.open(io.BytesIO(raw))
-    # Een logo met doorzichtige achtergrond hoort op het donkere vlak te komen,
-    # niet op wit. Vandaar samenvoegen in plaats van botweg omzetten.
+    # A logo with a transparent background belongs on the dark field, not on
+    # white. Hence compositing rather than a blunt convert.
     if source.mode in ("RGBA", "LA", "P"):
         source = source.convert("RGBA")
         onder = Image.new("RGBA", source.size, (16, 16, 20, 255))
         source = Image.alpha_composite(onder, source)
     source = source.convert("RGB")
 
-    # Niet-vierkante logo's (de tv-app is breed) passend maken zonder uitrekken.
+    # Fit non-square logos (the tv app is wide) without stretching them.
     if source.width != source.height:
         kant = max(source.size)
         vierkant = Image.new("RGB", (kant, kant), (16, 16, 20))
@@ -69,8 +69,8 @@ def _compose(raw: bytes) -> bytes:
 
     icon = source.resize((ICON_URL, ICON_URL), Image.LANCZOS)
 
-    # App-iconen zijn vierkant met ronde hoeken; zonder die afronding ziet het
-    # eruit als een screenshot in plaats van als een logo.
+    # App icons are square with rounded corners; without that rounding it looks
+    # like a screenshot rather than a logo.
     masker = Image.new("L", (ICON_URL, ICON_URL), 0)
     ImageDraw.Draw(masker).rounded_rectangle(
         (0, 0, ICON_URL - 1, ICON_URL - 1), radius=int(ICON_URL * 0.22), fill=255)
@@ -84,11 +84,11 @@ def _compose(raw: bytes) -> bytes:
 
 
 def store_own(bundle: str, raw: bytes) -> bytes:
-    """Een zelf aangeleverd logo. Gaat voor op wat de App Store levert.
+    """A logo you supplied yourself. Takes priority over the App Store.
 
-    Nodig omdat Apple's eigen apps — de tv-app, Music — niet in de winkel staan
-    en daar dus geen icoon te halen valt. En handig als je een logo mooier vindt
-    dan het officiele.
+    Needed because Apple's own apps — the tv app, Music — are not in the store,
+    so there is no icon to fetch. Also handy when you prefer a logo to the
+    official one.
     """
     OWN.mkdir(parents=True, exist_ok=True)
     done = _compose(raw)
@@ -102,7 +102,7 @@ def own_list() -> list[str]:
 
 
 async def icon(bundle: str) -> bytes:
-    """Geeft een schermvullende JPEG met het logo, of leeg als die er niet is."""
+    """Returns a full-screen JPEG with the logo, or empty if there is none."""
     if not bundle:
         return b""
     own = OWN / f"{bundle}.jpg"
@@ -116,7 +116,7 @@ async def icon(bundle: str) -> bytes:
 
     raw = await _fetch(bundle)
     if not raw:
-        path.write_bytes(b"")        # ook onthouden dát er niets is
+        path.write_bytes(b"")        # remember that there is nothing, too
         return b""
 
     import asyncio

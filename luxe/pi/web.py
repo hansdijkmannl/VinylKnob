@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Het brein starten op de Pi, bereikbaar vanaf je telefoon en je Mac.
+Start the brain on the Pi, reachable from your phone.
 
-Waarom dit bestand bestaat en er niets in ../brein/ gewijzigd is: server.py
-bindt op 127.0.0.1, wat op je Mac precies goed is maar op een headless Pi
-betekent dat je er niet bij kunt. En juist die webinterface is waar je de
-onherkende platen koppelt — met je telefoon in je hand, naast de platenspeler.
+Why this file exists and nothing in ../brein/ was changed: server.py binds to
+127.0.0.1, which is right on a laptop but on a headless Pi means you cannot
+reach it. And that web interface is precisely where you link the records it
+could not place — phone in hand, standing at the turntable.
 
-In plaats van server.py aan te passen wordt hier alleen de bindadres-keuze
-onderschept. Alle routes, de database en de webinterface komen ongewijzigd uit
-../brein/. Wil je dit ooit netter: maak van de host in server.py een instelling
-en gooi dit bestand weg.
+Rather than modify server.py, this intercepts only the choice of bind address.
+Every route, the database and the web interface come unchanged from ../brein/.
+If you ever want it tidier: make the host a setting in server.py and delete this
+file.
 
-Let op: hierdoor staat de webinterface open op je hele thuisnetwerk, zonder
-wachtwoord. Dat is voor dit apparaat een bewuste afweging — er staat niets
-gevoeligers in dan je platenkast — maar zet hem niet door je router heen naar
-buiten.
+Note that this leaves the web interface open on your whole network, with no
+password. For this device that is a deliberate trade-off — there is nothing in
+it more sensitive than your record collection — but do not forward it through
+your router.
 """
 
 from __future__ import annotations

@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 """
-De oren van het apparaat: luistert mee met de USB-dasspeldmicrofoon en vraagt
-het brein om een opzoeking zodra er iets begint te spelen.
+The device's ears: listens along on the USB microphone and asks the brain for a
+lookup as soon as something starts playing.
 
-Waarom niet op een timer — dat staat in ../PLAN.md, fase 0b. shazamio is een
-onofficiele client zonder sleutel: een handvol opzoekingen per avond valt niet
-op, elke minuut eentje wel. En het is ook gewoon zinloos: een plaatkant duurt
-twintig minuten en verandert in die tijd niet van naam.
+Why not on a timer — see ../PLAN.md. shazamio is an unofficial client with no
+key: a handful of lookups an evening does not stand out, one a minute does. It
+is also simply pointless, because a side lasts twenty minutes and does not
+change its name in the meantime.
 
-Dus wordt er geluisterd op een gebeurtenis: **geluid na stilte**. Dat is precies
-het moment waarop je de naald neerzet, en het werkt zonder dat deze dienst iets
-van de versterker hoeft te weten — belangrijk, want de SR7015 laat maar één
-telnet-sessie toe en die is van het CrowPanel.
+So listening happens on an event: **sound after silence**. That is exactly the
+moment you put the needle down, and it works without this service knowing
+anything about the amplifier — which matters, because the receiver allows only
+one telnet session and the panel owns it.
 
-De drempel is niet vast maar volgt de kamer: we houden de stilste tien procent
-van de afgelopen minuut aan als ruisvloer en slaan aan bij een flinke sprong
-daarboven. Zo werkt hetzelfde getal in een stille kamer en naast een open raam.
+The threshold is not fixed but follows the room: the noise floor tracks the
+quiet and we trigger on a jump above it. That way the same number works in a
+silent room and next to an open window.
 
-Deze dienst serveert ook de webinterface: één pagina met tabbladen, in
-static/index.html. Hij staat hier en niet bij het brein omdat de microfoon, de
-Apple TV en de doorgeefpoort naar het paneel hier zitten; het brein levert
-alleen nog zijn API, die onder /api/ wordt doorgegeven.
+This service also serves the web interface: one page with tabs, in
+static/index.html. It lives here rather than with the brain because the
+microphone, the Apple TV and the proxy to the panel are all here; the brain
+supplies only its API, passed through under /api/.
 
-Draait als systemd-dienst, zie marantzknob-luister.service.
+Runs as a systemd service — see marantzknob-luister.service.
 """
 
 from __future__ import annotations
@@ -39,62 +39,62 @@ import appicon
 from appletv import AppleTV
 from aiohttp import ClientSession, ClientTimeout, web
 
-# De hoes wordt hier verkleind en niet op het paneel: een ESP32 die een JPEG van
-# 600 pixels moet schalen kost geheugen en tijd die hij niet heeft, terwijl de Pi
-# het in tientallen milliseconden doet.
+# Artwork is resized here and not on the panel: an ESP32 scaling a 600-pixel
+# JPEG costs memory and time it does not have, while the Pi does it in tens of
+# milliseconds.
 COVER_PX = int(os.environ.get("COVER_PX", "480"))
 
-# -- instellingen, allemaal te overschrijven met omgevingsvariabelen ---------
+# -- settings, every one overridable through the environment ----------------
 BRAIN        = os.environ.get("BREIN_URL", "http://127.0.0.1:8790")
 MIC_DEVICE_NAME     = os.environ.get("MIC_DEVICE", "plughw:1,0")
 RATE        = int(os.environ.get("MIC_RATE", "44100"))
 PORT        = int(os.environ.get("LUISTER_PORT", "8791"))
 
-BLOCK_S       = 0.1                     # zo vaak meten we het niveau
+BLOCK_S       = 0.1                     # how often we measure the level
 CLIP_S   = float(os.environ.get("CLIP_SECONDS", "8"))
-SETTLE_S    = float(os.environ.get("SETTLE_SECONDS", "4"))    # naald laten zakken
-START_S      = float(os.environ.get("START_SECONDS", "2.5"))   # zo lang geluid = het speelt
-QUIET_S     = float(os.environ.get("QUIET_SECONDS", "15"))    # zo lang stil = kant is klaar
-RETRY_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # na een mislukte opzoeking
+SETTLE_S    = float(os.environ.get("SETTLE_SECONDS", "4"))    # let the needle settle
+START_S      = float(os.environ.get("START_SECONDS", "2.5"))   # sound this long = playing
+QUIET_S     = float(os.environ.get("QUIET_SECONDS", "15"))    # silence this long = side over
+RETRY_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # after a failed lookup
 
-# Hoe vaak achter elkaar we het opnieuw proberen als er niets herkend wordt.
+# How many times in a row we retry when nothing is recognised.
 #
-# Zonder grens loopt dit door zolang er geluid is, en dat is precies wat er
-# gebeurde: een pratende video op de Apple TV leverde vijfenveertig opzoekingen
-# op één ochtend, elke vijfenzeventig seconden eentje, allemaal leeg. Voor een
-# plaat helpt herkansen wel — de eerste hap kan een zachte intro zijn — maar
-# lukt het drie keer niet, dan ligt er geen plaat en gaan pogingen vier tot
-# vijfentwintig daar niets aan veranderen. Wachten op echte stilte is dan de
-# juiste zet: dat is het teken dat er iets nieuws kan beginnen.
+# Without a limit this runs for as long as there is any sound, and that is
+# exactly what happened: a talking video on the Apple TV produced forty-five
+# lookups in a single morning, one every seventy-five seconds, all empty.
+# Retrying does help for a record — the first sample can be a quiet intro — but
+# if three fail there is no record playing, and attempts four through
+# twenty-five will not change that. Waiting for real silence is the right move:
+# that is the signal something new can begin.
 MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "3"))
 
-# Hoe lang de hoes blijft staan nadat het stil werd. Bewust veel langer dan
-# QUIET_SECONDS: dat getal bepaalt wanneer er weer geluisterd mag worden, en dat
-# wil je kort. Maar het beeld leegmaken is iets anders — bij een marginaal
-# signaal zakt een zachte passage al onder de drempel, en dan verdwijnt de hoes
-# terwijl de plaat gewoon doorspeelt. Vijf minuten stilte is pas echt afgelopen.
+# How long the sleeve stays after it goes quiet. Deliberately much longer than
+# QUIET_SECONDS: that number decides when listening may resume, and you want it
+# short. Clearing the picture is a different question — with a marginal signal a
+# soft passage already drops below the threshold, and then the sleeve vanishes
+# while the record plays on. Five minutes of silence is genuinely over.
 COVER_HOLD_S = float(os.environ.get("COVER_HOLD_SECONDS", "300"))
-TRIGGER_DB    = float(os.environ.get("TRIGGER_DB", "12"))       # boven de ruisvloer
-# De ruisvloer volgt snel naar beneden en heel langzaam omhoog. Dat is niet
-# hetzelfde als het tiende percentiel over de laatste minuut, en het verschil
-# doet ertoe: speelt er een minuut aaneengesloten muziek, dan wórdt die muziek
-# het tiende percentiel en zakt de gemeten marge naar nul. Precies de reden dat
-# een plaat die prima te horen is toch onder de drempel bleef.
-FLOOR_RISE_DB = 0.02          # per blok van 0,1 s, dus ~0,2 dB per seconde
-FLOOR_QUIET_DB  = 6.0           # zo dicht bij de vloer telt als "kamer"
+TRIGGER_DB    = float(os.environ.get("TRIGGER_DB", "12"))       # above the noise floor
+# The noise floor falls quickly and rises very slowly. That is not the same as
+# the tenth percentile over the last minute, and the difference matters: play a
+# minute of continuous music and that music *becomes* the tenth percentile, so
+# the measured margin drops to zero. Exactly why a perfectly audible record kept
+# staying under the threshold.
+FLOOR_RISE_DB = 0.02          # per 0.1 s block, so ~0.2 dB per second
+FLOOR_QUIET_DB  = 6.0           # this close to the floor counts as "the room"
 
-BYTES_PER_BLOCK = int(RATE * BLOCK_S) * 2       # 16 bits mono
+BYTES_PER_BLOCK = int(RATE * BLOCK_S) * 2       # 16-bit mono
 
 
-# Vanaf hier zet de Pi zijn ventilator op de hoogste stand; knijpen begint pas
-# bij 80. Onder deze grens is warm gewoon warm en hoeft het scherm er niets over
-# te zeggen — een permanente temperatuurmeter op een scherm voor albumhoezen is
-# rommel, een waarschuwing als het ertoe doet niet.
+# From here the Pi puts its fan on the highest step; throttling only starts at
+# 80. Below this, warm is just warm and the screen need say nothing about it — a
+# permanent temperature readout on a screen meant for album art is clutter, a
+# warning when it matters is not.
 HOT_C = float(os.environ.get("WARN_TEMP_C", "75"))
 
 
 def pi_heat() -> dict:
-    """Temperatuur, ventilator en of er geknepen wordt."""
+    """Temperature, fan speed, and whether it is being throttled."""
     out = {"tempC": None, "fanRpm": None, "geknepen": False, "heet": False}
     try:
         with open("/sys/class/thermal/thermal_zone0/temp") as f:
@@ -124,7 +124,7 @@ def db(rms: float) -> float:
 
 
 def to_wav(pcm: bytes) -> bytes:
-    """Het brein wil een gewone 16-bits WAV; arecord levert kale PCM."""
+    """The brain wants a plain 16-bit WAV; arecord delivers bare PCM."""
     out = io.BytesIO()
     with wave.open(out, "wb") as w:
         w.setnchannels(1)
@@ -136,58 +136,57 @@ def to_wav(pcm: bytes) -> bytes:
 
 class Ears:
     def __init__(self) -> None:
-        self.floor_db = -99.0                 # volgt de stilte, niet de muziek
+        self.floor_db = -99.0                 # tracks the quiet, not the music
         self.loud_since: float | None = None
         self.quiet_since: float | None = 0.0
-        self.playing = False                    # er speelt iets, niet opnieuw vragen
-        self.listening = False                 # nú aan het opnemen of opzoeken
+        self.playing = False                    # something is on; do not ask again
+        self.listening = False                 # recording or looking up right now
 
-        # Het paneel vertelt bij elke peiling of luisteren zinvol is: staat de
-        # receiver niet op de platenspeler, dan valt er niets te herkennen. Loopt
-        # die melding af (paneel uit, kabel eruit), dan luisteren we weer op
-        # eigen houtje — anders zou een stuk paneel de herkenning meenemen.
+        # The panel says on every poll whether listening makes sense: with the
+        # receiver on anything but the turntable there is nothing to recognise.
+        # If that word goes stale (panel off, cable out) we listen on our own
+        # again — otherwise a broken panel would take recognition down with it.
         self.panel_wants = True
         self.panel_until = 0.0
 
-        # Staat de versterker aan? Een plaat die je niet kunt horen draait niet,
-        # dus dan is elk geluid in de kamer per definitie iets anders. Alleen
-        # blokkeren als we het zéker weten: kan het paneel de receiver niet
-        # bereiken, dan is "uit" een gok en luisteren we gewoon door.
+        # Is the amplifier on? A record you cannot hear is not playing, so any
+        # sound in the room is by definition something else. Only block when we
+        # are certain: if the panel cannot reach the receiver, "off" is a guess
+        # and we keep listening.
         self.amplifier_on = True
-        self.retry_at: float | None = None  # opnieuw proberen na een misser
-        self.misses = 0                      # op rij, zonder tussenliggende stilte
+        self.retry_at: float | None = None  # try again after a miss
+        self.misses = 0                      # in a row, with no silence between
 
-        # De laatste opzoeking die niets opleverde. Zolang die er staat kun je
-        # vanaf het paneel een album aanwijzen en dat eraan koppelen — precies
-        # op het moment dat de plaat nog draait, in plaats van 's avonds met je
-        # telefoon door een wachtrij. En dat is ook het moment waarop het
-        # fragment nog bij het geluid hoort dat je hoort.
+        # The last lookup that came up empty. While it stands you can point at
+        # an album on the panel and link the two — right while the record is
+        # still spinning, instead of working through a queue on your phone in
+        # the evening. It is also the moment when the clip still belongs to the
+        # sound you are hearing.
         self.open_play_id: int | None = None
         self.force = asyncio.Event()
-        self.last = "nog niets gehoord"
-        self.release_id: int | None = None     # hoes uit je eigen kast
-        self.cover_url: str | None = None       # hoes van de dienst, als tweede keus
-        self.artist = ""                      # los, voor het CrowPanel
+        self.last = "nothing heard yet"
+        self.release_id: int | None = None     # artwork from your own shelf
+        self.cover_url: str | None = None       # artwork from the service, second choice
+        self.artist = ""                      # separate fields, for the panel
         self.title = ""
         self.album = ""
         self.level_db = -99.0
 
-        # Hoe vaak het CrowPanel om /nu vroeg. Puur diagnostisch: zo zie je op
-        # /status of het paneel je werkelijk bereikt, zonder elke vier seconden
-        # een regel in het logboek te zetten.
+        # How often the panel asked for /nu. Purely diagnostic: it lets /status
+        # show whether the panel really reaches you, without writing a log line
+        # every four seconds.
         self.panel_polls = 0
         self.last_panel_ip = ""
 
         self.cover_cache_src = ""               # verkleinde hoes, één plaat diep
         self.cover_cache: bytes = b""
-        self.linkable = 0                       # platen die op koppeling wachten
-        self.linkable_until = 0.0                 # tot wanneer die telling geldt
+        self.linkable = 0                       # records waiting to be linked
+        self.linkable_until = 0.0                 # how long that count is valid
 
-        # De klok telt geluid, niet wandtijd: elk blok is precies BLOK_S aan
-        # audio. Dat is niet hetzelfde. Loopt arecord even achter of springt
-        # het systeem in de tijd, dan blijven de drempels hieronder kloppen —
-        # met time.time() zou een hapering een kant kunnen overslaan of juist
-        # midden in een plaat opnieuw laten vragen.
+        # The clock counts audio, not wall time: every block is exactly BLOCK_S
+        # of sound. That is not the same thing. If arecord falls behind, or the
+        # system clock jumps, the thresholds below still hold — with time.time()
+        # a hiccup could skip a side or ask again in the middle of one.
         self.clock = 0.0
 
     # -- opname ------------------------------------------------------------
@@ -220,11 +219,11 @@ class Ears:
             level = db(float(np.sqrt(np.mean(mon * mon))))
             self.level_db = level
 
-            # De vloer volgt de stilte, niet de muziek. Meteen mee omlaag; maar
-            # omhoog alleen zolang het niveau dicht bij de vloer ligt, want dan
-            # is het de kamer die luider werd. Zit er muziek overheen, dan staat
-            # de vloer stil — anders kruipt hij tijdens een lange kant omhoog en
-            # verdwijnt de marge waar je hem juist nodig hebt.
+            # The floor follows the quiet, not the music. Straight down with
+            # it; but up only while the level sits close to the floor, because
+            # then it is the room that got louder. With music over the top the
+            # floor stands still — otherwise it creeps up during a long side and
+            # the margin disappears exactly where you need it.
             if self.floor_db <= -98.0:
                 self.floor_db = level               # eerste blok: hier beginnen
             elif level < self.floor_db:
@@ -243,31 +242,31 @@ class Ears:
                 self.loud_since = None
                 if self.quiet_since is None:
                     self.quiet_since = nu
-                # Lang genoeg stil: de kant is afgelopen, we mogen weer vragen.
+                # Quiet long enough: the side is over, we may ask again.
                 if self.playing and nu - self.quiet_since > QUIET_S:
                     self.playing = False
                     self.retry_at = None
-                    # Stilte is de streep onder wat er was. Wat hierna komt is
-                    # een nieuwe gebeurtenis en verdient weer een volle kans.
+                    # Silence draws a line under what was. What comes next is a
+                    # new event and deserves a full set of attempts again.
                     self.misses = 0
 
-                # Het beeld pas veel later wissen. Zo blijft de hoes staan
-                # tijdens een zachte passage, en verdwijnt hij als de plaat er
+                # Clear the picture much later. That keeps the sleeve up
+                # through a soft passage, and drops it when the record is
                 # werkelijk af is.
                 if self.artist and nu - self.quiet_since > COVER_HOLD_S:
                     self.release_id = None
                     self.cover_url = None
                     self.artist = self.title = self.album = ""
-                    # Ook de koppeling laten vallen: wat je nu zou aanwijzen
-                    # hoort niet meer bij het geluid van een kwartier geleden.
+                    # Drop the open link too: what you would point at now no
+                    # longer belongs to sound from a quarter of an hour ago.
                     self.open_play_id = None
                     print("[luister] lang stil, beeld leeggemaakt", flush=True)
-                    print("[luister] stilte, klaar voor de volgende kant", flush=True)
+                    print("[ears] quiet, ready for the next side", flush=True)
 
             gevraagd = self.force.is_set()
 
-            # Zelf aftikken mag altijd; vanzelf beginnen alleen als het paneel
-            # zegt dat er een plaat op ligt én de versterker aanstaat.
+            # Asking by hand is always allowed; starting on its own only when
+            # the panel says a record is on and the amplifier is running.
             mag = ((self.panel_wants or time.monotonic() > self.panel_until)
                    and self.amplifier_on)
             begint = (mag
@@ -275,9 +274,9 @@ class Ears:
                       and nu - self.loud_since > START_S
                       and not self.playing)
 
-            # Mislukte opzoeking: het blijft spelen, dus een stuk verderop in de
-            # plaat kan best lukken. Wachten tot het stil is zou betekenen dat je
-            # een hele kant lang niets meer te zien krijgt.
+            # A failed lookup: it is still playing, so somewhere further into
+            # the record may well work. Waiting for silence would mean seeing
+            # nothing for a whole side.
             retry = (mag and self.retry_at is not None and nu >= self.retry_at
                        and self.loud_since is not None)
             if retry:
@@ -287,7 +286,7 @@ class Ears:
                 self.force.clear()
                 self.listening = True
                 if not gevraagd and not retry:
-                    # De naald staat er net op; even laten zakken voor we happen.
+                    # The needle just landed; let it settle before we sample.
                     await self.slik(proc, SETTLE_S)
                 pcm = await self.hap(proc, CLIP_S)
                 self.playing = True
@@ -311,9 +310,9 @@ class Ears:
             self.clock += BLOCK_S
         return b"".join(out)
 
-    # -- het brein vragen --------------------------------------------------
+    # -- asking the brain --------------------------------------------------
     async def vraag(self, wav: bytes) -> None:
-        print(f"[luister] {len(wav)//1024} kB naar het brein", flush=True)
+        print(f"[ears] {len(wav)//1024} kB to the brain", flush=True)
         try:
             async with ClientSession(timeout=ClientTimeout(total=60)) as s:
                 async with s.post(f"{BRAIN}/api/listen", data=wav,
@@ -327,10 +326,10 @@ class Ears:
         rel = body.get("release")
         treffer = next((r for r in body.get("results", []) if r.get("matched")), {})
 
-        # Alleen bijwerken als er werkelijk iets herkend is. Een mislukte
-        # opzoeking betekent niet dat er een andere plaat op ligt — hij draait
-        # gewoon door, en een stuk verderop lukte het even niet. Wél wissen zou
-        # de hoes midden in een kant laten verdwijnen, en dat is precies wat er
+        # Only update when something was genuinely recognised. A failed lookup
+        # does not mean a different record is on — it is still playing, and one
+        # stretch of it happened not to match. Clearing would make the sleeve
+        # vanish in the middle of a side, which is exactly what
         # gebeurde toen de herkansing na 60 seconden niets opleverde.
         if body.get("matched"):
             self.misses = 0
@@ -345,7 +344,7 @@ class Ears:
             self.last = f"{rel['artist']} — {rel['title']}"
         elif body.get("matched"):
             self.last = (f"{treffer.get('artist','?')} — "
-                            f"{treffer.get('title','?')} (niet in de kast)")
+                            f"{treffer.get('title','?')} (not on the shelf)")
         else:
             self.open_play_id = body.get("playId")
             self.misses += 1
@@ -354,7 +353,7 @@ class Ears:
                 self.retry_at = self.clock + RETRY_S
             else:
                 self.last = (f"{self.misses}x niets herkend — "
-                                "wachten tot het stil wordt")
+                                "waiting for silence")
                 self.retry_at = None
         print(f"[luister] {self.last}", flush=True)
 
@@ -373,24 +372,24 @@ HERE = pathlib.Path(__file__).parent
 
 
 async def index(_request):
-    """De hele webinterface: één pagina met tabbladen.
+    """The whole web interface: one page with tabs.
 
-    Hij staat als bestand naast deze code en niet als tekenreeks erin, want het
-    is een pagina van honderden regels HTML en CSS — die hoort niet midden in de
-    logica van de microfoon te staan.
+    It sits as a file next to this code rather than as a string inside it,
+    because it is hundreds of lines of HTML and CSS and that does not belong in
+    the middle of the microphone logic.
 
-    De pagina zelf haalt drie dingen op onder hetzelfde adres: /status en de
-    Apple TV van deze dienst, /api/* van het brein en /paneel/* van het paneel.
-    Waarom dat mag: zie de doorgeeflus hieronder.
+    The page itself fetches three things from the same address: /status and the
+    Apple TV from this service, /api/* from the brain, and /paneel/* from the
+    panel. How that works is in the forwarding helper below.
     """
     return web.FileResponse(HERE / "static" / "index.html")
 
 
 async def count_linkable() -> int:
-    """Hoeveel platen wachten er op een koppeling.
+    """How many records are waiting to be linked.
 
-    Met een cache van een halve minuut, want het paneel vraagt elke vier
-    seconden en de wachtrij verandert hooguit een paar keer per avond.
+    Cached for half a minute, because the panel asks every four seconds and the
+    queue changes a couple of times an evening at most.
     """
     if time.monotonic() < ears.linkable_until:
         return ears.linkable
@@ -421,30 +420,30 @@ def _shrink_bytes(data: bytes, px: int | None = None) -> bytes:
 
 
 async def api_nu(request):
-    """Wat er speelt, in de kortst mogelijke vorm — voor het CrowPanel.
+    """What is playing, in the shortest possible form — for the panel.
 
-    Bewust apart van /status: dat is een menspagina met dB-waarden, dit is wat
-    een microcontroller met 480x480 pixels nodig heeft en niets meer. Korte
-    sleutels en platte tekst, zodat de ESP32 het met een handvol bytes aan
+    Deliberately separate from /status: that one is for people and full of dB
+    values, this is what a microcontroller with 480x480 pixels needs and nothing
+    more. Short keys and flat text, so the ESP32 can read it with a handful of
     JSON-buffer kan lezen.
     """
-    # Alleen tellen wat van het paneel komt. Dat is te zien aan `luister`: die
-    # parameter stuurt alleen het paneel mee (zie brein.cpp). Sinds de
-    # webinterface dit eindpunt ook gebruikt — om precies te tonen wat er op het
-    # schermpje staat — zou meetellen de diagnose juist vertroebelen: dan zegt
-    # "paneel polls" evenveel over je telefoon als over het paneel.
+    # Only count what comes from the panel, which you can tell by `luister`:
+    # only the panel sends that parameter (see brein.cpp). Since the web
+    # interface started using this endpoint too — to show exactly what is on the
+    # screen — counting those would muddy the diagnostic: "panel polls" would
+    # then say as much about your phone as about the panel.
     if "luister" in request.query:
         ears.panel_polls += 1
         ears.last_panel_ip = request.remote or "?"
         ears.panel_wants = request.query["luister"] not in ("0", "false", "nee")
         ears.panel_until = time.monotonic() + 60
 
-    # Staat de receiver niet op de platenspeler, dan is de Apple TV de bron —
-    # als die gekoppeld is en iets afspeelt. Dat is beter dan meeluisteren:
-    # het apparaat wéét wat het doet, inclusief de hoes.
-    # Ook melden als er niets speelt maar er wel een app open staat: dat de
-    # Apple TV op YouTube staat is op zichzelf al informatie, en anders val je
-    # terug op de microfoon die daar niets te zoeken heeft.
+    # With the receiver on anything but the turntable, the Apple TV is the
+    # source — if it is paired and playing something. That beats listening in:
+    # the device *knows* what it is doing, artwork included.
+    # Report it even when nothing is playing but an app is open: that the Apple
+    # TV is sitting on YouTube is information in itself, and the alternative is
+    # falling back to a microphone that has no business there.
     if not ears.panel_wants and atv.device is not None and (
             atv.artist or atv.title or atv.app_id):
         return web.json_response({
@@ -453,9 +452,9 @@ async def api_nu(request):
             "titel": atv.title,
             "album": atv.album or atv.title,
             "hoes": bool(atv.artwork) or bool(await appicon.icon(atv.app_id)),
-            # Een logo is geen hoes maar een plaatsvervanger: het paneel verbergt
-            # tekst achter een echte hoes, maar bij een logo hoort de titel er
-            # juist bij — anders zie je een merk en niet wat er draait.
+            # A logo is not artwork but a stand-in: the panel hides text behind
+            # real artwork, but with a logo the title belongs on screen —
+            # otherwise you see a brand and not what is playing.
             "logo": not atv.artwork and bool(await appicon.icon(atv.app_id)),
             "kast": False,
             "speelt": atv.playing_now,
@@ -469,36 +468,36 @@ async def api_nu(request):
         "artiest": ears.artist,
         "titel": ears.title,
         "album": ears.album,
-        "hoes": bool(ears.release_id or ears.cover_url),   # staat er iets op /hoes
+        "hoes": bool(ears.release_id or ears.cover_url),   # is there anything on /hoes
         "kast": ears.release_id is not None,  # gevonden in de eigen collectie
         "speelt": ears.playing,
         "luistert": ears.listening,
-        # Staat er een opzoeking open die niets opleverde? Dan kun je vanaf het
-        # paneel een album aanwijzen en dat eraan hangen.
+        # Is there an open lookup that came up empty? Then you can point at an
+        # album on the panel and hang it on that.
         "koppelbaar": ears.open_play_id is not None,
         "heet": pi_heat()["heet"],
     })
 
 
 async def api_cover(_request):
-    """De hoes, doorgegeven van het brein.
+    """Artwork, passed through from the brain.
 
-    Zo hoeft het paneel maar één adres te kennen. Het haalt hem hier op en niet
-    rechtstreeks bij het brein, want dat scheelt een tweede poort in de
-    instellingen en een tweede plek waar iets stuk kan.
+    This way the panel only has to know one address. It fetches here rather than
+    from the brain directly, which saves a second port in its settings and a
+    second place where something can break.
     """
-    # Eerst je eigen kast, dan pas wat de dienst meestuurde. Die tweede is niet
-    # bijzaak: alles wat je níét op vinyl hebt — radio, streaming, een plaat van
-    # iemand anders — komt alleen daarlangs aan een hoes.
-    # Apple TV gaat voor zolang de platenspeler niet aan de beurt is — en dan
-    # ook uitsluitend. Doorvallen naar de plaatroute gaf de hoes van de vorige
-    # LP bij een YouTube-video zonder afbeelding, en dat is erger dan niets.
+    # Your own shelf first, then whatever the service supplied. That second one
+    # is not an afterthought: anything you do *not* own on vinyl — radio,
+    # streaming, someone else's record — only gets artwork that way.
+    # The Apple TV takes priority while the turntable is not the source, and
+    # then exclusively. Falling through to the record path served the previous
+    # LP's sleeve for a YouTube video with no image, which is worse than none.
     if not ears.panel_wants and atv.device is not None:
         if atv.artwork:
             small = await asyncio.to_thread(_shrink_bytes, atv.artwork)
             return web.Response(body=small, content_type="image/jpeg")
-        # Geen afbeelding bij deze titel — YouTube geeft er geen door. Dan het
-        # logo van de app, opgehaald bij Apple's eigen zoekingang.
+        # No image for this title — YouTube does not supply one. Fall back to
+        # the app's logo, fetched from Apple's own search endpoint.
         logo = await appicon.icon(atv.app_id)
         if logo:
             return web.Response(body=logo, content_type="image/jpeg")
@@ -520,23 +519,23 @@ async def api_cover(_request):
                 raise web.HTTPNotFound()
             raw = await r.read()
 
-    # Vierkant bijsnijden en terugbrengen tot HOES_PX. Het paneel decodeert dan
-    # één op één in een buffer die het van tevoren kan reserveren.
+    # Crop square and scale to COVER_PX. The panel then decodes one-to-one into
+    # a buffer it can reserve in advance.
     small = await asyncio.to_thread(_shrink_bytes, raw)
     ears.cover_cache_src, ears.cover_cache = source, small
     return web.Response(body=small, content_type="image/jpeg")
 
 
-# -- de platenkast voor het paneel ------------------------------------------
+# -- the record shelf, for the panel ----------------------------------------
 #
-# Het paneel heeft acht megabyte PSRAM en je kast heeft 549 albums. De hoezen
-# passen er niet in — één hoes van 480 pixels is al 460 kB — maar de namen wel.
-# Dus krijgt het paneel de lijst in één keer en de plaatjes stuk voor stuk, en
-# alleen die van de drie die in beeld staan.
+# The panel has eight megabytes of PSRAM and a collection can run to hundreds of
+# albums. The artwork does not fit — one 480-pixel sleeve is already 460 kB —
+# but the names do. So the panel gets the list in one go and the pictures one at
+# a time, and only for the three actually on screen.
 #
-# De lijst gaat als platte tekst en niet als JSON: een ESP32 die 40 kB JSON moet
-# ontleden is daar seconden mee bezig, terwijl regels splitsen op een tab bijna
-# niets kost. Eén regel per album, oplopend op artiest zoals het brein hem al
+# The list goes as flat text rather than JSON: an ESP32 parsing 40 kB of JSON
+# spends seconds on it, while splitting lines on a tab costs almost nothing. One
+# line per album, sorted by artist the way the brain already
 # sorteert.
 SHELF_PX = int(os.environ.get("SHELF_PX", "138"))
 SHELF_CACHE = HERE.parent / "brein" / "data" / "kasthoezen"
@@ -548,11 +547,11 @@ async def api_shelf(_request):
             async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
                 body = await r.json()
     except Exception as e:                                  # noqa: BLE001
-        raise web.HTTPBadGateway(text=f"brein niet bereikbaar: {e!r}")
+        raise web.HTTPBadGateway(text=f"brain not reachable: {e!r}")
 
     lines = []
     for rel in body.get("releases", []):
-        # Tabs uit de veldwaarden halen, anders loopt het splitsen mis.
+        # Strip tabs out of the values, or the splitting goes wrong.
         artist = (rel.get("artist") or "").replace("\t", " ").strip()
         title = (rel.get("title") or "").replace("\t", " ").strip()
         lines.append(f"{rel['id']}\t{artist}\t{title}")
@@ -560,15 +559,15 @@ async def api_shelf(_request):
 
 
 async def api_link(request):
-    """Het album dat je op het paneel aanwees koppelen aan wat er nu speelt.
+    """Link the album you pointed at on the panel to whatever is playing.
 
-    Dit is de wachtrij, maar dan op het juiste moment. Normaal koppel je 's
-    avonds met je telefoon een fragment aan een plaat die je je half herinnert;
-    zo doe je het terwijl de naald er nog in ligt en je de hoes in je hand hebt.
+    This is the queue, but at the right moment. Normally you link a clip to a
+    half-remembered record with your phone in the evening; this way you do it
+    with the needle still down and the sleeve in your hand.
 
-    Het brein doet het echte werk: koppelen én het bewaarde fragment als
-    vingerafdruk bij die release vastleggen. Daardoor wordt dezelfde kant de
-    volgende keer lokaal herkend, zonder dienst — precies de les die alleen jij
+    The brain does the real work: linking, and recording the saved clip as
+    fingerprints against that release. That makes the same side recognisable
+    locally next time, with no service involved — precisely the lesson only you
     kon geven.
     """
     if ears.open_play_id is None:
@@ -577,22 +576,22 @@ async def api_link(request):
     try:
         rel_id = int(request.query.get("id", ""))
     except ValueError:
-        return web.json_response({"ok": False, "fout": "geen id"}, status=400)
+        return web.json_response({"ok": False, "fout": "no id"}, status=400)
 
     play_id = ears.open_play_id
     try:
         async with ClientSession(timeout=ClientTimeout(total=30)) as s:
-            # Eerst opzoeken of dit album bestaat, dan pas koppelen. Andersom
-            # zou een verkeerd nummer een luisterbeurt aan het niets hangen —
-            # en, erger, het fragment als vingerafdruk bij een release zetten
-            # die er niet is. Een koppeling is blijvend; die maak je niet op goed
+            # Check the album exists before linking, not after. The other way
+            # round, a wrong number would hang a listen on nothing — and worse,
+            # store the clip as fingerprints against a release that does not
+            # exist. A link is permanent; you do not make one on good
             # vertrouwen.
             async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
                 lijst = (await r.json()).get("releases", [])
             rel = next((x for x in lijst if x["id"] == rel_id), None)
             if rel is None:
                 return web.json_response(
-                    {"ok": False, "fout": f"album {rel_id} bestaat niet"}, status=404)
+                    {"ok": False, "fout": f"album {rel_id} does not exist"}, status=404)
 
             async with s.post(f"{BRAIN}/api/plays/{play_id}/link",
                               json={"releaseId": rel_id}) as r:
@@ -617,19 +616,18 @@ async def api_link(request):
 
 
 async def api_shelf_cover(request):
-    """Eén hoes, klein genoeg om op het paneel te decoderen.
+    """One sleeve, small enough for the panel to decode.
 
-    Twee maten: de plaat in het midden staat groter dan die ernaast. Schalen op
-    de ESP32 zou geheugen en tijd kosten die daar niet zijn, en hier is het een
-    kwestie van milliseconden — dezelfde afweging als bij /hoes.
+    Scaling on the ESP32 would cost memory and time it does not have, and here
+    it is a matter of milliseconds — the same trade-off as /hoes.
     """
     try:
         rel_id = int(request.query.get("id", ""))
-        # Tot 480, want kies je een album in de kast dan komt diezelfde hoes
-        # schermvullend terug op het volumescherm.
+        # Up to 480, because picking an album in the shelf brings that same
+        # sleeve back full-screen on the volume view.
         px = min(int(request.query.get("px", SHELF_PX)), 480)
     except ValueError:
-        raise web.HTTPBadRequest(text="id en px moeten getallen zijn")
+        raise web.HTTPBadRequest(text="id and px must be numbers")
 
     SHELF_CACHE.mkdir(parents=True, exist_ok=True)
     pad = SHELF_CACHE / f"{rel_id}-{px}.jpg"
@@ -670,16 +668,17 @@ def panel_host() -> str:
 
 
 async def _forward(request, target: str, what: str):
-    """Een verzoek onveranderd doorzetten en het antwoord teruggeven.
+    """Pass a request through unchanged and hand back the answer.
 
-    Zo staat de hele webinterface op één adres terwijl de drie delen blijven
-    waar ze horen: de wachtrij en de collectie in het brein, de instellingen op
-    het paneel zelf, de microfoon hier. De browser ziet er niets van, en dat is
-    het punt — anders liep je met drie poortnummers in je hoofd rond.
+    This is what puts the whole web interface on one address while the three
+    parts stay where they belong: the queue and the collection in the brain, the
+    settings on the panel itself, the microphone here. The browser sees none of
+    it, and that is the point — otherwise you would be carrying three port
+    numbers around in your head.
 
-    Let op: Content-Type gaat mee zoals hij binnenkwam. Bij het handmatig
-    opvoeren van een plaat is dat multipart mét de scheidingstekens, en die
-    weggooien maakt het formulier onleesbaar aan de andere kant.
+    Note: Content-Type goes along exactly as it arrived. When adding a record by
+    hand that is multipart *with* its boundary, and dropping it makes the form
+    unreadable at the other end.
     """
     if request.query_string:
         target += "?" + request.query_string
@@ -696,21 +695,21 @@ async def _forward(request, target: str, what: str):
                 return web.Response(body=raw, status=r.status,
                                     content_type=r.content_type)
     except Exception as e:                                  # noqa: BLE001
-        raise web.HTTPBadGateway(text=f"{what} niet bereikbaar: {e!r}")
+        raise web.HTTPBadGateway(text=f"{what} not reachable: {e!r}")
 
 
 async def brain_proxy(request):
-    """/api/* hoort bij het brein, een poort verderop op dezelfde Pi."""
+    """/api/* belongs to the brain, one port along on the same Pi."""
     return await _forward(request, f"{BRAIN}/api/{request.match_info['staart']}",
                            "brein")
 
 
 async def panel_proxy(request):
-    """Het CrowPanel doorgeven.
+    """Pass the panel through.
 
-    De pagina van het paneel gebruikt relatieve paden, dus hem onder /paneel/
-    hangen werkt zonder er iets aan te herschrijven — zowel voor de eigen
-    pagina van het paneel als voor de tabbladversie hier.
+    The panel's own page uses relative paths, so hanging it under /paneel/ works
+    without rewriting anything — both for the panel's own page and for the
+    rebuilt version in the tabs here.
     """
     host = panel_host()
     if not host:
@@ -723,7 +722,7 @@ async def panel_proxy(request):
 
 
 async def panel_root(request):
-    # Zonder afsluitende schuine streep kloppen de relatieve paden niet.
+    # Without the trailing slash the relative paths do not resolve.
     if not request.path.endswith("/"):
         raise web.HTTPFound(request.path + "/")
     return await panel_proxy(request)
@@ -764,9 +763,9 @@ async def atv_status(_request):
         "app": atv.app,
         "appId": atv.app_id,
         "fout": atv.error,
-        # Hoe oud deze gegevens zijn. Zonder dit ziet een bevroren verbinding
-        # er precies hetzelfde uit als een Apple TV die al een uur dezelfde
-        # video speelt, en dat verschil wil je juist kunnen zien.
+        # How old this information is. Without it, a frozen connection looks
+        # exactly like an Apple TV that has been playing the same video for an
+        # hour — and that is the difference you want to be able to see.
         "seconden": (round(time.monotonic() - atv.last_update)
                      if atv.last_update else None),
     })
@@ -795,11 +794,11 @@ async def api_status(_request):
 
 
 async def watch_amplifier() -> None:
-    """Bijhouden of de versterker aanstaat, los van de audiolus.
+    """Track whether the amplifier is on, away from the audio loop.
 
-    Apart en niet in lus(): daar wordt elke tiende seconde een blok gelezen, en
-    daar hoort geen netwerkverzoek tussen. Tien seconden is ruim genoeg — je
-    zet de versterker niet aan en uit tussen twee kanten door.
+    Separate, and not inside lus(): that reads a block every tenth of a second
+    and no network request belongs in between. Ten seconds is ample — nobody
+    switches the amplifier on and off between two sides.
     """
     while True:
         host = panel_host()
@@ -808,12 +807,12 @@ async def watch_amplifier() -> None:
                 async with ClientSession(timeout=ClientTimeout(total=4)) as s:
                     async with s.get(f"http://{host}/api/state") as r:
                         st = await r.json()
-                # Alleen bij zekerheid dichtzetten: geen verbinding met de
-                # receiver betekent dat het paneel het ook niet weet.
+                # Only shut the gate when we are sure: no connection to the
+                # receiver means the panel does not know either.
                 ears.amplifier_on = not (st.get("connected") and
                                            not st.get("powered"))
             except Exception:                                   # noqa: BLE001
-                ears.amplifier_on = True      # paneel weg: niet gaan raden
+                ears.amplifier_on = True      # panel gone: do not guess
         await asyncio.sleep(10)
 
 
@@ -847,7 +846,7 @@ def main() -> None:
     app.router.add_post("/appletv/pin", atv_pin)
     app.router.add_post("/appletv/vergeet", atv_forget)
 
-    # De twee doorgeefroutes. Ze staan achteraan omdat ze met een joker eindigen
+    # The two forwarding routes. They come last because they end in a wildcard
     # en anders de vaste routes hierboven zouden opslokken.
     app.router.add_route("*", "/api/{staart:.*}", brain_proxy)
     app.router.add_route("*", "/paneel", panel_root)
@@ -857,23 +856,23 @@ def main() -> None:
     app.on_cleanup.append(stop)
 
     async def draaien():
-        # Eén applicatie op twee poorten, en niet twee applicaties. Poort 80 was
-        # eerst een apart portaaltje met drie links naar de andere pagina's; nu
-        # er nog maar één pagina is, is dat tussenstation weg en luistert
-        # dezelfde interface gewoon op allebei.
+        # One application on two ports, not two applications. Port 80 used to
+        # be a little portal with three links to the other pages; now that there
+        # is only one page, that middle step is gone and the same interface
+        # simply listens on both.
         runner = web.AppRunner(app)
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", PORT).start()
-        print(f"[luister] microfoon {MIC_DEVICE_NAME}, brein op {BRAIN}, "
+        print(f"[ears] microphone {MIC_DEVICE_NAME}, brain at {BRAIN}, "
               f"panel {PANEL or 'auto'}, port {PORT}", flush=True)
 
-        # Poort 80 is een extraatje: lukt het niet (geen rechten), dan blijft de
-        # rest gewoon draaien in plaats van dat de dienst omvalt.
+        # Port 80 is a bonus: if it fails (no permission) the rest keeps
+        # running rather than the service falling over.
         try:
             await web.TCPSite(runner, "0.0.0.0", 80).start()
-            print("[luister] ook op poort 80", flush=True)
+            print("[ears] also on port 80", flush=True)
         except Exception as e:                              # noqa: BLE001
-            print(f"[luister] geen poort 80: {e!r}", flush=True)
+            print(f"[ears] no port 80: {e!r}", flush=True)
 
         await asyncio.Event().wait()
 
