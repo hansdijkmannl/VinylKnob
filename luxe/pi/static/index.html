@@ -935,7 +935,7 @@ on('kiesWeg', 'click', async () => {
 async function laadWachtrij() {
   let q, k;
   try {
-    q = await json('api/plays?status=onbekend');
+    q = await json('api/plays?status=unknown');
     k = await json('api/plays?limit=20');
   } catch (e) {
     $('queue').innerHTML = '<p class="err" style="margin:0">Brain not reachable.</p>';
@@ -948,7 +948,7 @@ async function laadWachtrij() {
     : '<p class="hint" style="margin:0">Nothing to link. Everything was recognised.</p>';
   ververselectie();
 
-  const klaar = k.plays.filter(p => p.status !== 'onbekend' && p.status !== 'weggegooid');
+  const klaar = k.plays.filter(p => p.status !== 'unknown' && p.status !== 'discarded');
   $('known').innerHTML = klaar.length
     ? klaar.map(kenRegel).join('')
     : '<p class="hint" style="margin:0">Nothing recognised yet.</p>';
@@ -1492,7 +1492,7 @@ async function laadInstellingen() {
 async function tellingen(s) {
   if (!s) { try { s = await json('api/settings'); } catch (e) { return; } }
   zet('nColl', s.collectionCount || '');
-  zet('nQueue', (s.counts || {}).onbekend || '');
+  zet('nQueue', (s.counts || {}).unknown || '');
 }
 
 // ---------------------------------------------------------------------------

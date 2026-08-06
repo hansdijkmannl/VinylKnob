@@ -1,9 +1,9 @@
 """
-Opslag voor het brein: instellingen, je Discogs-collectie, en alles wat er
+Storage for the brain: settings, your Discogs collection, and everything that
 geluisterd is.
 
 Eén SQLite-bestand plus twee mappen op schijf (hoezen en geluidsfragmenten).
-Draait straks op de Pi, nu op je Mac — er zit niets in dat platformafhankelijk
+Runs on the Pi and on a laptop alike — there is nothing platform-specific
 is.
 """
 
@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT
 );
 
--- Je Discogs-collectie, lokaal gecachet zodat zoeken niet elke keer het
--- netwerk op hoeft en zodat het straks op de Pi ook offline werkt.
+-- Your Discogs collection, cached locally so that searching does not need the
+-- network every time, and so that it works offline.
 CREATE TABLE IF NOT EXISTS releases (
     id          INTEGER PRIMARY KEY,
     discogs_id  TEXT UNIQUE NOT NULL,
@@ -42,11 +42,11 @@ CREATE TABLE IF NOT EXISTS releases (
 CREATE INDEX IF NOT EXISTS idx_rel_artist ON releases(artist);
 CREATE INDEX IF NOT EXISTS idx_rel_title  ON releases(title);
 
--- Elke keer dat er geluisterd is. Herkend of niet, alles komt hierin.
+-- Every listen. Recognised or not, all of it lands here.
 CREATE TABLE IF NOT EXISTS plays (
     id          INTEGER PRIMARY KEY,
     created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-    status      TEXT NOT NULL,     -- herkend | onbekend | gekoppeld | weggegooid
+    status      TEXT NOT NULL,     -- recognised | unknown | linked | discarded
     engine      TEXT,
     artist      TEXT,
     title       TEXT,
@@ -66,14 +66,9 @@ DEFAULTS = {
     "collection_synced_at": "",
     "lookup_count": "0",
 
-    # Laat de hoes ronddraaien terwijl er iets speelt. Standaard uit: 33 toeren
-    # is 1,8 seconde per omwenteling en dat is onrustig om naar te kijken.
-    # "uit" | "langzaam" (1 toer per minuut) | "33" (33 1/3 toeren)
-    "screen_spin": "uit",
-
-    # Instellingen voor de Marantz. Ze staan hier en niet in de firmware, zodat
-    # het CrowPanel ze bij het opstarten ophaalt en je ze kunt wijzigen zonder
-    # te flashen. Dezelfde rolverdeling als in versie 1: apparaat toont,
+    # Settings for the receiver. They live here rather than in the firmware so
+    # the panel can fetch them at boot and you can change them without
+    # reflashing. Same division as in version 1: the device shows,
     # webinterface configureert.
     "avr_host": "",
     "avr_port": "23",
@@ -93,7 +88,7 @@ DEFAULTS = {
     ]),
 }
 
-# Ingangen van de SR7015 zoals het protocol ze kent.
+# Inputs as the Denon/Marantz protocol names them.
 KNOWN_INPUTS = [
     "PHONO", "CD", "TUNER", "DVD", "BD", "TV", "SAT/CBL", "MPLAY", "GAME",
     "8K", "AUX1", "AUX2", "NET", "BT", "USB", "HDRADIO", "SPOTIFY", "IRADIO",
@@ -102,10 +97,12 @@ KNOWN_INPUTS = [
 
 
 def _normalise(text: str) -> str:
-    """Voor het vergelijken van titels: kleine letters, geen leestekens."""
+    """For comparing titles: lower case, no punctuation."""
     keep = [c.lower() if c.isalnum() else " " for c in (text or "")]
     words = "".join(keep).split()
     # Lidwoorden weglaten; "The Beatles" en "Beatles" horen te matchen.
+    # Dutch articles alongside the English ones: this collection has both,
+    # and "De Nachtzuster" should compare equal to "Nachtzuster".
     skip = {"the", "a", "an", "de", "het", "een"}
     return " ".join(w for w in words if w not in skip)
 
@@ -118,17 +115,34 @@ class Store:
         self.db = sqlite3.connect(path or (DATA / "brein.db"), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        import local                       # eigen fingerprint-database
+        import local                       # our own fingerprint database
         local.ensure_schema(self.db)
+        self._migrate()
         for key, value in DEFAULTS.items():
             self.db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
                             (key, value))
         self.db.commit()
 
+    def _migrate(self) -> None:
+        """Bring an older database up to date.
+
+        The status values used to be Dutch. Renaming them in the code alone
+        would have made every existing listen invisible — the queue filters on
+        the value, so a database full of 'onbekend' would simply look empty.
+        Cheap to run every start, and a no-op once done.
+        """
+        renamed = {"herkend": "recognised", "onbekend": "unknown",
+                   "gekoppeld": "linked", "weggegooid": "discarded"}
+        for old, new in renamed.items():
+            self.db.execute("UPDATE plays SET status = ? WHERE status = ?", (new, old))
+        self.db.execute("UPDATE plays SET engine = 'local' WHERE engine = 'lokaal'")
+        self.db.execute("DELETE FROM settings WHERE key = 'screen_spin'")
+        self.db.commit()
+
     def close(self) -> None:
         self.db.close()
 
-    # -- instellingen ------------------------------------------------------
+    # -- settings ----------------------------------------------------------
     def get(self, key: str, default: str = "") -> str:
         row = self.db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else default
@@ -172,7 +186,7 @@ class Store:
         return self.db.execute("SELECT COUNT(*) c FROM releases").fetchone()["c"]
 
     def search_collection(self, query: str, limit: int = 25):
-        """Zoekt eerst in je eigen kast. Losse woorden, volgorde maakt niet uit."""
+        """Search your own shelf. Loose words; order does not matter."""
         words = _normalise(query).split()
         if not words:
             return self.db.execute(
@@ -188,27 +202,27 @@ class Store:
             params).fetchall()
 
     def best_collection_match(self, artist: str, album: str):
-        """Zoekt de release die past bij wat de herkenning teruggaf.
+        """Find the release matching what recognition returned.
 
-        Artiest en album worden **apart** beoordeeld en moeten allebei kloppen.
-        Dat is niet overdreven streng maar noodzakelijk: telde je de woorden bij
-        elkaar op, dan haalt de artiestennaam alleen de drempel al. "Robbie
-        Williams - Britpop" tegen "Robbie Williams - Escapology" geeft dan twee
-        van de vier woorden gemeen en dat is genoeg om verkeerd te koppelen.
+        Artist and album are judged **separately** and both have to hold up.
+        That is not excessive strictness but necessary: add the words together
+        and the artist name alone clears the bar. "Robbie Williams - Britpop"
+        against "Robbie Williams - Escapology" then shares two words out of
+        four, which is enough to link the wrong record.
 
-        Zonder albumtitel uit de herkenning koppelen we niets. Dan is het gokken,
-        en een verkeerde koppeling is vervelender dan geen.
+        With no album title from recognition we link nothing. That would be
+        guessing, and a wrong link is worse than none.
 
-        Woordoverlap alleen is daarbij te streng, want **een dienst noemt vaak de
-        single en jij hebt het album**. Shazam gaf "Natural Blues (Reprise
-        Version / Edit) [feat. Gregory Porter & Amythyst Kiah] - Single" terug
-        voor wat in de kast gewoon "Reprise" heet: één woord van de elf, oftewel
-        0,09. Daarom telt ook of de ene titel volledig in de andere zit — in
-        beide richtingen, want "Reprise" tegen "Reprise (Deluxe Edition)" is
-        hetzelfde probleem omgekeerd.
+        Word overlap on its own is too strict, though, because **a service often
+        names the single where you own the album**. Shazam returned "Natural
+        Blues (Reprise Version / Edit) [feat. Gregory Porter & Amythyst Kiah] -
+        Single" for what is simply called "Reprise" on the shelf: one word out
+        of eleven, or 0.09. So containment counts too — in both directions,
+        because "Reprise" against "Reprise (Deluxe Edition)" is the same problem
+        reversed.
 
-        Dat blijft veilig tegen het geval waarvoor de strengheid er kwam:
-        "Escapology" zit niet in "Britpop", in geen van beide richtingen.
+        That stays safe against the case the strictness was added for:
+        "Escapology" is not inside "Britpop", in either direction.
         """
         want_artist = set(_normalise(artist).split())
         want_album = set(_normalise(album or "").split())
@@ -218,20 +232,20 @@ class Store:
         def overlap(a: set, b: set) -> float:
             return len(a & b) / len(a | b) if (a and b) else 0.0
 
-        def zit_erin(klein: set, groot: set) -> bool:
-            """Zit `klein` helemaal in `groot`, en zegt dat ook iets?
+        def contained_in(small: set, large: set) -> bool:
+            """Is `small` wholly inside `large`, and does that mean anything?
 
-            De lengte-eis is er tegen albums die "1" of "Live" heten: die passen
-            anders overal in en zouden aan de eerste de beste plaat van dezelfde
-            artiest blijven plakken.
+            The length requirement guards against albums called "1" or "Live":
+            those fit inside anything and would otherwise stick to the first
+            record by the same artist.
             """
-            if not klein or not klein <= groot:
+            if not small or not small <= large:
                 return False
-            return any(len(w) >= 4 for w in klein)
+            return any(len(w) >= 4 for w in small)
 
-        # Hoog genoeg om de drempels te halen, net onder een echte volledige
-        # overlap, zodat een letterlijk gelijke titel altijd voorgaat.
-        SCORE_BEVAT = 0.85
+        # High enough to clear the thresholds, just below a genuine full
+        # overlap, so a literally identical title always wins.
+        SCORE_CONTAINED = 0.85
 
         best, best_score = None, 0.0
         for row in self.db.execute("SELECT * FROM releases"):
@@ -240,19 +254,19 @@ class Store:
 
             score_artist = overlap(want_artist, have_artist)
             score_album = overlap(want_album, have_album)
-            if (zit_erin(have_album, want_album) or zit_erin(want_album, have_album)):
-                score_album = max(score_album, SCORE_BEVAT)
+            if contained_in(have_album, want_album) or contained_in(want_album, have_album):
+                score_album = max(score_album, SCORE_CONTAINED)
             if score_artist < 0.5 or score_album < 0.5:
                 continue
 
-            # Het album weegt zwaarder: van een artiest heb je er meestal meer.
+            # The album weighs more: you usually own several by one artist.
             score = 0.35 * score_artist + 0.65 * score_album
             if score > best_score:
                 best, best_score = row, score
 
         return best if best_score >= 0.55 else None
 
-    # -- luisterbeurten ----------------------------------------------------
+    # -- listens -----------------------------------------------------------
     def add_play(self, status: str, engine: str = "", artist: str = "", title: str = "",
                  album: str = "", cover_url: str = "", clip: bytes | None = None,
                  release_id: int | None = None, raw: dict | None = None) -> int:
@@ -282,14 +296,14 @@ class Store:
             "ORDER BY p.id DESC LIMIT ?", (limit,)).fetchall()
 
     def link_play(self, play_id: int, release_id: int) -> None:
-        """De koppelknop uit de wachtrij."""
-        self.db.execute("UPDATE plays SET release_id = ?, status = 'gekoppeld' WHERE id = ?",
+        """The link button in the queue."""
+        self.db.execute("UPDATE plays SET release_id = ?, status = 'linked' WHERE id = ?",
                         (release_id, play_id))
         self.db.commit()
 
     def unlink_play(self, play_id: int) -> None:
-        """De 'dit klopt niet'-knop: terug de wachtrij in."""
-        self.db.execute("UPDATE plays SET release_id = NULL, status = 'onbekend' WHERE id = ?",
+        """The 'that is wrong' button: back into the queue."""
+        self.db.execute("UPDATE plays SET release_id = NULL, status = 'unknown' WHERE id = ?",
                         (play_id,))
         self.db.commit()
 
@@ -297,7 +311,7 @@ class Store:
         row = self.db.execute("SELECT clip_file FROM plays WHERE id = ?", (play_id,)).fetchone()
         if row and row["clip_file"]:
             (CLIPS / row["clip_file"]).unlink(missing_ok=True)
-        self.db.execute("UPDATE plays SET status = 'weggegooid', clip_file = NULL WHERE id = ?",
+        self.db.execute("UPDATE plays SET status = 'discarded', clip_file = NULL WHERE id = ?",
                         (play_id,))
         self.db.commit()
 

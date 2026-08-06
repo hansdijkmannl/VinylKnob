@@ -1,37 +1,37 @@
 """
-Praten met de Marantz over telnet (poort 23), voor de testknop.
+Talking to the receiver over telnet (port 23).
 
-Let op: de receiver accepteert **een** telnet-sessie tegelijk. Zodra het
-CrowPanel er is, is dat de partij die de verbinding vasthoudt en moet dit
-dienstje ervan afblijven. Voor nu, met alleen een Mac, is het juist handig om
-het protocol vanaf hier te kunnen uitproberen.
+Note: the receiver accepts **one** telnet session at a time. Once the panel is
+running, it is the one holding that connection and this service must keep its
+hands off. Before there is a panel — with nothing but a laptop — this is a
+convenient way to try the protocol out.
 """
 
 import asyncio
 
 
 async def probe(host: str, port: int = 23, timeout: float = 3.0) -> dict:
-    """Verbindt, vraagt de stand op, en geeft terug wat de AVR meldt."""
+    """Connect, ask for the current state, return whatever the receiver says."""
     if not host:
-        return {"ok": False, "error": "geen IP of hostnaam ingesteld"}
+        return {"ok": False, "error": "no IP address or hostname set"}
 
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, port), timeout=timeout)
     except asyncio.TimeoutError:
-        return {"ok": False, "error": f"geen antwoord van {host}:{port} binnen {timeout:.0f}s"}
+        return {"ok": False, "error": f"no answer from {host}:{port} within {timeout:.0f}s"}
     except OSError as exc:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
     lines: list[str] = []
     try:
-        # Uitgesmeerd versturen: onder ~50 ms laat de receiver commando's vallen.
+        # Spaced out: below about 50 ms the receiver drops commands.
         for query in ("PW?", "MV?", "SI?", "MU?"):
             writer.write((query + "\r").encode())
             await writer.drain()
             await asyncio.sleep(0.08)
 
-        # Even luisteren naar wat er terugkomt.
+        # Listen for a moment to whatever comes back.
         deadline = asyncio.get_event_loop().time() + 1.5
         buffer = b""
         while asyncio.get_event_loop().time() < deadline:
@@ -51,8 +51,8 @@ async def probe(host: str, port: int = 23, timeout: float = 3.0) -> dict:
             pass
 
     if not lines:
-        return {"ok": False, "error": "verbonden, maar geen antwoord. Staat "
-                                      "Netwerkbesturing op 'Altijd aan'?"}
+        return {"ok": False, "error": "connected, but no answer. Is Network "
+                                      "Control set to 'Always On'?"}
 
     volume = None
     for line in lines:
@@ -63,9 +63,9 @@ async def probe(host: str, port: int = 23, timeout: float = 3.0) -> dict:
 
 
 async def send(host: str, port: int, command: str) -> dict:
-    """Stuurt een enkel commando, bijvoorbeeld SIPHONO."""
+    """Send a single command, for example SIPHONO."""
     if not host:
-        return {"ok": False, "error": "geen IP of hostnaam ingesteld"}
+        return {"ok": False, "error": "no IP address or hostname set"}
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, port), timeout=3.0)
@@ -79,25 +79,24 @@ async def send(host: str, port: int, command: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Blijvende verbinding
+# A connection that stays open
 #
-# Voor de testknop is een losse verbinding genoeg, maar om het schermpje in de
-# webinterface de versterker echt te laten bedienen moet de verbinding open
-# blijven staan. Dat is ook nodig om mee te krijgen wat de receiver ongevraagd
-# meldt: pak iemand de afstandsbediening, dan komt hier spontaan een "MV52"
-# binnen en loopt de boog meteen mee.
+# A one-shot connection is enough to test with, but for the web interface to
+# actually drive the amplifier the connection has to stay up. It also has to
+# stay up to catch what the receiver reports unasked: pick up the remote and an
+# "MV52" arrives here on its own, and the arc follows immediately.
 #
-# Zelfde opbouw als de firmware in luxe/crowpanel/: één verbinding, commando's
-# gethrottled, en de toestand bijhouden uit wat er binnenkomt.
+# Same shape as the firmware in luxe/crowpanel/: one connection, commands
+# throttled, and the state tracked from whatever comes in.
 # ---------------------------------------------------------------------------
 import contextlib
 import time as _time
 
-MIN_INTERVAL = 0.06          # onder ~50 ms laat de receiver commando's vallen
+MIN_INTERVAL = 0.06          # below ~50 ms the receiver drops commands
 
 
 def _parse_half(digits: str):
-    """MV en MVMAX delen dezelfde codering: '35' is 35, '695' is 69,5."""
+    """MV and MVMAX share an encoding: '35' is 35, '695' is 69.5."""
     digits = digits.strip()
     if len(digits) < 2 or not digits[:2].isdigit():
         return None
@@ -108,7 +107,7 @@ def _parse_half(digits: str):
 
 
 class AvrLink:
-    """Houdt één telnet-sessie open en volgt de toestand van de receiver."""
+    """Holds one telnet session open and tracks the receiver's state."""
 
     def __init__(self):
         self.host = ""
@@ -122,12 +121,12 @@ class AvrLink:
         self._task = None
         self._last_send = 0.0
 
-    # -- verbinding --------------------------------------------------------
+    # -- connecting --------------------------------------------------------
     async def connect(self, host: str, port: int = 23) -> dict:
         await self.disconnect()
         self.host, self.port = host, port
         if not host:
-            self.state["error"] = "geen IP of hostnaam"
+            self.state["error"] = "no IP address or hostname"
             return self.state
 
         try:
@@ -148,9 +147,9 @@ class AvrLink:
     async def disconnect(self) -> None:
         if self._task:
             self._task.cancel()
-            # Niet alleen CancelledError: als de receiver de verbinding al had
-            # verbroken, ligt die fout in de taak te wachten en komt hij hier
-            # alsnog naar buiten. Loskoppelen mag nooit falen.
+            # Not just CancelledError: if the receiver had already dropped the
+            # connection, that error is sitting in the task waiting and surfaces
+            # here instead. Disconnecting must never fail.
             with contextlib.suppress(BaseException):
                 await self._task
             self._task = None
@@ -161,7 +160,7 @@ class AvrLink:
             self._writer = None
         self.state["connected"] = False
 
-    # -- verkeer -----------------------------------------------------------
+    # -- traffic -----------------------------------------------------------
     async def send(self, command: str) -> bool:
         if not self._writer:
             return False
@@ -184,19 +183,20 @@ class AvrLink:
         return await self.send(f"MV{whole:02d}5" if rest else f"MV{whole:02d}")
 
     async def _read_loop(self, reader) -> None:
-        """Leest tot de verbinding weggaat.
+        """Read until the connection goes away.
 
-        Dat wegvallen is hier geen randgeval maar de normale gang van zaken: de
-        SR7015 laat een tweede client toe en gooit de eerste eruit. Vangen we
-        dat niet, dan blijft `connected` op true staan terwijl er niets meer
-        doorkomt — en dan liegt de webinterface over wie de versterker heeft.
+        That is not an edge case here but the normal course of events: the
+        receiver lets a second client in and throws the first one out. Without
+        catching it, `connected` stays true while nothing comes through any
+        more — and then the web interface is lying about who holds the
+        amplifier.
         """
         buffer = ""
         try:
             while True:
                 chunk = await reader.read(256)
                 if not chunk:
-                    self.state.update(connected=False, error="verbinding gesloten")
+                    self.state.update(connected=False, error="connection closed")
                     return
                 buffer += chunk.decode(errors="replace")
                 while "\r" in buffer:
@@ -211,7 +211,7 @@ class AvrLink:
     def _apply(self, line: str) -> None:
         if len(line) < 2:
             return
-        # MVMAX eerst, anders leest de MV-tak "MA".
+        # MVMAX first, or the MV branch reads "MA".
         if line.startswith("MVMAX"):
             half = _parse_half(line[5:])
             if half:

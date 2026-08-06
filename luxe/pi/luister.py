@@ -396,7 +396,7 @@ async def tel_koppelen() -> int:
         return oren.koppelen
     try:
         async with ClientSession(timeout=ClientTimeout(total=5)) as s:
-            async with s.get(f"{BREIN}/api/plays?status=onbekend&limit=99") as r:
+            async with s.get(f"{BREIN}/api/plays?status=unknown&limit=99") as r:
                 body = await r.json()
         oren.koppelen = len(body.get("plays", []))
     except Exception:                                       # noqa: BLE001

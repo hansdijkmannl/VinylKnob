@@ -1,17 +1,17 @@
 """
-De eigen fingerprint-database: herkennen zonder dienst.
+Your own fingerprint database: recognition without a service.
 
-Waarom dit er is: shazamio kost niets maar is een onofficiele client die kan
-breken, en AudD vraagt een abonnement. Wat je zelf hebt vastgelegd blijft altijd
-werken, ook zonder internet.
+Why this exists: shazamio costs nothing but is an unofficial client that can
+break, and AudD wants a subscription. What you have recorded yourself keeps
+working, including with no internet at all.
 
-De opzet is dat dit groeit door gebruik. Elke keer dat een plaat herkend en
-gekoppeld wordt, gaat het fragment van die luisterbeurt in de database. Een
-fragment van acht seconden dekt maar acht seconden van een kant, maar je legt
-elke keer een ander stuk vast — na een paar keer draaien is een plaat vanzelf
-over de hele lengte gedekt. Je hoeft dus niets vooraf in te lezen.
+It is meant to grow through use. Every time a record is recognised and linked,
+the recording from that listen goes into the database. One clip covers only its
+own few seconds of a side, but each listen captures a different stretch — after
+playing a record a few times it is covered end to end on its own. Nothing has to
+be imported up front.
 
-Het algoritme en de gemeten onderbouwing staan in ../recognizer/README.md.
+The algorithm and the measurements behind it are in ../recognizer/README.md.
 """
 
 from __future__ import annotations
@@ -33,17 +33,17 @@ CREATE TABLE IF NOT EXISTS prints (
 CREATE INDEX IF NOT EXISTS idx_prints_hash ON prints(hash);
 """
 
-# Een op de vier hashes bewaren. Onderbouwing in ../recognizer/README.md:
-# uitdunnen is een betere knop dan afkappen.
+# Keep one hash in four. The reasoning is in ../recognizer/README.md: thinning
+# out is a better dial than truncating.
 KEEP_ONE_IN = 4
 
-# Wanneer is een lokale treffer goed genoeg om de dienst over te slaan.
+# When a local hit is good enough to skip the service entirely.
 MIN_SCORE = 25
 MIN_MARGIN = 3.0
 
 
 def decode_wav(data: bytes) -> np.ndarray | None:
-    """Van de wav die de browser stuurt naar mono float op de werkfrequentie."""
+    """From the WAV we are handed to mono float at the working rate."""
     try:
         with wave.open(io.BytesIO(data), "rb") as w:
             channels, width, rate = w.getnchannels(), w.getsampwidth(), w.getframerate()
@@ -51,7 +51,7 @@ def decode_wav(data: bytes) -> np.ndarray | None:
     except Exception:                                      # noqa: BLE001
         return None
 
-    if width != 2:                                         # we sturen zelf 16 bits
+    if width != 2:                                         # we always send 16-bit
         return None
     samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
     if channels > 1:
@@ -67,7 +67,7 @@ def ensure_schema(db) -> None:
 
 
 def remember(db, release_id: int, samples: np.ndarray) -> int:
-    """Legt een fragment vast bij een release. Geeft het aantal hashes terug."""
+    """Record a clip against a release. Returns the number of hashes stored."""
     rows = [(h, t, release_id) for h, t in fingerprint(samples)
             if mix(h) % KEEP_ONE_IN == 0]
     if not rows:
@@ -83,18 +83,18 @@ def forget(db, release_id: int) -> None:
 
 
 def count(db) -> tuple[int, int]:
-    """(aantal hashes, aantal releases dat lokaal herkend kan worden)"""
+    """(number of hashes, number of releases recognisable locally)"""
     a = db.execute("SELECT COUNT(*) FROM prints").fetchone()[0]
     b = db.execute("SELECT COUNT(DISTINCT release_id) FROM prints").fetchone()[0]
     return a, b
 
 
 def identify(db, samples: np.ndarray) -> dict | None:
-    """Zoekt lokaal. Geeft None als er niets overtuigends bij zit.
+    """Search locally. Returns None if nothing is convincing.
 
-    Niet het meeste aantal treffers wint, maar de grootste stapel op één en
-    hetzelfde tijdsverschil — dat onderscheidt een echte match van een handvol
-    toevallige botsingen.
+    The winner is not the most hits but the biggest pile at one and the same
+    time offset — that is what separates a real match from a handful of
+    coincidental collisions.
     """
     query = fingerprint(samples, dt_tolerance=DT_TOLERANCE)
     if not query:
@@ -106,7 +106,7 @@ def identify(db, samples: np.ndarray) -> dict | None:
 
     aligned: dict[int, dict[int, int]] = {}
     keys = list(by_hash)
-    for i in range(0, len(keys), 900):                     # SQLite-limiet
+    for i in range(0, len(keys), 900):                     # SQLite variable limit
         chunk = keys[i:i + 900]
         rows = db.execute(
             "SELECT hash, offset, release_id FROM prints WHERE hash IN "
@@ -119,7 +119,7 @@ def identify(db, samples: np.ndarray) -> dict | None:
 
     scored = []
     for release_id, deltas in aligned.items():
-        # Venster van drie: de resterende speling van een frame opvangen.
+        # A window of three, to absorb the remaining slack of one frame.
         delta, score = max(
             ((d, deltas.get(d - 1, 0) + c + deltas.get(d + 1, 0)) for d, c in deltas.items()),
             key=lambda kv: kv[1])

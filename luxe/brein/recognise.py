@@ -1,12 +1,15 @@
 """
-Herkenning. Twee motoren op dezelfde opname:
+Recognition. Two engines on the same recording:
 
-  shazamio   open-source client voor Shazam, geen sleutel nodig
-  AudD       commerciele API; slikt een rauwe audio-upload en is dus ook
-             rechtstreeks vanaf een microcontroller aan te roepen
+  shazamio   open-source client for Shazam, no key needed
+  AudD       commercial API; takes a raw audio upload, so it can also be called
+             straight from a microcontroller
 
-Shazam is de hoofdmotor. AudD staat erbij zodat je kunt blijven vergelijken —
-dat bepaalt of het apparaat ooit zonder computer zou kunnen.
+Shazam is the main engine. AudD sits alongside it so the two stay comparable —
+that is what decides whether the device could ever work without a computer.
+
+Neither is the one that matters most. See local.py: what you link by hand is
+recognised for free, forever, without asking anyone.
 """
 
 from __future__ import annotations
@@ -74,7 +77,7 @@ def _simplify_audd(payload) -> dict:
     if not result:
         return blank("AudD")
 
-    # De hoes zit bij de streamingdiensten, niet in het hoofdantwoord.
+    # The artwork lives with the streaming services, not in the main answer.
     cover = None
     apple = (result.get("apple_music") or {}).get("artwork") or {}
     if apple.get("url"):
@@ -99,7 +102,7 @@ def _simplify_audd(payload) -> dict:
 async def recognise_audd(audio: bytes, token: str) -> dict:
     if not token:
         out = blank("AudD")
-        out["error"] = "geen sleutel ingesteld"
+        out["error"] = "no key set"
         return out
 
     started = time.time()
@@ -125,7 +128,7 @@ async def recognise_audd(audio: bytes, token: str) -> dict:
 
 
 async def recognise(audio: bytes, audd_token: str = "") -> list[dict]:
-    """Allebei tegelijk op dezelfde opname."""
+    """Both at once, on the same recording."""
     return list(await asyncio.gather(
         recognise_shazam(audio),
         recognise_audd(audio, audd_token),
@@ -133,7 +136,7 @@ async def recognise(audio: bytes, audd_token: str = "") -> list[dict]:
 
 
 def best(results: list[dict]) -> dict | None:
-    """Shazam heeft voorrang; AudD is de reserve."""
+    """Shazam wins; AudD is the fallback."""
     for engine in ("Shazam", "AudD"):
         for r in results:
             if r.get("engine") == engine and r.get("matched"):
