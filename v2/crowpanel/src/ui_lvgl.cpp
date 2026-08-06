@@ -386,24 +386,29 @@ void uiBegin() {
   // than the eighteen-second timeout. It sits in the gap of the letter ring, at
   // the same spot as the listen button on the volume screen, so the bottom of
   // the glass is always the one place a button lives.
+  //
+  // A filled plate rather than an outline, and white on it. The first version
+  // drew it in COL_TRACK — the colour of the *unlit* part of the arc — on a
+  // barely-there plate, which is exactly the vocabulary this screen uses for
+  // "not active": it read as a greyed-out button.
   shelfBackPlate = lv_obj_create(lyBrowse);
   lv_obj_remove_style_all(shelfBackPlate);
-  lv_obj_set_size(shelfBackPlate, 132, 48);
+  lv_obj_set_size(shelfBackPlate, 138, 52);
   lv_obj_align(shelfBackPlate, LV_ALIGN_CENTER, 0, 192);
   lv_obj_set_style_radius(shelfBackPlate, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(shelfBackPlate, lv_color_hex(COL_BACKGROUND), 0);
-  lv_obj_set_style_bg_opa(shelfBackPlate, LV_OPA_60, 0);
-  lv_obj_set_style_border_color(shelfBackPlate, lv_color_hex(COL_TRACK), 0);
-  lv_obj_set_style_border_width(shelfBackPlate, 1, 0);
-  lv_obj_set_style_border_opa(shelfBackPlate, LV_OPA_40, 0);
+  lv_obj_set_style_bg_color(shelfBackPlate, lv_color_hex(COL_TRACK), 0);
+  lv_obj_set_style_bg_opa(shelfBackPlate, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(shelfBackPlate, lv_color_hex(COL_DIM), 0);
+  lv_obj_set_style_border_width(shelfBackPlate, 2, 0);
+  lv_obj_set_style_border_opa(shelfBackPlate, LV_OPA_COVER, 0);
   lv_obj_clear_flag(shelfBackPlate, LV_OBJ_FLAG_CLICKABLE);
 
   lblShelfBack = lv_label_create(lyBrowse);
-  lv_obj_set_style_text_font(lblShelfBack, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(lblShelfBack, lv_color_hex(COL_TRACK), 0);
+  lv_obj_set_style_text_font(lblShelfBack, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_color(lblShelfBack, lv_color_hex(COL_TEXT), 0);
   lv_obj_set_style_text_align(lblShelfBack, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_size(lblShelfBack, 132, 48);
-  lv_obj_set_style_pad_top(lblShelfBack, 15, 0);
+  lv_obj_set_size(lblShelfBack, 138, 52);
+  lv_obj_set_style_pad_top(lblShelfBack, 14, 0);
   lv_obj_align(lblShelfBack, LV_ALIGN_CENTER, 0, 192);
   lv_label_set_text(lblShelfBack, LV_SYMBOL_LEFT "  BACK");
   makeTappable(lblShelfBack, Touch::Dismiss);
