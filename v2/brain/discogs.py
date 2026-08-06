@@ -27,6 +27,10 @@ class DiscogsError(Exception):
     pass
 
 
+class NotFound(DiscogsError):
+    """One release is not there; everything else still is."""
+
+
 def headers(token: str) -> dict:
     h = {"User-Agent": USER_AGENT}
     if token:
@@ -39,7 +43,10 @@ async def _get(session: aiohttp.ClientSession, url: str, token: str, **params):
         if response.status == 401:
             raise DiscogsError("token rejected (401)")
         if response.status == 404:
-            raise DiscogsError("not found (404) - is the username right?")
+            # Its own class: for the collection this means the username is
+            # wrong and nothing will work, but for one release it means that
+            # release alone is gone and the rest are fine.
+            raise NotFound("not found (404)")
         if response.status == 429:
             raise DiscogsError("too many requests (429), wait a moment")
         if response.status != 200:
@@ -88,6 +95,29 @@ async def fetch_collection(token: str, user: str, on_page=None) -> list[dict]:
             if page <= pages:
                 await asyncio.sleep(PAUSE)
 
+    return out
+
+
+async def fetch_tracklist(token: str, discogs_id: str) -> list[str]:
+    """The track titles on one release.
+
+    The collection listing does not carry these — it gives the sleeve and the
+    title and nothing about what is on the record — so this is a request per
+    release. Worth it: a service names the track it heard and often attributes
+    it to whichever release its own metadata prefers, which for anything with a
+    hit on it is a compilation. Knowing what is actually on your copies turns
+    that guess into a lookup.
+    """
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+        data = await _get(session, f"{BASE}/releases/{discogs_id}", token)
+    out = []
+    for track in data.get("tracklist") or []:
+        # Headings and index tracks have no position and are not songs.
+        if (track.get("type_") or "track") != "track":
+            continue
+        title = (track.get("title") or "").strip()
+        if title:
+            out.append(title)
     return out
 
 

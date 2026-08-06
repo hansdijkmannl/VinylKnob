@@ -15,11 +15,21 @@
 /*******************************************************************************
  * Size: 130 px
  * Bpp: 2
- * Opts: --font /Users/iHDPro/.platformio/libdeps/crowpanel/crowpanel/lvgl/scripts/built_in_font/Montserrat-Medium.ttf -r 0x23 -r 0x41-0x5A --size 130 --bpp 2 --format lvgl --no-compress -o /Volumes/Opslag/Apps/MarantzKnob/v2/crowpanel/src/font_shelf_letter.c
+ * Opts: --font Montserrat-Medium.ttf -r 0x23 -r 0x41-0x5A --size 130 --bpp 2
+ *       --format lvgl --no-compress -o font_shelf_letter.c
+ *
+ * A-Z and '#', and nothing else: this font exists only for the jump letter in
+ * the record shelf. LVGL ships Montserrat up to 48 px, which on a 480-pixel
+ * screen is too small to read while you are turning. The whole alphabet at
+ * 130 px is 52 kB of flash; the full character set would be a great deal more.
+ *
+ * Montserrat comes with LVGL — the .ttf is under
+ * lvgl/scripts/built_in_font/ in the version PlatformIO fetched. Regenerate
+ * with lv_font_conv from that directory.
  ******************************************************************************/
 
-// De gegenereerde keuze tussen twee insluitpaden werkt hier niet: PlatformIO
-// levert lvgl als bibliotheek, dus alleen "lvgl.h" bestaat.
+// The generated pick between two include paths does not work here: PlatformIO
+// supplies lvgl as a library, so only "lvgl.h" exists.
 #include "lvgl.h"
 
 

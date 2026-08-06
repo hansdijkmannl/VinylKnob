@@ -41,6 +41,18 @@ CREATE TABLE IF NOT EXISTS releases (
 );
 CREATE INDEX IF NOT EXISTS idx_rel_artist ON releases(artist);
 CREATE INDEX IF NOT EXISTS idx_rel_title  ON releases(title);
+-- What is actually on each record. Filled in a second pass over the
+-- collection, one request per release, because the collection listing does not
+-- carry it. `norm` is the comparable form; `title` is kept as printed so a
+-- chooser can show it the way the sleeve does.
+CREATE TABLE IF NOT EXISTS tracks (
+    release_id  INTEGER NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    norm        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tracks_norm    ON tracks(norm);
+CREATE INDEX IF NOT EXISTS idx_tracks_release ON tracks(release_id);
 
 -- Every listen. Recognised or not, all of it lands here.
 CREATE TABLE IF NOT EXISTS plays (
@@ -145,6 +157,26 @@ class Store:
         the value, so a database full of 'onbekend' would simply look empty.
         Cheap to run every start, and a no-op once done.
         """
+        # Records entered by hand carry a made-up id, and that prefix used to be
+        # a Dutch word. The sleeve is named after it, so the file has to move
+        # with the row or the picture goes missing.
+        for row in self.db.execute(
+                "SELECT id, discogs_id, cover_file FROM releases "
+                "WHERE discogs_id LIKE 'handmatig-%' OR cover_file LIKE 'handmatig-%'"):
+            new_id = "byhand-" + row["discogs_id"][len("handmatig-"):] \
+                if (row["discogs_id"] or "").startswith("handmatig-") else row["discogs_id"]
+            new_cover = row["cover_file"]
+            if (new_cover or "").startswith("handmatig-"):
+                new_cover = "byhand-" + new_cover[len("handmatig-"):]
+                old_path, new_path = COVERS / row["cover_file"], COVERS / new_cover
+                if old_path.exists():
+                    old_path.rename(new_path)
+                elif not new_path.exists():
+                    new_cover = None      # the file was already gone; do not point at it
+            self.db.execute(
+                "UPDATE releases SET discogs_id = ?, cover_file = ? WHERE id = ?",
+                (new_id, new_cover, row["id"]))
+
         renamed = {"herkend": "recognised", "onbekend": "unknown",
                    "gekoppeld": "linked", "weggegooid": "discarded"}
         for old, new in renamed.items():
@@ -313,6 +345,53 @@ class Store:
                 best, best_score = row, score
 
         return best if best_score >= 0.55 else None
+
+    # -- what is on the records --------------------------------------------
+    def set_tracks(self, release_id: int, titles: list[str]) -> None:
+        self.db.execute("DELETE FROM tracks WHERE release_id = ?", (release_id,))
+        self.db.executemany(
+            "INSERT INTO tracks (release_id, position, title, norm) VALUES (?, ?, ?, ?)",
+            [(release_id, i, t, _normalise(t)) for i, t in enumerate(titles)])
+        self.db.commit()
+
+    def releases_without_tracks(self, limit: int = 50) -> list:
+        return list(self.db.execute(
+            "SELECT r.id, r.discogs_id, r.artist, r.title FROM releases r "
+            "LEFT JOIN tracks t ON t.release_id = r.id "
+            "WHERE t.release_id IS NULL ORDER BY r.id LIMIT ?", (limit,)))
+
+    def track_counts(self) -> tuple[int, int]:
+        """(releases with a tracklist, releases in total)."""
+        with_tracks = self.db.execute(
+            "SELECT COUNT(DISTINCT release_id) c FROM tracks").fetchone()["c"]
+        total = self.release_count()
+        return with_tracks, total
+
+    def releases_with_track(self, artist: str, track: str) -> list:
+        """Your records by this artist that carry this song.
+
+        The question a recognition service cannot answer, because it does not
+        know what you own. It names a track and then attributes it to whichever
+        release its own metadata prefers — for anything with a hit on it, that
+        is usually a compilation. Which of *your* copies the song is on is a
+        different question, and this is it.
+
+        Ordered oldest first, so the original album comes before the collection
+        that reissued it.
+        """
+        want = _normalise(track)
+        if not want:
+            return []
+        rows = self.db.execute(
+            "SELECT DISTINCT r.* FROM releases r JOIN tracks t ON t.release_id = r.id "
+            "WHERE t.norm = ? ORDER BY r.year, r.id", (want,))
+        want_artist = set(_normalise(artist).split())
+        out = []
+        for row in rows:
+            have = set(_normalise(row["artist"]).split())
+            if want_artist and have and len(want_artist & have) / len(want_artist | have) >= 0.5:
+                out.append(row)
+        return out
 
     # -- listens -----------------------------------------------------------
     def add_play(self, status: str, engine: str = "", artist: str = "", title: str = "",

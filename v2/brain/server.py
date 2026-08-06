@@ -19,8 +19,10 @@ removed from the standard library in 3.13. On Python 3.13 or later, install
 `audioop-lts` alongside it — the Pi installer does this for you.
 """
 
+import asyncio
 import json
 import pathlib
+import time
 import uuid
 
 from aiohttp import web
@@ -108,12 +110,33 @@ async def api_listen(request):
         return web.json_response({"results": results, "playId": play_id,
                                   "matched": False, "release": None})
 
-    match = store.best_collection_match(hit.get("artist") or "", hit.get("album") or "")
+    # Which of your records is this, then.
+    #
+    # A service names the track it heard and then names a release to go with
+    # it, and that second part is its opinion, not yours: for anything with a
+    # hit on it the metadata prefers a compilation. So ask the tracklists
+    # first — which of *your* copies actually carries this song — and fall back
+    # to comparing album titles when the tracklists cannot say.
+    artist = hit.get("artist") or ""
+    choices = store.releases_with_track(artist, hit.get("title") or "")
+    if len(choices) == 1:
+        match = choices[0]
+    elif len(choices) > 1:
+        # Genuinely on more than one record you own: the album and the
+        # collection that reissued it. Nothing here can tell which platter is
+        # spinning, so it is offered rather than guessed.
+        match = None
+    else:
+        match = store.best_collection_match(artist, hit.get("album") or "")
+
     play_id = store.add_play(
-        "recognised", engine=hit["engine"], artist=hit.get("artist") or "",
+        "recognised", engine=hit["engine"], artist=artist,
         title=hit.get("title") or "", album=hit.get("album") or "",
         cover_url=hit.get("cover") or "",
-        clip=None if match else audio,          # no record on the shelf: keep it
+        # Keep the clip whenever nothing was linked, because that is what a
+        # later choice is hung on — including when there are several to choose
+        # between.
+        clip=None if match else audio,
         release_id=match["id"] if match else None,
         raw={"results": results})
 
@@ -126,6 +149,9 @@ async def api_listen(request):
     return web.json_response({
         "results": results, "playId": play_id, "matched": True,
         "release": row_to_release(match) if match else None,
+        # The records this track is on, when there is more than one. Empty
+        # otherwise, so nothing downstream has to care about the common case.
+        "choices": [row_to_release(r) for r in choices] if len(choices) > 1 else [],
     })
 
 
@@ -211,10 +237,10 @@ async def api_manual(request):
     if not title:
         return web.json_response({"error": "titel is verplicht"}, status=400)
 
-    release_id = store.upsert_release(f"handmatig-{uuid.uuid4().hex[:12]}",
+    release_id = store.upsert_release(f"byhand-{uuid.uuid4().hex[:12]}",
                                       artist, title)
     if image:
-        name = f"handmatig-{release_id}.jpg"
+        name = f"byhand-{release_id}.jpg"
         (COVERS / name).write_bytes(image)
         store.set_cover_file(release_id, name)
 
@@ -239,6 +265,69 @@ async def api_sync(request):
 
     return web.json_response({"ok": True, "count": len(items),
                               "total": store.release_count()})
+
+
+async def api_tracks(request):
+    """Fetch tracklists for records that have none yet.
+
+    A second pass over the collection, separate from the sync because it is a
+    request per release rather than one per fifty — several hundred of them the
+    first time, at Discogs' rate limit. So it runs in batches: call it again
+    and it carries on where it stopped, and the nightly timer picks up whatever
+    was bought since.
+
+    It earns its keep on compilations. A service names the track it heard and
+    then names whichever release its metadata prefers, which for anything with
+    a hit on it is a greatest-hits. Knowing what is on your own copies turns
+    that guess into a lookup.
+    """
+    token = store.get("discogs_token")
+    if not token:
+        return web.json_response({"error": "no Discogs token set"}, status=400)
+
+    # Bounded by the clock, not by a count the caller guesses at. The web
+    # interface reaches this through the ears, which give a forwarded request
+    # sixty seconds; ask for two hundred releases at a request each and the
+    # proxy hangs up long before the work is done, and the answer — including
+    # how far it got — is lost with it. So it stops early and says so, and you
+    # call it again.
+    deadline = time.monotonic() + float(request.query.get("seconds", 45))
+    rows = store.releases_without_tracks(min(int(request.query.get("batch", 200)), 500))
+    done, skipped, failed = 0, 0, []
+    for row in rows:
+        if time.monotonic() > deadline:
+            break
+        # Records you typed in yourself are not in Discogs at all — that is why
+        # you typed them in. Nothing to fetch, and asking would spend a request
+        # to be told so.
+        if not (row["discogs_id"] or "").isdigit():
+            store.set_tracks(row["id"], [""])
+            skipped += 1
+            continue
+        try:
+            titles = await discogs.fetch_tracklist(token, row["discogs_id"])
+        except discogs.NotFound:
+            # This one release is gone from Discogs; the rest are fine. Mark it
+            # answered so the pass moves on instead of stopping here for ever.
+            store.set_tracks(row["id"], [""])
+            skipped += 1
+            await asyncio.sleep(discogs.PAUSE)
+            continue
+        except discogs.DiscogsError as exc:
+            # A bad token or a rate limit is about all of them, not this one.
+            failed.append({"title": row["title"], "error": str(exc)})
+            break
+        # An empty tracklist is still an answer — a blank row keeps it out of
+        # the queue next time, instead of being retried for ever.
+        store.set_tracks(row["id"], titles or [""])
+        done += 1
+        await asyncio.sleep(discogs.PAUSE)
+
+    with_tracks, total = store.track_counts()
+    return web.json_response({"ok": True, "fetched": done, "skipped": skipped,
+                              "failed": failed,
+                              "withTracks": with_tracks, "total": total,
+                              "remaining": max(0, total - with_tracks)})
 
 
 async def api_collection(request):
@@ -491,6 +580,7 @@ def main():
     app.router.add_post("/api/plays/{id}/dismiss", api_dismiss)
     app.router.add_post("/api/plays/{id}/manual", api_manual)
     app.router.add_post("/api/discogs/sync", api_sync)
+    app.router.add_post("/api/discogs/tracks", api_tracks)
     app.router.add_get("/api/collection", api_collection)
     app.router.add_get("/api/discogs/search", api_discogs_search)
     app.router.add_get("/api/cover/{id}", api_cover)
