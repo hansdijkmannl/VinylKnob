@@ -7,31 +7,31 @@
 #include "config.h"
 
 // -- de lijst ---------------------------------------------------------------
-// Alle namen achter elkaar in één blok tekst, met per album twee verwijzingen
-// erin. Dat scheelt 549 losse toewijzingen op een hoop die daar niet van houdt,
-// en het blok komt precies zo binnen als het over de lijn ging.
+// Every name end to end in one block of text, with two offsets into it per
+// album. That saves hundreds of separate allocations on a heap that does not
+// enjoy them, and the block arrives exactly as it went over the wire.
 struct Album {
   uint16_t id;
   uint32_t artistOff;
   uint32_t titleOff;
 };
 
-static char   *blob   = nullptr;      // het hele blok, met nullbytes ertussen
+static char   *blob   = nullptr;      // the whole block, with nulls between
 static Album  *albums  = nullptr;
 static int     count  = 0;
 static int     current  = 0;
 static bool    loaded = false;
 
 // -- de plaatjes ------------------------------------------------------------
-// Een handvol hoezen onthouden, niet alleen de drie in beeld: heen en weer
-// draaien over dezelfde plaats is precies wat je doet als je zoekt, en dan is
-// opnieuw ophalen wat je net had zonde van de tijd.
+// Remember a handful of sleeves, not just the three on screen: turning back and
+// forth over the same spot is exactly what you do while searching, and
+// re-fetching what you just had is a waste of time.
 #define CACHE_N 9
 static const size_t PIXELS = (size_t)SHELF_PX * SHELF_PX;
 
 struct Thumb {
   int         album = -1;            // welke index hier in staat, -1 = leeg
-  uint32_t    usedAt = 0;          // voor het opruimen: hoe recent
+  uint32_t    usedAt = 0;          // for eviction: how recently used
   bool        vol = false;
   uint16_t   *px = nullptr;
   lv_img_dsc_t dsc{};
@@ -39,11 +39,11 @@ struct Thumb {
 
 static Thumb cache[CACHE_N];
 static uint8_t *jpeg = nullptr;
-static const size_t JPEG_MAX = 24 * 1024;   // 138 px komt niet boven ~4 kB
-static uint32_t tick = 0;                   // loopt op bij elk gebruik
+static const size_t JPEG_MAX = 24 * 1024;   // 138 px never exceeds ~4 kB
+static uint32_t tick = 0;                   // increments on every use
 
-// Waar de decoder nu in schrijft. TJpgDec heeft één globale callback, dus hij
-// wordt vlak voor elke decodering gezet; hoes.cpp doet hetzelfde.
+// Where the decoder writes right now. TJpgDec has one global callback, so it is
+// set immediately before each decode; artwork.cpp does the same.
 static Thumb *target = nullptr;
 
 static bool writeBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
@@ -66,7 +66,7 @@ void shelfBegin() {
   for (int i = 0; i < CACHE_N; i++) {
     cache[i].px = (uint16_t *)heap_caps_malloc(PIXELS * 2, MALLOC_CAP_SPIRAM);
     if (!cache[i].px) {
-      Serial.printf("[kast] geen PSRAM voor plaatje %d\n", i);
+      Serial.printf("[shelf] no PSRAM for thumbnail %d\n", i);
       continue;
     }
     memset(&cache[i].dsc, 0, sizeof(cache[i].dsc));
@@ -111,15 +111,15 @@ bool shelfLoad(const char *host, uint16_t poort) {
   if (gelezen != lengte) { free(fresh); return false; }
   fresh[lengte] = '\0';
 
-  // Tellen hoeveel regels er zijn, dan pas de tabel maken.
+  // Count the lines first, then build the table.
   int lines = 1;
   for (int i = 0; i < lengte; i++) if (fresh[i] == '\n') lines++;
 
   Album *tabel = (Album *)heap_caps_malloc(sizeof(Album) * lines, MALLOC_CAP_SPIRAM);
   if (!tabel) { free(fresh); return false; }
 
-  // Ter plekke splitsen: tabs en regeleindes worden nullbytes, en we onthouden
-  // waar elk stuk begint. Zo staat er geen enkele kopie van de tekst naast.
+  // Split in place: tabs and newlines become nulls, and we remember where each
+  // piece starts. That way not one copy of the text sits alongside it.
   int n = 0;
   char *p = fresh;
   while (p < fresh + lengte && n < lines) {
@@ -150,10 +150,10 @@ bool shelfLoad(const char *host, uint16_t poort) {
   current = 0;
   loaded = n > 0;
 
-  // De hoezen die er lagen horen bij de vorige lijst.
+  // Whatever sleeves were cached belong to the previous list.
   for (int i = 0; i < CACHE_N; i++) { cache[i].album = -1; cache[i].vol = false; }
 
-  Serial.printf("[kast] %d albums geladen (%d kB)\n", count, lengte / 1024);
+  Serial.printf("[shelf] %d albums loaded (%d kB)\n", count, lengte / 1024);
   return loaded;
 }
 
@@ -196,15 +196,15 @@ void shelfJump(int direction) {
   const char hier = shelfLetterAt(current);
 
   if (direction > 0) {
-    // Naar het eerste album van de volgende letter.
+    // To the first album of the next letter.
     for (int i = 1; i <= count; i++) {
       const int k = wrap(current + i);
       if (shelfLetterAt(k) != hier) { current = k; return; }
     }
   } else {
-    // Terug: eerst naar het begin van deze letter. Sta je daar al, dan door
-    // naar het begin van de vorige. Dat is hoe een sprongindex hoort te voelen
-    // — één keer terug brengt je bovenaan de letter waar je in zit.
+    // Back: first to the start of this letter. Already there, and on to the
+    // start of the previous one. That is how a jump index should feel — one
+    // step back takes you to the top of the letter you are in.
     int begin = current;
     while (begin > 0 && shelfLetterAt(begin - 1) == hier) begin--;
     if (begin != current) { current = begin; return; }
@@ -235,9 +235,9 @@ const lv_img_dsc_t *shelfArtworkAt(int slot) {
   return &p->dsc;
 }
 
-// Het minst recent gebruikte plekje dat niet in beeld staat. In beeld staande
-// hoezen weggooien om er een in beeld staande hoes in te zetten zou betekenen
-// dat ze om de beurt verdwijnen zodra de cache krap wordt.
+// The least recently used slot that is not on screen. Evicting a visible sleeve
+// to make room for another visible sleeve would mean they take turns
+// disappearing as soon as the cache gets tight.
 static Thumb *freeSlot() {
   Thumb *best = nullptr;
   for (int i = 0; i < CACHE_N; i++) {
@@ -298,9 +298,9 @@ static bool fetchArtwork(const char *host, uint16_t poort, int album) {
   return true;
 }
 
-// Zodra je stilhoudt gaan we halen. Tweehonderd milliseconde is lang genoeg om
-// niet tijdens het draaien te beginnen, en kort genoeg dat de hoes er staat
-// voordat je hebt kunnen kijken.
+// Fetching starts once you hold still. Two hundred milliseconds is long enough
+// not to begin mid-turn, and short enough that the sleeve is there before you
+// have had time to look.
 static const uint32_t RUST_MS = 200;
 static uint32_t lastStep = 0;
 static int      previousIndex = -1;
@@ -315,8 +315,8 @@ bool shelfLoop(const char *host, uint16_t poort) {
   }
   if (millis() - lastStep < RUST_MS) return false;
 
-  // Één per aanroep: dan blijft de lus reageren op de knop terwijl de rest
-  // binnenkomt. Midden eerst — dat is degene waar je naar kijkt.
+  // One per call, so the loop keeps answering the knob while the rest arrives.
+  // The middle first — that is the one you are looking at.
   static const int ORDER[3] = {1, 2, 0};
   for (int i = 0; i < 3; i++) {
     const int album = visibleAt(ORDER[i]);

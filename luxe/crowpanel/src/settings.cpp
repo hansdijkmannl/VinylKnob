@@ -8,7 +8,7 @@ Settings settings;
 static Preferences prefs;
 static const char *NS = "mknob";
 
-// Fabriekslijst van ingangen. Deze doorloop je door de knop ingedrukt te
+// Factory list of inputs. You step through these by holding the knob and
 // houden en te draaien.
 static const InputDef DEFAULT_INPUTS[] = {
   {"PHONO", "Platenspeler"},
@@ -24,7 +24,7 @@ static void keyFor(char *buf, size_t n, const char *prefix, int i) {
 }
 
 void settingsLoad() {
-  // Eerst de fabrieksinstellingen, dan overschrijven met wat er in NVS staat.
+  // Factory defaults first, then overwrite with whatever is in NVS.
   memset(&settings, 0, sizeof(settings));
   settings.avrPort        = DEF_AVR_PORT;
   settings.halfDbPerClick = DEF_HALF_DB_PER_CLICK;
@@ -173,8 +173,8 @@ bool settingsFromJson(const String &body, String &err, bool &wifiChanged) {
     if (strcmp(v, settings.wifiSsid) != 0) wifiChanged = true;
     strlcpy(settings.wifiSsid, v, sizeof(settings.wifiSsid));
   }
-  // Een leeg wachtwoordveld betekent "laat staan", niet "wis het". Anders wist
-  // de webinterface je wachtwoord elke keer dat je iets anders aanpast.
+  // An empty password field means "leave it", not "clear it". Otherwise the
+  // web interface would wipe your password every time you changed anything.
   if (doc["wifiPass"].is<const char *>()) {
     const char *v = doc["wifiPass"];
     if (strlen(v) > 0) {
@@ -226,7 +226,7 @@ bool settingsFromJson(const String &body, String &err, bool &wifiChanged) {
       if (strlen(code) == 0) continue;          // lege regels overslaan
       strlcpy(settings.inputs[n].code, code, sizeof(settings.inputs[n].code));
       const char *label = o["label"] | "";
-      // Leeg label? Dan de protocolcode gebruiken, dat is beter dan niets.
+      // Empty label? Use the protocol code; better than nothing.
       strlcpy(settings.inputs[n].label, strlen(label) ? label : code,
               sizeof(settings.inputs[n].label));
       n++;
@@ -234,7 +234,7 @@ bool settingsFromJson(const String &body, String &err, bool &wifiChanged) {
     settings.inputCount = n;
   }
 
-  // Favoriet pas na de lijst, want hij verwijst erin.
+  // The favourite comes after the list, because it indexes into it.
   if (!doc["favouriteInput"].isNull()) {
     const int v = (int)doc["favouriteInput"];
     settings.favouriteInput = (v >= 0 && v < settings.inputCount) ? (int8_t)v : -1;

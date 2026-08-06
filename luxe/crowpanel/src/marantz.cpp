@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// Praten met de Marantz over telnet (poort 23).
+// Talking to the receiver over telnet (port 23).
 //
 // De receiver stuurt statuswijzigingen ongevraagd over dezelfde verbinding.
-// Pak je de afstandsbediening, dan komt hier spontaan een "MV52" binnen en
-// loopt het schermpje meteen mee.
+// Pick up the remote and an "MV52" arrives here unasked, and the screen follows
+// straight away.
 //
-// Let op: de AVR accepteert maar EEN telnet-sessie tegelijk.
+// Note: the receiver accepts only ONE telnet session at a time.
 // ---------------------------------------------------------------------------
 
 #include "marantz.h"
@@ -23,7 +23,7 @@ static int      targetHalf     = -1;   // -1 = niets te versturen
 static uint32_t lastCmdSent    = 0;
 static uint32_t lastConnectTry = 0;
 static uint32_t txCount        = 0;
-static uint32_t initQueryStep  = 0;    // >0 = beginvragen nog bezig
+static uint32_t initQueryStep  = 0;    // >0 = opening queries still running
 static uint32_t initQueryAt    = 0;
 
 uint32_t avrTxCount() { return txCount; }
@@ -51,8 +51,8 @@ bool avrSend(const char *cmd) {
 
 void avrSetVolumeHalf(int halfSteps) {
   targetHalf = constrain(halfSteps, 0, avrVolumeCeilingHalf());
-  // Lokaal vooruitlopen zodat het schermpje direct meebeweegt; de AVR
-  // bevestigt daarna met een eigen MV-bericht.
+  // Run ahead locally so the screen moves immediately; the receiver confirms
+  // afterwards with its own MV message.
   avrState.volHalfSteps = targetHalf;
   touched();
 }
@@ -69,7 +69,7 @@ void avrReconnect() {
 // ---------------------------------------------------------------------------
 static void applyInput(const String &code) {
   strlcpy(avrState.input, code.c_str(), sizeof(avrState.input));
-  // Staat deze ingang in jouw lijst, gebruik dan jouw label.
+  // If this input is in your list, use your label for it.
   const int idx = settingsFindInput(code.c_str());
   strlcpy(avrState.inputLabel,
           (idx >= 0) ? settings.inputs[idx].label : code.c_str(),
@@ -80,12 +80,12 @@ static void handleResponse(const String &line) {
   if (line.length() < 2) return;
   Serial.printf("<- %s\n", line.c_str());
 
-  // MVMAX moet voor MV gecontroleerd worden, anders leest de MV-tak "MA".
+  // MVMAX has to be checked before MV, or the MV branch reads "MA".
   //
-  // Let op: MVMAX gebruikt dezelfde codering als MV en kan dus een halve stap
-  // bevatten. Een echte SR7015 antwoordt "MVMAX 695", oftewel 69,5 en niet 695.
-  // Dit stond er eerst als een gewone toInt(), waardoor de waarde door de
-  // controle viel en het plafond op 98 bleef staan.
+  // Note: MVMAX uses the same encoding as MV and can therefore carry a half
+  // step. A real receiver answers "MVMAX 695", meaning 69.5 and not 695. This
+  // was a plain toInt() at first, so the value fell through the check and the
+  // ceiling stayed at 98.
   if (line.startsWith("MVMAX")) {
     String digits = line.substring(5);
     digits.trim();
@@ -105,8 +105,8 @@ static void handleResponse(const String &line) {
     if (digits.length() < 2 || !isDigit(digits[0]) || !isDigit(digits[1])) return;
     int half = digits.substring(0, 2).toInt() * 2;
     if (digits.length() >= 3 && digits[2] == '5') half += 1;
-    // Niet terugspringen als we zelf nog een hogere stand aan het versturen
-    // zijn; anders schokt het schermpje tijdens snel draaien.
+    // Do not jump back while we are still sending a higher setting ourselves;
+    // otherwise the screen judders during a fast turn.
     if (targetHalf < 0) avrState.volHalfSteps = half;
     avrState.haveVolume = true;
     touched();
@@ -147,8 +147,8 @@ static void pump() {
 // ---------------------------------------------------------------------------
 // Verbinding + beginvragen
 //
-// De beginvragen worden uitgesmeerd over losse loop-rondes in plaats van met
-// delay(), zodat de webinterface tijdens het verbinden blijft reageren.
+// The opening queries are spread across separate loop passes rather than using
+// delay(), so the web interface keeps responding while it connects.
 // ---------------------------------------------------------------------------
 static void runInitQueries() {
   static const char *QUERIES[] = {"PW?", "ZM?", "MV?", "MU?", "SI?"};
@@ -183,7 +183,7 @@ static void maintainConnection() {
   if (lastConnectTry != 0 && millis() - lastConnectTry < 3000) return;
   lastConnectTry = millis();
 
-  Serial.printf("Verbinden met %s:%u ...\n", settings.avrHost, settings.avrPort);
+  Serial.printf("Connecting to %s:%u ...\n", settings.avrHost, settings.avrPort);
   if (client.connect(settings.avrHost, settings.avrPort, 2000)) {
     client.setNoDelay(true);
     avrState.connected = true;
@@ -191,7 +191,7 @@ static void maintainConnection() {
     initQueryAt   = 0;
     Serial.println("Verbonden.");
   } else {
-    Serial.println("Verbinden mislukt.");
+    Serial.println("Connection failed.");
   }
   touched();
 }
@@ -201,7 +201,7 @@ void avrLoop() {
   pump();
   runInitQueries();
 
-  // Laatste volumestand versturen, gethrottled. Bouwt het MV-commando:
+  // Send the latest volume, throttled. Builds the MV command:
   // hele dB = "MV45", halve dB = "MV455".
   if (targetHalf >= 0 && initQueryStep == 0 &&
       millis() - lastCmdSent >= CMD_MIN_INTERVAL_MS) {
@@ -209,7 +209,7 @@ void avrLoop() {
     const int whole = targetHalf / 2;
     if (targetHalf % 2) snprintf(cmd, sizeof(cmd), "MV%02d5", whole);
     else                snprintf(cmd, sizeof(cmd), "MV%02d",  whole);
-    avrSend(cmd);        // mislukt hij door een dode verbinding, dan laten we
-    targetHalf = -1;     // deze stand vallen; de volgende klik stuurt opnieuw
+    avrSend(cmd);        // if it fails on a dead connection we drop this
+    targetHalf = -1;     // setting; the next click sends again
   }
 }

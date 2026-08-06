@@ -8,15 +8,15 @@
 #include "settings.h"
 
 BrainState brainState;
-bool brainWantsToListen = true;   // main.cpp zet dit op basis van de ingang
+bool brainWantsToListen = true;   // main.cpp sets this from the current input
 
 static uint32_t nextPoll = 0;
 static uint8_t  missers       = 0;
 
-// De timeouts zijn met opzet kort. Dit gebeurt in dezelfde lus die de knop
-// afhandelt, dus elke milliseconde die we hier wachten voel je aan het volume.
-// Een Pi op je eigen netwerk antwoordt in tientallen milliseconden; duurt het
-// langer, dan is hij er niet en heeft doorwachten geen zin.
+// The timeouts are deliberately short. This runs in the same loop that handles
+// the knob, so every millisecond spent waiting here is felt in the volume. A Pi
+// on your own network answers in tens of milliseconds; longer than that and it
+// is not there, so waiting achieves nothing.
 static const uint16_t VERBIND_TIMEOUT_MS = 400;
 static const uint16_t READ_TIMEOUT_MS    = 800;
 
@@ -25,9 +25,9 @@ void brainBegin() {
 }
 
 static void clear() {
-  if (!brainState.bereikbaar && !brainState.speelt) return;
+  if (!brainState.bereikbaar && !brainState.playing) return;
   brainState.bereikbaar = false;
-  brainState.speelt     = false;
+  brainState.playing     = false;
   brainState.listening   = false;
   brainState.onShelf     = false;
   brainState.canLink = false;
@@ -50,9 +50,9 @@ void brainAskLookup() {
   if (!http.begin(url)) return;
   http.POST("");
   http.end();
-  // Meteen weer polsen. Zes seconden wachten (want het antwoord duurt toch
-  // tien) was fout gedacht: dan blijft het icoontje al die tijd donker en lijkt
-  // je tik niet aangekomen. De vlag "luistert" is er juist meteen.
+  // Poll again straight away. Waiting six seconds (since the answer takes ten
+  // anyway) was wrong thinking: the icon then stays dark all that time and your
+  // tap looks like it never landed. The "listening" flag is there immediately.
   nextPoll = millis() + 300;
 }
 
@@ -63,37 +63,37 @@ bool brainLink(uint16_t releaseId) {
            settings.brainHost, BRAIN_PORT, (unsigned)releaseId);
   HTTPClient http;
   http.setConnectTimeout(VERBIND_TIMEOUT_MS);
-  // Ruimer dan de rest: het brein legt hier een vingerafdruk vast en dat duurt
-  // langer dan een peiling. Blokkeert de lus even, maar dit gebeurt alleen op
-  // jouw druk op de knop.
+  // Roomier than the rest: the brain records fingerprints here and that takes
+  // longer than a poll. It stalls the loop briefly, but only ever on your own
+  // press of the knob.
   http.setTimeout(8000);
   if (!http.begin(url)) return false;
   const int code = http.POST("");
   http.end();
-  // Meteen opnieuw peilen, zodat het scherm de nieuwe naam heeft voordat je
+  // Poll again at once, so the screen has the new name before you
   // hebt kunnen kijken.
   nextPoll = millis() + 200;
   return code == HTTP_CODE_OK;
 }
 
 void brainLoop() {
-  if (settings.brainHost[0] == '\0') return;      // geen Pi ingesteld
+  if (settings.brainHost[0] == '\0') return;      // no Pi configured
   if (WiFi.status() != WL_CONNECTED) return;
 
   const uint32_t now = millis();
   if (now < nextPoll) return;
 
-  // Na een paar mislukte pogingen rustiger aan doen. Anders staat een
-  // uitgeschakelde Pi elke paar seconden de lus op te houden.
-  // Sneller polsen zolang de Pi bezig is: dan verandert er ook echt iets.
+  // Ease off after a few failures. Otherwise a Pi that is switched off holds
+  // the loop up every few seconds.
+  // Poll faster while the Pi is busy: that is when things actually change.
   const uint32_t interval = (missers >= 3)      ? BRAIN_RETRY_MS
                           : brainState.listening ? BRAIN_BUSY_MS
                                                 : BRAIN_POLL_MS;
   nextPoll = now + interval;
 
-  // Meesturen of luisteren zinvol is. Staat de receiver op de Apple TV, dan
-  // valt er niets te herkennen en hoeft de Pi Shazam niet lastig te vallen —
-  // en dat is precies waar we zuinig mee wilden zijn.
+  // Send along whether listening makes sense. With the receiver on the Apple
+  // TV there is nothing to recognise and the Pi need not bother Shazam — which
+  // is exactly what we wanted to be frugal with.
   char url[96];
   snprintf(url, sizeof(url), "http://%s:%u/nu?luister=%d",
            settings.brainHost, BRAIN_PORT, brainWantsToListen ? 1 : 0);
@@ -120,7 +120,7 @@ void brainLoop() {
 
   BrainState fresh;
   fresh.bereikbaar = true;
-  fresh.speelt   = doc["speelt"] | false;
+  fresh.playing   = doc["speelt"] | false;
   fresh.listening = doc["luistert"] | false;
   fresh.onShelf   = doc["kast"]   | false;
   fresh.canLink = doc["koppelbaar"] | false;
@@ -133,11 +133,11 @@ void brainLoop() {
   strlcpy(fresh.album,   doc["album"]   | "", sizeof(fresh.album));
   strlcpy(fresh.app,     doc["app"]     | "", sizeof(fresh.app));
 
-  // Alleen de revisie ophogen als er werkelijk iets anders is; anders zou het
+  // Only bump the revision when something genuinely differs; otherwise the
   // scherm elke paar seconden opnieuw tekenen zonder reden.
   const bool anders =
       fresh.bereikbaar != brainState.bereikbaar ||
-      fresh.speelt     != brainState.speelt     ||
+      fresh.playing     != brainState.playing     ||
       fresh.listening   != brainState.listening   ||
       fresh.onShelf     != brainState.onShelf     ||
       fresh.canLink != brainState.canLink ||

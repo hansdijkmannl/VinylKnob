@@ -3,27 +3,27 @@
 #include <Arduino.h>
 
 // ---------------------------------------------------------------------------
-// De draaiknop: quadratuur plus de gebaren van de drukknop.
+// The rotary knob: quadrature decoding plus the push button's gestures.
 //
-// Overgenomen uit versie 1 en aangepast op twee punten: de encoder zit hier op
-// GPIO 42/4, en de drukknop hangt niet aan de ESP32 maar aan de PCF8574.
+// Taken from version 1 and changed in two places: the encoder sits on GPIO
+// 42/4 here, and the push button hangs off the PCF8574 rather than the ESP32.
 //
-// Het bedieningsmodel is dat van luxe/mockup/: draaien is altijd volume, ook
-// in een keuzescherm — daar is het de lijstpositie. Wat je zonder kijken wil
-// doen zit op de knop, de rest op het scherm.
+// The control model: turning is always volume, including in a list — where it
+// is the position. What you want to do without looking lives on the knob, the
+// rest on the screen.
 // ---------------------------------------------------------------------------
 
 enum class KnobEvent : uint8_t {
   None,
-  ShortPress,    // mute aan/uit
+  ShortPress,    // mute on/off
   DoublePress,   // naar de favoriete ingang
-  LongPress,     // versterker aan/uit
+  LongPress,     // amplifier on/off
   WifiReset,     // acht seconden vasthouden
 };
 
 struct KnobInput {
   int       steps = 0;                 // stappen sinds de vorige aanroep
-  bool      turnedWhileHeld = false;   // waren die stappen met de knop ingedrukt?
+  bool      turnedWhileHeld = false;   // were those steps taken while held?
   bool      held = false;
   KnobEvent event = KnobEvent::None;
 };

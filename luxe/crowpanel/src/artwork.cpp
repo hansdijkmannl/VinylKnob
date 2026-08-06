@@ -6,15 +6,15 @@
 
 #include "config.h"
 
-// 240 x 240 in 16 bits: 115 kB. Past ruim in de PSRAM, en te groot voor het
-// interne geheugen — vandaar heap_caps_malloc en niet gewoon malloc.
+// 480 x 480 in 16 bits: 460 kB. Fits comfortably in PSRAM and is far too large
+// for internal memory — hence heap_caps_malloc rather than plain malloc.
 static uint16_t *pixels = nullptr;
 static uint8_t  *jpeg   = nullptr;
 static bool      filled = false;
 static lv_img_dsc_t beeld;
 
-// Ruimer dan de ~35 kB die de Pi levert bij 480 pixels, zodat een hoes met veel
-// detail er ook nog in past zonder dat het misgaat.
+// Roomier than the ~35 kB the Pi delivers at 480 pixels, so a busy sleeve still
+// fits without anything going wrong.
 static const size_t JPEG_MAX = 96 * 1024;
 
 static bool writeBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
@@ -36,7 +36,7 @@ void artworkBegin() {
   pixels = (uint16_t *)heap_caps_malloc(ARTWORK_PX * ARTWORK_PX * 2, MALLOC_CAP_SPIRAM);
   jpeg   = (uint8_t *)heap_caps_malloc(JPEG_MAX, MALLOC_CAP_SPIRAM);
   if (!pixels || !jpeg) {
-    Serial.println(F("[hoes] geen PSRAM voor de hoes"));
+    Serial.println(F("[artwork] no PSRAM for the sleeve"));
     return;
   }
   memset(&beeld, 0, sizeof(beeld));
@@ -47,11 +47,11 @@ void artworkBegin() {
   beeld.data              = (const uint8_t *)pixels;
 }
 
-static uint32_t accent = 0xe8a33d;      // de amber uit de mockup, als terugval
+static uint32_t accent = 0xe8a33d;      // the default amber, as a fallback
 
-// De opvallendste kleur zoeken, niet de gemiddelde: een gemiddelde van een hoes
-// is altijd modderig grijsbruin. Daarom een histogram over de kleurtoon, gewogen
-// met verzadiging en helderheid, en daarna de toon met vaste verzadiging
+// Find the most prominent colour, not the average: the average of a sleeve is
+// always a muddy grey-brown. So a histogram over hue, weighted by saturation
+// and brightness, then that hue re-emitted at fixed saturation
 // terugzetten — zo is de boog altijd fel genoeg om tegen de hoes af te steken.
 static void findAccent() {
   accent = 0xe8a33d;
@@ -88,13 +88,13 @@ static void findAccent() {
   float top = 0;
   for (int i = 0; i < BUCKETS; i++) if (weight[i] > top) { top = weight[i]; best = i; }
   if (best < 0 || top < 2.0f) {
-    // Een hoes zonder uitgesproken kleur — zwart-wit, of heel donker. Dan geen
-    // amber uit het niets, maar een koel grijsblauw dat bij zo'n hoes past.
+    // A sleeve with no pronounced colour — black and white, or very dark. Then
+    // no amber out of nowhere, but a cool grey-blue that suits such a sleeve.
     accent = 0x9fb4c8;
     return;
   }
 
-  // Terug naar RGB met vaste verzadiging en helderheid.
+  // Back to RGB at fixed saturation and brightness.
   const float hue = (best + 0.5f) / BUCKETS * 6.0f;
   const float S = 0.72f, V = 0.98f;
   const float C = V * S, X = C * (1 - fabsf(fmodf(hue, 2.0f) - 1)), m = V - C;
@@ -119,18 +119,18 @@ const lv_img_dsc_t *artworkImage() { return filled ? &beeld : nullptr; }
 static bool haalEnDecodeer(const char *url) {
   HTTPClient http;
   http.setConnectTimeout(600);
-  http.setTimeout(2500);                 // een hoes mag wat langer duren dan /nu
-  if (!http.begin(url)) { Serial.println(F("[hoes] begin() mislukt")); return false; }
+  http.setTimeout(2500);                 // a sleeve may take longer than /nu
+  if (!http.begin(url)) { Serial.println(F("[artwork] begin() failed")); return false; }
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
-    Serial.printf("[hoes] GET %s -> %d\n", url, code);
+    Serial.printf("[artwork] GET %s -> %d\n", url, code);
     http.end();
     return false;
   }
 
   const int lengte = http.getSize();
   if (lengte <= 0 || (size_t)lengte > JPEG_MAX) {
-    Serial.printf("[hoes] lengte %d past niet (max %u)\n", lengte, (unsigned)JPEG_MAX);
+    Serial.printf("[artwork] length %d does not fit (max %u)\n", lengte, (unsigned)JPEG_MAX);
     http.end();
     return false;
   }
@@ -145,38 +145,38 @@ static bool haalEnDecodeer(const char *url) {
   }
   http.end();
   if (gelezen != (size_t)lengte) {
-    Serial.printf("[hoes] maar %u van %d bytes gelezen\n", (unsigned)gelezen, lengte);
+    Serial.printf("[artwork] only read %u of %d bytes\n", (unsigned)gelezen, lengte);
     return false;
   }
 
   memset(pixels, 0, ARTWORK_PX * ARTWORK_PX * 2);
-  // Vlak voor het decoderen en niet één keer bij het opstarten: TJpgDec heeft
-  // één globale callback, en kast.cpp decodeert in zijn eigen buffers. Wie het
-  // laatst instelde wint, dus stelt iedereen het zelf in.
+  // Right before decoding rather than once at startup: TJpgDec has a single
+  // global callback, and shelf.cpp decodes into its own buffers. Whoever set it
+  // last wins, so everyone sets it themselves.
   //
-  // LVGL bewaart lv_color_t als een gewone uint16 in de volgorde van de chip
-  // (LV_COLOR_16_SWAP staat op 0), en TJpgDec levert precies zulke woorden.
-  // Omwisselen is dan juist fout: dat geeft de negatief-achtige kleuren met
-  // oranje en groen die je krijgt als hoog en laag byte verwisseld zijn.
+  // LVGL stores lv_color_t as a plain uint16 in the chip's own byte order
+  // (LV_COLOR_16_SWAP is 0), and TJpgDec produces exactly such words. Swapping
+  // is therefore wrong: that gives the negative-looking oranges and greens you
+  // get when the high and low bytes are exchanged.
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(false);
   TJpgDec.setCallback(writeBlock);
   const JRESULT r = TJpgDec.drawJpg(0, 0, jpeg, gelezen);
   filled = (r == JDR_OK);
   if (!filled) {
-    Serial.printf("[hoes] decoderen mislukt (%d)\n", r);
+    Serial.printf("[artwork] decoding failed (%d)\n", r);
   } else {
     // Twee pixels ter controle: hiermee is te vergelijken of de kleurvolgorde
-    // klopt, zonder naar het scherm te hoeven kijken.
+    // is right, without having to look at the screen.
     findAccent();
-    Serial.printf("[hoes] %u bytes, accent #%06X\n", (unsigned)gelezen, (unsigned)accent);
+    Serial.printf("[artwork] %u bytes, accent #%06X\n", (unsigned)gelezen, (unsigned)accent);
   }
   return filled;
 }
 
 bool artworkLoad(const char *host, uint16_t poort) {
-  if (!pixels || !jpeg) { Serial.println(F("[hoes] geen buffers")); return false; }
-  if (WiFi.status() != WL_CONNECTED) { Serial.println(F("[hoes] geen wifi")); return false; }
+  if (!pixels || !jpeg) { Serial.println(F("[artwork] no buffers")); return false; }
+  if (WiFi.status() != WL_CONNECTED) { Serial.println(F("[artwork] no Wi-Fi")); return false; }
   char url[96];
   snprintf(url, sizeof(url), "http://%s:%u/hoes", host, poort);
   return haalEnDecodeer(url);
@@ -185,8 +185,8 @@ bool artworkLoad(const char *host, uint16_t poort) {
 bool artworkLoadAlbum(const char *host, uint16_t poort, uint16_t releaseId) {
   if (!pixels || !jpeg) return false;
   if (WiFi.status() != WL_CONNECTED) return false;
-  // Dezelfde maat als /hoes levert, want hij komt op dezelfde plek terecht:
-  // schermvullend achter het volume.
+  // The same size /hoes delivers, because it ends up in the same place:
+  // full-screen behind the volume.
   char url[112];
   snprintf(url, sizeof(url), "http://%s:%u/kasthoes?id=%u&px=%d",
            host, poort, (unsigned)releaseId, ARTWORK_PX);

@@ -5,9 +5,9 @@
 void webBegin();
 void webLoop();
 
-// Wordt in main.cpp gezet: true als we het setup-accesspoint draaien in plaats
-// van op je eigen wifi te zitten.
+// Set in main.cpp: true when we are running the setup access point instead of
+// sitting on your own network.
 extern bool netApMode;
 
-// Wordt door de webinterface gezet als er een herstart is gevraagd.
+// Set by the web interface when a restart has been asked for.
 extern bool rebootRequested;

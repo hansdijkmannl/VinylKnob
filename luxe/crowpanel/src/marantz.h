@@ -2,41 +2,41 @@
 
 #include <Arduino.h>
 
-// Volume wordt overal in halve stappen bijgehouden: 0..196.
+// Volume is tracked in half-steps everywhere: 0..196.
 //   dB = halfSteps / 2.0 - 80.0
 struct AvrState {
   bool     connected    = false;
-  bool     powered      = false;   // hoofdzone aan
+  bool     powered      = false;   // main zone on
   bool     muted        = false;
   bool     haveVolume   = false;
   int      volHalfSteps = 0;
-  int      volMaxHalf   = 196;     // wordt overschreven door MVMAX
+  int      volMaxHalf   = 196;     // overwritten by MVMAX
   char     input[24]    = "?";     // protocolcode zoals de AVR hem meldt
-  char     inputLabel[24] = "?";   // jouw label, als de code in de knoppen zit
-  uint32_t revision     = 0;       // loopt op bij elke wijziging
+  char     inputLabel[24] = "?";   // your label, if the code is in the list
+  uint32_t revision     = 0;       // increments on every change
 };
 
 extern AvrState avrState;
 
 void avrLoop();
 
-// Stuurt een ruw commando ("SIPHONO", "MV?"). False als er geen verbinding is.
+// Send a raw command ("SIPHONO", "MV?"). False when there is no connection.
 bool avrSend(const char *cmd);
 
-// Zet het volume. Wordt gethrottled in avrLoop, dus je mag dit bij elke klik
+// Set the volume. Throttled inside avrLoop, so this is safe to call on every
 // aanroepen zonder de receiver te verzuipen.
 void avrSetVolumeHalf(int halfSteps);
 
-// Waar het volume op ophoudt: het laagste van MVMAX en jouw eigen plafond.
+// Where the volume stops: the lower of MVMAX and your own ceiling.
 int avrVolumeCeilingHalf();
 
-// Het volume waar we naartoe onderweg zijn (of de huidige stand als er niets
+// The volume we are on our way to (or the current one when nothing is
 // in de wachtrij staat).
 int avrPendingVolumeHalf();
 
-// Gooit de verbinding weg zodat avrLoop opnieuw verbindt. Gebruik dit nadat
-// het IP van de receiver is gewijzigd.
+// Drop the connection so avrLoop reconnects. Use after the receiver's address
+// has changed.
 void avrReconnect();
 
-// Loopt op bij elk verzonden commando; de status-LED knippert hierop.
+// Increments on every command sent; the status LED blinks on this.
 uint32_t avrTxCount();

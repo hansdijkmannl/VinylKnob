@@ -11,7 +11,7 @@ in [PLAN.md](PLAN.md) and [BOM.md](BOM.md).
 ## Step 0 — Let go of the amplifier
 
 The receiver accepts **one telnet session at a time**. If anything else is
-connected, the panel cannot get in — and it will simply report "no receiver",
+connected, the panel cannot get in — and it will simply report "No receiver",
 which is the most confusing way this can fail.
 
 If you have been running the brain on a laptop, check:
@@ -73,8 +73,8 @@ You should see:
 
 ```
 MarantzKnob — CrowPanel
-[bord] aanraakchip gevonden
-Setup-accesspoint "MarantzKnob-setup" op 192.168.4.1
+[board] touch chip found
+Setup access point "MarantzKnob-setup" at 192.168.4.1
 ```
 
 If it says there is no touch chip at 0x15, the PCF8574 was not found or the
@@ -234,7 +234,7 @@ address and the sleeve appears.
 
 | Symptom | Usually |
 |---|---|
-| panel says "geen receiver" | something else still holds the telnet session (step 0) |
+| panel says "No receiver" | something else still holds the telnet session (step 0) |
 | no serial port appears | BOOT not held long enough, or the wrong cable |
 | nothing happens after uploading | press RESET; the chip is still in the bootloader |
 | black screen, monitor spews `ESP-ROM` | boot loop — see the appendix |

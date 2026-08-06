@@ -4,59 +4,59 @@
 #include <lvgl.h>
 
 // ---------------------------------------------------------------------------
-// De platenkast op het paneel — fase 6.
+// The record shelf on the panel.
 //
-// Waarom dit een eigen bestand is en niet bij hoes.cpp: dat gaat over één hoes,
-// die van de plaat die nu draait. Dit gaat over 549 hoezen waarvan er drie
-// tegelijk in beeld staan, en dat is een heel ander probleem.
+// Why this is its own file and not part of artwork.cpp: that one is about a
+// single sleeve, the record playing now. This is about hundreds of sleeves of
+// which three are on screen at a time, and that is a different problem.
 //
-// De verdeling is dezelfde als overal in dit apparaat: de Pi weet dingen, het
-// paneel toont ze. De namen komen in één keer binnen als platte tekst — 25 kB
-// voor de hele kast, en regels splitsen op een tab kost een ESP32 bijna niets,
-// waar 40 kB JSON ontleden seconden duurt. De plaatjes komen per stuk, op maat
-// gemaakt door de Pi, en alleen die van de albums die je werkelijk ziet.
+// The division is the same as everywhere in this device: the Pi knows things,
+// the panel shows them. The names arrive in one go as flat text — 25 kB for a
+// whole collection, and splitting lines on a tab costs an ESP32 almost nothing
+// where parsing 40 kB of JSON takes seconds. The pictures come one at a time,
+// sized by the Pi, and only for the albums you can actually see.
 //
-// Ophalen gebeurt nooit tijdens het draaien. Een knop die per stap honderd
-// milliseconden staat te wachten op een netwerkverzoek voelt kapot; daarom
-// schuift de tekst meteen mee en komen de hoezen na als je even stilhoudt.
+// Fetching never happens while you are turning. A knob that spends a hundred
+// milliseconds per step waiting on the network feels broken; so the text moves
+// with you immediately and the sleeves follow once you hold still.
 // ---------------------------------------------------------------------------
 
-// Formaat van de hoesjes. Alle drie even groot: dan hoeft er bij één stap maar
-// één nieuwe op te halen in plaats van drie. Welke de huidige is zie je aan de
-// rand eromheen en aan de titel eronder, niet aan het formaat.
+// Thumbnail size. All three the same, so one step needs one new picture rather
+// than three. Which one is current you see from the border around it and the
+// title below, not from its size.
 #define SHELF_PX 120
 
 void shelfBegin();
 
-// De lijst ophalen. Eén keer genoeg; geeft false als het niet lukte.
+// Fetch the list. Once is enough; false when it failed.
 bool shelfLoad(const char *host, uint16_t poort);
 bool shelfLoaded();
 int  shelfCount();
 
-// Waar we nu staan, en verplaatsen. Loopt om aan beide uiteinden.
+// Where we are, and moving. Wraps around at both ends.
 int  shelfIndex();
 void shelfMove(int steps);
 void shelfSet(int index);
 
-// De eerste letter van de artiest ('#' als het geen A-Z is).
+// The artist's first letter ('#' when it is not A-Z).
 char shelfLetterAt(int index);
 
-// Naar het begin van de vorige of volgende letter springen. Met 549 albums is
-// stap voor stap draaien geen doen; dit is de sprongindex van de webinterface,
-// maar dan met de knop bediend.
+// Jump to the start of the previous or next letter. With hundreds of albums,
+// turning one at a time is no way to travel; this is the web interface's jump
+// index, driven from the knob.
 void shelfJump(int direction);
 
-// Tekst van het album op deze plek in de lijst.
+// The text of the album at this position in the list.
 const char *shelfArtist(int index);
 const char *shelfTitle(int index);
 
-// Het releasenummer, om de hoes schermvullend op te kunnen halen.
+// The release number, so the sleeve can be fetched full-screen.
 uint16_t shelfReleaseId(int index);
 
-// Het plaatje voor een van de drie plekken (0 = links, 1 = midden, 2 = rechts),
-// of nullptr zolang het er nog niet is.
+// The picture for one of the three slots (0 = left, 1 = middle, 2 = right), or
+// nullptr while it has not arrived yet.
 const lv_img_dsc_t *shelfArtworkAt(int slot);
 
-// Per lus aanroepen: haalt op wat er ontbreekt, maar alleen als je even stil
-// bent. Geeft true als er iets veranderd is en het scherm opnieuw moet.
+// Call every loop: fetches what is missing, but only while you hold still.
+// True when something changed and the screen needs redrawing.
 bool shelfLoop(const char *host, uint16_t poort);

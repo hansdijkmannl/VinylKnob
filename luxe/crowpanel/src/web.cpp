@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Configuratie-webinterface. Volledig offline: geen CDN, geen externe fonts.
+// The panel's own settings page. Entirely offline: no CDN, no external fonts.
 // ---------------------------------------------------------------------------
 
 #include "web.h"
@@ -17,8 +17,8 @@ bool rebootRequested = false;
 
 static WebServer server(80);
 
-// Ingangen van de SR7015 zoals het protocol ze kent. Niet elke set is op elk
-// toestel geconfigureerd; wat er echt is zie je aan wat "SI?" terugmeldt.
+// Inputs as the Denon/Marantz protocol names them. Not every one is configured
+// on every receiver; what is really there is whatever "SI?" reports back.
 static const char *KNOWN_INPUTS[] = {
   "PHONO", "CD", "TUNER", "DVD", "BD", "TV", "SAT/CBL", "MPLAY", "GAME",
   "8K", "AUX1", "AUX2", "NET", "BT", "USB", "HDRADIO", "SPOTIFY", "IRADIO",
@@ -139,10 +139,10 @@ dd{margin:0;color:var(--dim)}
       <option value="2">2&times; finer</option>
       <option value="1">4&times; finer (smooth)</option></select></div>
   </div>
-  <p class="hint">1 halve dB per klik is fijn afstelbaar; op 2 of 3 ben je sneller
-  bij de juiste stand. Het plafond is een noodrem &mdash; 0 dB is vol open.
-  Gebruik je een encoder <b>zonder</b> detents, zet de resolutie dan op fijner
-  &mdash; anders voelt een vloeiend draaiende knop toch weer hakkerig.</p>
+  <p class="hint">Half a dB per click is finely adjustable; at 2 or 3 you reach
+  the right level quicker. The ceiling is an emergency brake &mdash; 0 dB is
+  wide open. With an encoder that has <b>no</b> detents, set the resolution
+  finer, or a smoothly turning knob still feels notchy.</p>
 </div>
 
 <h2>Inputs</h2>
@@ -161,8 +161,8 @@ dd{margin:0;color:var(--dim)}
     <div><label>Hold for on/off (ms)</label><input id="longPressMs" type="number" min="400" max="3000" step="50"></div>
     <div><label>Double-press window (ms, 0 = off)</label><input id="doublePressMs" type="number" min="0" max="800" step="50"></div>
   </div>
-  <p class="hint">Staat het dubbelklikvenster op 0, dan reageert mute direct in
-  plaats van na dat venster &mdash; maar dan werkt de favoriet niet meer.</p>
+  <p class="hint">With the double-press window at 0, mute responds immediately
+  instead of after that window &mdash; but the favourite stops working.</p>
   <dl style="margin-top:1rem">
     <dt>turn</dt><dd>volume</dd>
     <dt>hold + turn</dt><dd>step through inputs</dd>
@@ -200,13 +200,13 @@ function renderInputs(){
      <select onchange="inputs[${i}].code=this.value;renderFav()">${CODES.map(c=>
        `<option${c===b.code?' selected':''}>${esc(c)}</option>`).join('')}</select>
      <input value="${esc(b.label)}" oninput="inputs[${i}].label=this.value;renderFav()">
-     <button onclick="delInput(${i})" title="verwijderen">&times;</button></div>`).join('');
+     <button onclick="delInput(${i})" title="remove">&times;</button></div>`).join('');
   $('addBtn').style.display=inputs.length>=MAXI?'none':'';
   renderFav();
 }
 function renderFav(){
   const cur=parseInt($('favouriteInput').dataset.sel??'-1',10);
-  $('favouriteInput').innerHTML='<option value="-1">geen</option>'+inputs.map((b,i)=>
+  $('favouriteInput').innerHTML='<option value="-1">none</option>'+inputs.map((b,i)=>
     `<option value="${i}"${i===cur?' selected':''}>${esc(b.label||b.code)}</option>`).join('');
 }
 function setFav(v){$('favouriteInput').dataset.sel=v;renderFav()}
@@ -220,9 +220,9 @@ async function boot(){
   for(const k of ['avrHost','breinHost','brightness','dimAfterS','avrPort','halfDbPerClick','accelFactor','accelWindowMs',
                   'volMaxDb','longPressMs','doublePressMs','wifiSsid'])$(k).value=S[k];
   $('encDivider').value=String(S.encDivider||4);
-  // Hier en niet in renderInputs(): S is een lokale van deze functie, en die
-  // regel daar gooide een ReferenceError waardoor de ingangenlijst, de
-  // favorietkeuze en de statusregel er nooit kwamen.
+  // Here and not in renderInputs(): S is local to this function, and that line
+  // there threw a ReferenceError which meant the input list, the favourite
+  // picker and the status row never appeared at all.
   $('rotated').value=S.rotated?'1':'0';
   $('offWithAmp').value=S.offWithAmp?'1':'0';
   inputs=S.inputs.map(b=>({code:b.code,label:b.label}));
@@ -238,13 +238,13 @@ async function tick(){
     $('vol').textContent=s.haveVolume?s.volDb.toFixed(1)+' dB':'--';
     $('inp').textContent=s.inputLabel;
     $('pConn').className='pill '+(s.connected?'on':'warn');
-    $('pConn').textContent=s.connected?'verbonden':'geen receiver';
+    $('pConn').textContent=s.connected?'receiver':'no receiver';
     $('pPwr').className='pill '+(s.powered?'on':'');
-    $('pPwr').textContent=s.powered?'aan':'stand-by';
+    $('pPwr').textContent=s.powered?'on':'standby';
     $('pMute').className='pill '+(s.muted?'warn':'');
-    $('pMute').textContent=s.muted?'mute':'geluid';
+    $('pMute').textContent=s.muted?'muted':'sound';
     $('pRssi').className='pill '+(!s.ap&&s.rssi<-72?'warn':'');
-    $('pRssi').textContent=s.ap?'setup-AP':s.rssi+' dBm';
+    $('pRssi').textContent=s.ap?'setup AP':s.rssi+' dBm';
   }catch(e){}
 }
 
@@ -266,7 +266,7 @@ async function test(){
   if(!inputs.length){msg('No inputs configured.',false);return}
   const c=inputs[0].code;
   const r=await(await fetch('api/command?cmd=SI'+encodeURIComponent(c),{method:'POST'})).json();
-  msg(r.ok?'SI'+c+' verstuurd.':'Geen verbinding met de receiver.',r.ok);
+  msg(r.ok?'SI'+c+' sent.':'No connection to the receiver.',r.ok);
 }
 
 async function reboot(){
@@ -276,8 +276,8 @@ async function reboot(){
 boot();
 
 // ---- schuiven ------------------------------------------------------------
-// De waarde staat ernaast in gewone taal; helderheid gaat meteen naar het
-// paneel zodat je ziet wat je instelt in plaats van te moeten opslaan en kijken.
+// The value sits beside it in plain language; brightness goes to the panel
+// immediately so you see what you are setting instead of saving and looking.
 const SLIDERS = {
   brightness:     [ 'oBright', v => Math.round(v/255*100) + '%' ],
   dimAfterS:      [ 'oDim',    v => +v === 0 ? 'never' : v + ' s' ],
@@ -327,7 +327,7 @@ static void handlePostSettings() {
   if (settingsFromJson(body, err, wifiChanged)) {
     res["ok"] = true;
     res["wifiChanged"] = wifiChanged;
-    // Nieuw IP ingevuld? Dan meteen opnieuw verbinden in plaats van wachten.
+    // A new address? Reconnect right away rather than waiting.
     avrReconnect();
   } else {
     res["ok"] = false;
@@ -353,9 +353,9 @@ static void handleState() {
   doc["ip"]         = netApMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
   doc["uptimeS"]    = millis() / 1000;
 
-  // Welk scherm er nu staat. De webinterface toont een kopie van dit paneel en
-  // kon tot nu toe alleen raden wat er te zien was; met dit veld klopt die
-  // kopie ook als je in de ingangenlijst zit of als het scherm uit is.
+  // Which screen is showing. The web interface renders a copy of this panel
+  // and could until now only guess what was on it; with this field that copy is
+  // right in the input list and with the screen off too.
   doc["screen"] = uiScreenName();
 
   String out;
@@ -391,11 +391,11 @@ void webBegin() {
   server.on("/api/command",  HTTP_POST, handleCommand);
   server.on("/api/reboot",   HTTP_POST, handleReboot);
 
-  // In AP-modus verwijzen we alles naar de configuratiepagina, zodat het
-  // captive-portal-venster van je telefoon meteen het juiste laat zien.
+  // In access-point mode everything points at the settings page, so your
+  // phone's captive-portal window shows the right thing immediately.
   server.onNotFound([]() {
     if (netApMode) handleRoot();
-    else           server.send(404, "text/plain", "niet gevonden");
+    else           server.send(404, "text/plain", "not found");
   });
 
   server.begin();

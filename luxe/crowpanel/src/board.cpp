@@ -1,18 +1,19 @@
 // ---------------------------------------------------------------------------
-// Paneel-initialisatie voor het Elecrow CrowPanel 2.1" Rotary Display.
+// Panel bring-up for the Elecrow CrowPanel 2.1" Rotary Display.
 //
-// De volgorde hieronder is overgenomen uit Elecrow's eigen voorbeeldschets
-// (example/RotaryScreen_2_1/RotaryScreen_2_1.ino) en is niet vrijblijvend: het
-// LCD en de aanraakchip hangen allebei achter de PCF8574 en willen elk een
-// eigen resetpuls voordat er over I2C of over de RGB-bus iets zinnigs gebeurt.
-// Sla er een over en het paneel blijft zwart of de aanraakchip meldt zich niet.
+// The order below comes from Elecrow's own example sketch
+// (example/RotaryScreen_2_1/RotaryScreen_2_1.ino) and is not optional: the LCD
+// and the touch chip both hang off the PCF8574 and each want their own reset
+// pulse before anything sensible happens over I2C or the RGB bus. Skip one and
+// the panel stays black, or the touch chip never announces itself.
 //
-// Wat hier NIET meer in zit is de ST7701-initialisatietabel. Die bleek geen
-// paneelspecifiek raadsel maar gewoon `st7701_type5_init_operations` uit
-// Arduino_GFX; Elecrow's kopie van die bibliotheek is byte voor byte gelijk aan
-// upstream v1.3.1. Vandaar dat platformio.ini precies die tag vastpint — vanaf
-// v1.3.5 is de API herschreven (Arduino_RGB_Display in plaats van
-// Arduino_ST7701_RGBPanel) en staat er een andere waarde in register 0x36.
+// What is NOT in here any more is the ST7701 initialisation table. That turned
+// out not to be a panel-specific riddle but plain
+// `st7701_type5_init_operations` from Arduino_GFX; Elecrow's copy of that
+// library is byte for byte identical to upstream v1.3.1. Which is why
+// platformio.ini pins exactly that tag — from v1.3.5 the API was rewritten
+// (Arduino_RGB_Display instead of Arduino_ST7701_RGBPanel) and register 0x36
+// holds a different value.
 // ---------------------------------------------------------------------------
 
 #include "board.h"
@@ -41,7 +42,7 @@ Arduino_ST7701_RGBPanel *gfx = new Arduino_ST7701_RGBPanel(
 static Adafruit_CST8XX touch;
 static bool touchOk = false;
 
-// Een resetpuls zoals het paneel hem wil: hoog, laag, hoog.
+// A reset pulse the way the panel wants it: high, low, high.
 static void resetPulse(uint8_t pin) {
   pcfWritePin(pin, true);
   delay(100);
@@ -58,9 +59,9 @@ void boardBegin() {
   resetPulse(PCF_PIN_LCD_RESET);
   resetPulse(PCF_PIN_TOUCH_RST);
 
-  // De INT-lijn van de aanraakchip wordt hier als uitgang hoog gehouden. Dat
-  // ziet er vreemd uit, maar de CST826 leest die pin tijdens het opstarten om
-  // zijn I2C-adres te kiezen; Elecrow doet het net zo.
+  // The touch chip's INT line is driven high as an output here. That looks odd,
+  // but the CST826 reads that pin at boot to pick its I2C address; Elecrow does
+  // the same.
   pcfWritePin(PCF_PIN_TOUCH_INT, true);
   delay(120);
 
@@ -68,15 +69,15 @@ void boardBegin() {
   gfx->fillScreen(BLACK);
 
   touchOk = touch.begin(&Wire, TOUCH_ADDR);
-  Serial.println(touchOk ? F("[bord] aanraakchip gevonden")
-                         : F("[bord] GEEN aanraakchip op 0x15"));
+  Serial.println(touchOk ? F("[board] touch chip found")
+                         : F("[board] NO touch chip at 0x15"));
 
   ledcSetup(BACKLIGHT_CHAN, BACKLIGHT_FREQ, BACKLIGHT_BITS);
   ledcAttachPin(PIN_BACKLIGHT, BACKLIGHT_CHAN);
   ledcWrite(BACKLIGHT_CHAN, BACKLIGHT_LEVEL);
 
-  // En de voedingslijn weer laag. Ook dit staat zo in Elecrow's schets: P3
-  // schakelt niet het paneel zelf maar een hulplijn die na het initialiseren
+  // And the power line back low. This is in Elecrow's sketch too: P3 does not
+  // switch the panel itself but a helper line that after initialisation
   // omlaag hoort.
   pcfWritePin(PCF_PIN_LCD_POWER, false);
 }

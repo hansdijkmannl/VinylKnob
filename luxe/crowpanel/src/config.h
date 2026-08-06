@@ -3,33 +3,33 @@
 // ---------------------------------------------------------------------------
 // Elecrow CrowPanel 2.1" ESP32 Rotary Display — hardware
 //
-// Pinnen komen uit de wiki van Elecrow en zijn geverifieerd tegen hun eigen
+// Pins come from Elecrow's wiki and are verified against their own
 // voorbeeldschets, example/RotaryScreen_2_1/RotaryScreen_2_1.ino in:
 // https://github.com/Elecrow-RD/CrowPanel-2.1inch-HMI-ESP32-Rotary-Display-480-480-IPS-Round-Touch-Knob-Screen
 //
-// Alles hieronder komt letterlijk daaruit. Zie board.cpp voor de opstartvolgorde,
-// die net zo min te raden was als de pinnen.
+// Everything below comes verbatim from there. See board.cpp for the bring-up
+// sequence, which was no more guessable than the pins.
 // ---------------------------------------------------------------------------
 
 // -- draaiknop --------------------------------------------------------------
 #define PIN_ENC_A        42
 #define PIN_ENC_B        4
 
-// Deze encoder telt andersom dan die van versie 1: rechtsom gaf een dalend
-// volume. Gemeten op het echte paneel, 1 augustus 2026. Staat hier en niet in
-// de instellingen omdat het een eigenschap van dít bord is, geen voorkeur.
+// This encoder counts the other way round from version 1's: clockwise gave a
+// falling volume. Measured on the real panel. It lives here and not in the
+// settings because it is a property of this board, not a preference.
 #define ENC_INVERT       1
-// De drukknop hangt niet aan de ESP32 maar aan de I/O-uitbreider, pin P5.
+// The push button hangs off the I/O expander, pin P5, not the ESP32.
 #define PCF_PIN_BUTTON   5
 
 // -- I2C (aanraakchip en de uitbreider) -------------------------------------
 #define PIN_I2C_SDA      38
 #define PIN_I2C_SCL      39
 #define PCF8574_ADDR     0x21
-#define TOUCH_ADDR       0x15    // CST826, uit Elecrow's schets
+#define TOUCH_ADDR       0x15    // CST826, from Elecrow's sketch
 
-// Elecrow trekt in hun eigen code 20 pixels van de y-waarde af. Dat is een
-// kalibratie van dit paneel, geen afrondingsfout — laat staan tenzij tikken
+// Elecrow's own code subtracts 20 pixels from the y value. That is a
+// calibration of this panel, not a rounding error — leave it unless taps
 // stelselmatig te hoog of te laag uitkomen.
 #define TOUCH_Y_OFFSET   -20
 
@@ -46,16 +46,16 @@
 #define BACKLIGHT_BITS   8
 #define BACKLIGHT_LEVEL  204     // Elecrow's standaardhelderheid, 80%
 
-// Na zoveel seconden zonder aanraking of draaien zakt het scherm terug. Naast
-// de bank is vol licht 's avonds hinderlijk, en het scheelt ook stroom. Elke
-// aanraking of klik zet het meteen weer aan.
+// After this many seconds with no touch or turn the screen dims. Next to the
+// sofa, full brightness is unpleasant in the evening, and it saves power too.
+// Any touch or press brings it straight back.
 #define DEF_DIM_AFTER_S  45
 #define DIM_LEVEL_PCT    18
 #define SCREEN_W         480
 #define SCREEN_H         480
 
-// ST7701 over RGB-parallel. De drie draadjes hieronder (CS/SCK/SDA) zijn geen
-// datapad maar de 3-draads SPI waarover het paneel zijn initialisatiereeks
+// ST7701 over parallel RGB. The three wires below (CS/SCK/SDA) are not a data
+// path but the 3-wire SPI the panel receives its initialisation sequence
 // krijgt; de pixels lopen over de RGB-bus eronder.
 #define PIN_LCD_CS       16
 #define PIN_LCD_SCK      2
@@ -82,8 +82,8 @@
 #define PIN_LCD_B3  47
 #define PIN_LCD_B4  21
 
-// Paneeltiming, letterlijk uit Elecrow's schets. Deze getallen horen bij dit
-// paneel; ze staan los van de ST7701-initialisatietabel.
+// Panel timing, verbatim from Elecrow's sketch. These numbers belong to this
+// panel; they are independent of the ST7701 initialisation table.
 #define LCD_HSYNC_FRONT  10
 #define LCD_HSYNC_PULSE   4
 #define LCD_HSYNC_BACK   20
@@ -92,48 +92,48 @@
 #define LCD_VSYNC_BACK   20
 
 // ---------------------------------------------------------------------------
-// Instellingen — worden in NVS bewaard en zijn later via het brein te wijzigen
+// Settings — stored in NVS and changeable later through the web interface
 // ---------------------------------------------------------------------------
 #define DEF_AVR_PORT           23
 #define DEF_HALF_DB_PER_CLICK  1     // 1 stap = 0,5 dB
-// Afgesteld op het echte paneel, 1 augustus 2026. Gemeten: één detent van deze
+// Tuned on the real panel. Measured: one detent of this
 // encoder is precies één stap, dus rustig draaien geeft 0,5 dB — de fijnste stap
-// die de Marantz kent. Het oude venster van 140 ms was sneller dan je normaal
-// draait, waardoor je in de praktijk nooit uit die 0,5 dB kwam.
+// the receiver understands. The old 140 ms window was faster than anyone
+// normally turns, so in practice you never got past that 0.5 dB.
 #define DEF_ACCEL_FACTOR       8     // snel draaien: 4,0 dB per detent
 #define DEF_ACCEL_WINDOW_MS    250
 #define DEF_ENC_DIVIDER        4     // quadratuur-overgangen per stap
-// Veiligheidsplafond, los van wat de receiver zelf via MVMAX meldt; de firmware
-// neemt de laagste van de twee. -15 bleek in de praktijk te knijpen.
+// A safety ceiling, separate from what the receiver reports through MVMAX; the
+// firmware takes the lower of the two. -15 turned out to pinch in practice.
 #define DEF_VOL_MAX_DB         -6
 
-#define DEF_LONG_PRESS_MS      1000  // vasthouden = aan/uit
-#define DEF_DOUBLE_PRESS_MS    350   // dubbelklikvenster; 0 = uit
-#define DEF_FAVOURITE_INPUT    0     // index in de ingangenlijst; -1 = uit
+#define DEF_LONG_PRESS_MS      1000  // hold = power on/off
+#define DEF_DOUBLE_PRESS_MS    350   // double-press window; 0 = off
+#define DEF_FAVOURITE_INPUT    0     // index into the input list; -1 = off
 
-// Minimale tijd tussen commando's naar de AVR. Onder ~50 ms laat hij ze vallen.
+// Minimum gap between commands to the receiver. Below ~50 ms it drops them.
 #define CMD_MIN_INTERVAL_MS    60
 
-// Hoe lang wifi weg mag zijn voordat de hele stack opnieuw wordt opgezet.
+// How long Wi-Fi may be gone before the whole stack is brought up again.
 #define WIFI_RETRY_AFTER_MS    15000
 
-// Het brein op de Pi. Vier seconden is ruim: een plaatkant duurt twintig
-// minuten, dus er valt zelden iets te melden — maar zet je de naald neer, dan
-// wil je het binnen een paar tellen zien.
+// The brain on the Pi. Four seconds is generous: a side lasts twenty minutes,
+// so there is rarely anything to report — but put the needle down and you want
+// to see it within a couple of beats.
 #define BRAIN_PORT             8791
 #define BRAIN_POLL_MS          4000
 #define BRAIN_BUSY_MS         1000    // terwijl de Pi luistert
-#define BRAIN_RETRY_MS         30000   // na een paar missers: rustiger aan
+#define BRAIN_RETRY_MS         30000   // after a few misses: ease off
 
-// Terugvallen naar het volumescherm als je niets meer doet. Ruim genomen: in
-// de ingangenlijst ben je aan het kijken en kiezen, en dan is vier seconden net
+// Fall back to the volume screen when you stop doing anything. Generous: in
+// the input list you are looking and choosing, and four seconds is just
 // te kort om rustig te bladeren.
 #define IDLE_RETURN_MS         6000
 
 #define MAX_INPUTS             8
 #define AP_SSID                "MarantzKnob-setup"
-// Bewust niet "marantzknob": zo heet de Pi, en die draait avahi én serveert de
-// webinterface die je dagelijks opent. Twee apparaten die dezelfde naam bij de
-// router aanmelden geeft een DNS die de ene keer het paneel en de andere keer
+// Deliberately not "marantzknob": that is the Pi, which runs avahi and serves
+// the web interface you open daily. Two devices announcing the same name to the
+// router gives you a DNS that resolves to the panel one time and
 // de Pi teruggeeft.
 #define MDNS_NAME              "marantzpaneel"

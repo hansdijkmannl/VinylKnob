@@ -3,35 +3,35 @@
 #include <Arduino.h>
 
 // ---------------------------------------------------------------------------
-// Wat het scherm moet kunnen — bewust los van hóé het getekend wordt.
+// What a screen has to be able to do — deliberately separate from *how* it is
+// drawn.
 //
-// De bediening (knob.cpp) en de logica (main.cpp) praten alleen met deze
-// functies. Er zijn twee implementaties:
+// The controls (knob.cpp) and the logic (main.cpp) talk only to these
+// functions. There are two implementations:
 //
-//   ui_serial.cpp   schrijft naar de seriële poort. Daarmee is de hele
-//                   bediening te bouwen en te testen zonder scherm.
-//   ui_lvgl.cpp     tekent het echt, volgens luxe/mockup/. Die komt er zodra
-//                   het paneel binnen is en de displaydriver van Elecrow erin
-//                   zit — zie board.h.
+//   ui_serial.cpp   writes to the serial port, so the whole control layer can
+//                   be built and tested with no display at all.
+//   ui_lvgl.cpp     draws it for real.
 //
-// Die scheiding is er niet voor de netheid maar omdat het displaygedeelte het
-// enige is dat pas met hardware op tafel te schrijven valt. De rest is nu al af.
+// That separation is not tidiness: the display was the one part that could not
+// be written before the hardware was on the desk, and the serial version is
+// still the fastest way to debug a gesture.
 // ---------------------------------------------------------------------------
 
 enum class Screen : uint8_t {
-  Volume,      // hoes als platenlabel, boog langs de rand
+  Volume,      // sleeve as the background, arc around the rim
   Inputs,      // ingangenlijst
   Browse,      // platenkast doorbladeren
-  Pairing,     // QR-code en IP, als er iets te koppelen valt
-  Off,         // uit gezet vanuit de ingangenlijst; wakker met de knop
-  Setup,       // eigen accesspoint, nog geen wifi
-  NoAvr,       // wifi ja, receiver niet bereikbaar
+  Pairing,     // QR code and address, when something is waiting to be linked
+  Off,         // switched off; any touch or turn wakes it
+  Setup,       // own access point, no Wi-Fi yet
+  NoAvr,       // Wi-Fi yes, receiver unreachable
 };
 
-// Welk scherm er nu staat, als korte naam ("volume", "off", ...). Staat in
-// main.cpp — die houdt de schermtoestand bij — maar wordt hier bekendgemaakt
-// omdat web.cpp hem nodig heeft voor de kopie van dit paneel in de
-// webinterface. Zonder dit kon die kopie alleen het volumescherm nadoen.
+// Which screen is showing, as a short name ("volume", "off", ...). It lives in
+// main.cpp — that is what tracks the screen state — but is declared here
+// because web.cpp needs it for the copy of this panel in the web interface.
+// Without it, that copy could only reproduce the volume screen.
 const char *uiScreenName();
 
 struct UiState {
@@ -42,16 +42,16 @@ struct UiState {
   bool     haveVolume    = false;
   bool     muted         = false;
   bool     powered       = false;
-  bool     turning       = false;   // toont het dB-getal tijdens het draaien
+  bool     turning       = false;   // shows the dB reading while turning
 
-  // wat er speelt
+  // what is playing
   char     inputLabel[24] = "?";
   char     nowArtist[48]  = "";
   char     nowTitle[48]   = "";
   bool     haveArtwork    = false;
-  bool     artworkIsLogo  = false;  // een app-logo, geen echte hoes
-  char     sourceApp[24]  = "";     // "YouTube" als er geen hoes is
-  bool     listening      = false;   // de Pi is nu aan het opnemen
+  bool     artworkIsLogo  = false;  // an app logo, not real artwork
+  char     sourceApp[24]  = "";     // "YouTube" when there is no artwork
+  bool     listening      = false;   // the Pi is recording right now
 
   // keuzeschermen
   int      pickIndex      = 0;
@@ -60,18 +60,19 @@ struct UiState {
   char     pickPrev[24]   = "";
   char     pickNext[24]   = "";
 
-  // hoeveel platen wachten er op een koppeling (0 = niets te doen)
+  // how many records are waiting to be linked (0 = nothing to do)
   int      pairing        = 0;
   bool     piHot          = false;  // Pi te warm; anders niets tonen
 
-  // De letter waar je zojuist heen sprong, groot in beeld. 0 = niet tonen.
-  // Staat hier en niet in kast.cpp omdat het over tonen gaat en niet over
-  // waar je bent: hoe lang hij blijft staan is een schermkeuze.
+  // The letter you just jumped to, large on screen. 0 = do not show.
+  // It lives here and not in shelf.cpp because it is about showing, not about
+  // where you are: how long it stays is a display decision.
   char     shelfLetter    = 0;
-  // Zou een keuze in de kast nu een koppeling zijn? Dan zegt het scherm dat,
-  // want anders wijs je iets aan zonder te weten dat je iets vastlegt.
+  // Would a choice in the shelf be a link right now? Then the screen says so,
+  // because otherwise you point at something without knowing you are recording
+  // it permanently.
   bool     shelfLinkable  = false;
-  bool     justLinked     = false;   // net gekoppeld; even bevestigen
+  bool     justLinked     = false;   // just linked; confirm briefly
 
   // netwerk
   char     ip[16]         = "";
@@ -79,14 +80,14 @@ struct UiState {
 };
 
 void uiBegin();
-void uiRender(const UiState &state);   // alleen aanroepen als er iets wijzigde
-void uiTick();                          // per lus; voor animaties en aanrakingen
+void uiRender(const UiState &state);   // only call when something changed
+void uiTick();                          // every loop; animations and touches
 
-// Scherm 180 graden draaien zonder herstart. Handig als je de behuizing
-// andersom hebt staan en het even wilt proberen.
+// Rotate the screen 180 degrees without a restart. Useful when the enclosure
+// is the other way round and you want to try it.
 void uiSetRotation(bool omgekeerd);
 
-// Aanrakingen die het scherm terugmeldt aan de logica.
+// Touches the screen reports back to the logic.
 enum class Touch : uint8_t { None, InputLabel, Artwork, Confirm, Dismiss, Listen,
                              Pairing };
 Touch uiTakeTouch();

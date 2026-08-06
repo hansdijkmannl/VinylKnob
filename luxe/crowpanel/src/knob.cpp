@@ -5,7 +5,7 @@
 #include "settings.h"
 
 // ---------------------------------------------------------------------------
-// Quadratuur, table-based, in een ISR. Ongewijzigd overgenomen uit versie 1.
+// Table-based quadrature decoding, in an ISR. Taken unchanged from version 1.
 // ---------------------------------------------------------------------------
 static const int8_t ENC_TABLE[16] = {
      0, -1,  1,  0,
@@ -25,7 +25,7 @@ static void IRAM_ATTR encoderIsr() {
 }
 
 // ---------------------------------------------------------------------------
-// Toestand van de drukknop
+// Push button state
 // ---------------------------------------------------------------------------
 static bool     swStable        = true;    // true = los
 static bool     swLastRead      = true;
@@ -55,9 +55,9 @@ KnobInput knobPoll() {
   KnobInput out;
   const uint32_t now = millis();
 
-  // -- drukknop, via I2C en dus niet elke lus -------------------------------
-  // Vijf milliseconden is ruim snel genoeg voor een vinger en houdt de I2C-bus
-  // vrij voor de aanraakchip.
+  // -- the push button, over I2C and so not every loop ----------------------
+  // Five milliseconds is more than fast enough for a finger, and it keeps the
+  // I2C bus free for the touch chip.
   bool pressEdge = false, releaseEdge = false;
   if (now - lastButtonRead >= 5) {
     lastButtonRead = now;
@@ -106,7 +106,7 @@ KnobInput knobPoll() {
   if (out.steps != 0 && out.held) turnedWhileHeld = true;
   out.turnedWhileHeld = turnedWhileHeld && out.held;
 
-  // -- vasthouden. Niet als het gebaar al een draai of dubbelklik was. -------
+  // -- holding. Not if the gesture was already a turn or a double press. ----
   if (out.held && !turnedWhileHeld && !consumedByDouble &&
       out.event == KnobEvent::None) {
     if (!longFired && now - swPressedAt >= settings.longPressMs) {
@@ -123,7 +123,7 @@ KnobInput knobPoll() {
     const bool handled = consumedByDouble || turnedWhileHeld || longFired || resetFired;
     if (!handled) {
       if (settings.doublePressMs > 0) {
-        // Even afwachten of er een tweede klik komt.
+        // Wait a moment to see whether a second press follows.
         pendingSingle = true;
         lastReleaseAt = now;
         pendingSingleAt = now;
@@ -134,7 +134,7 @@ KnobInput knobPoll() {
     consumedByDouble = false;
   }
 
-  // -- enkelklik die geen dubbelklik bleek ----------------------------------
+  // -- a single press that turned out not to be a double --------------------
   if (pendingSingle && now - pendingSingleAt > settings.doublePressMs &&
       out.event == KnobEvent::None) {
     pendingSingle = false;

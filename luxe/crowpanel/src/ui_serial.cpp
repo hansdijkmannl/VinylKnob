@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-// Scherm-implementatie voor de seriële poort.
+// Screen implementation for the serial port.
 //
-// Hiermee is de hele bediening te bouwen en te doorlopen zonder dat er een
-// paneel aangesloten is: je ziet in de monitor precies wat er getekend zou
-// worden. Zodra ui_lvgl.cpp er is, haal je dit bestand uit build_src_filter.
+// This lets the whole control layer be built and walked through with no panel
+// attached: the monitor shows exactly what would be drawn. Swap between this
+// and ui_lvgl.cpp in build_src_filter.
 //
-// Aanrakingen zijn hier na te bootsen door een letter in de monitor te typen:
-//   i = tik op de ingangsnaam    a = tik op de hoes
+// Touches are simulated by typing a letter in the monitor:
+//   i = tap the input name    a = tap the sleeve
 //   c = bevestigen               x = wegklikken
 // ---------------------------------------------------------------------------
 
@@ -16,8 +16,8 @@ static Touch pending = Touch::None;
 static Screen lastScreen = Screen::Setup;
 
 void uiBegin() {
-  Serial.println(F("\n[scherm] seriële weergave actief"));
-  Serial.println(F("[scherm] i=ingang  a=hoes  c=bevestig  x=weg"));
+  Serial.println(F("\n[screen] serial output active"));
+  Serial.println(F("[screen] i=input  a=sleeve  c=confirm  x=dismiss"));
 }
 
 static const char *screenName(Screen s) {
@@ -27,7 +27,7 @@ static const char *screenName(Screen s) {
     case Screen::Browse:  return "PLATENKAST";
     case Screen::Pairing: return "KOPPELEN";
     case Screen::Setup:   return "SETUP";
-    case Screen::NoAvr:   return "GEEN RECEIVER";
+    case Screen::NoAvr:   return "NO RECEIVER";
   }
   return "?";
 }
@@ -59,10 +59,10 @@ void uiRender(const UiState &s) {
       Serial.printf("  QR -> http://%s   (%s.local)\n", s.ip, "marantzknob");
       break;
     case Screen::Setup:
-      Serial.println(F("  verbind met het accesspoint en stel wifi in"));
+      Serial.println(F("  connect to the access point and set up Wi-Fi"));
       break;
     case Screen::NoAvr:
-      Serial.println(F("  wifi ok, receiver niet bereikbaar"));
+      Serial.println(F("  Wi-Fi ok, receiver unreachable"));
       break;
   }
 }
