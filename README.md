@@ -157,6 +157,7 @@ still spinning, and every link teaches the local database one more side.
 | `v2/mockup/` | the interface sketch the design came from |
 | `src/` | version 1 firmware |
 | `3D Print/` | enclosure |
+| `logos/` | source logos for the app icons |
 | `tools/` | `avr.sh` — poke the receiver's telnet port by hand |
 
 ## Licence
