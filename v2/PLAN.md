@@ -325,6 +325,35 @@ so that side will not trigger a lookup; it settles at the first real silence.
 With a microphone the room noise hid this. Not fixed here, because the
 threshold logic is tuned and this change was about the source.
 
+## Phase 8 — A fine rotation ✅
+
+**6 August 2026.** The panel came out of its mount a few degrees off, and LVGL
+turns a display by whole quarters and cannot turn a label at all. So this turns
+the finished frame on its way to the glass, in `flushRotated()`, with the touch
+point turned back by the same angle.
+
+Nearest-neighbour sampling looked exactly like what it is — a staircase through
+every line of text — so it interpolates between all four neighbours. Plain that
+cost 241 ms a frame, which on this device is not a trade worth making. Three
+things brought it to 101 ms of flush and 186 ms all in, against 113 ms with no
+rotation:
+
+- `-O3` on that one function, and running it from IRAM where it is not fighting
+  the flash cache for the bus PSRAM sits on;
+- skipping the corners. The panel is round and the buffer is square, so a fifth
+  of every frame was never visible. The spans are worked out once at startup.
+
+Two things worth writing down. The first attempt interpolated only between rows,
+argued from three degrees where a row slips two thirds of a pixel; at six it
+slips two and a half and the argument fails — a number from one operating point
+does not settle a choice at another. And the counters behind all these numbers
+had to be made cumulative before any of it could be measured at all: they reset
+on read, and the Pi asks the panel for its state every ten seconds, so every
+measurement came back zero because the poll had drained it.
+
+Six degrees is a lot to be out by, and a shim costs nothing per frame. The angle
+is for when the mount cannot be moved.
+
 ---
 
 ## What carries over from version 1

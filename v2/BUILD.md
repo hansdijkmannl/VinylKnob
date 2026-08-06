@@ -111,6 +111,14 @@ The panel has no keyboard, so this goes through a web page.
 After that the same page lives at <http://marantzpanel.local>, or at whatever
 address the monitor shows. **Not** `marantzknob` — that is the Pi.
 
+**If it ends up crooked in its mount**, there is a *Fine angle* next to
+Orientation, in tenths of a degree. It turns the finished picture, text and all,
+which LVGL cannot do on its own — and it is not free: a redraw goes from about
+113 ms to 186 ms at six degrees, measured on the panel. A shim under the mount
+costs nothing per frame and gives a sharper picture, so use the angle when the
+mount cannot be moved rather than instead of moving it. Zero is the fast path;
+leaving zero needs a restart.
+
 **Now test it against the amplifier.** Turn the knob: the volume should follow.
 Short press is mute, long press is on/off, tapping the input name opens the
 input list.
