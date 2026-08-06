@@ -100,9 +100,9 @@ def _normalise(text: str) -> str:
     """For comparing titles: lower case, no punctuation."""
     keep = [c.lower() if c.isalnum() else " " for c in (text or "")]
     words = "".join(keep).split()
-    # Lidwoorden weglaten; "The Beatles" en "Beatles" horen te matchen.
-    # Dutch articles alongside the English ones: this collection has both,
-    # and "De Nachtzuster" should compare equal to "Nachtzuster".
+    # Drop the articles; "The Beatles" and "Beatles" ought to match. The Dutch
+    # ones are in there alongside the English: this collection has both, and
+    # "De Nachtzuster" should compare equal to "Nachtzuster".
     skip = {"the", "a", "an", "de", "het", "een"}
     return " ".join(w for w in words if w not in skip)
 

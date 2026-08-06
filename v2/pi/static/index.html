@@ -32,7 +32,7 @@ body{margin:0;background:var(--bg);color:var(--fg);
  -webkit-text-size-adjust:100%}
 main{max-width:44rem;margin:0 auto;padding:0 1rem 4rem}
 
-/* ---- kop en tabbladen ---------------------------------------------------
+/* ---- header and tabs ----------------------------------------------------
    The bar stays put: on a phone you scroll a long way inside a tab and then
    want to switch without scrolling back. */
 header{position:sticky;top:0;z-index:5;background:var(--bg);
@@ -133,7 +133,7 @@ dd{margin:0;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
 .pDot{left:287px;top:427px;width:10px;height:10px;border-radius:50%;
  background:#e8a33d;visibility:hidden}
 
-/* ---- de platenkast, in dezelfde ronde vorm --------------------------------- */
+/* ---- the record shelf, in the same round shape ---------------------------- */
 .glass.shelf{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
 .glass.shelf:active{cursor:grabbing}
 .kHead{left:0;top:104px;width:480px;text-align:center;font-size:15px;font-weight:700;
@@ -674,23 +674,23 @@ function scaleGlass() {
   scaleGlass();
 })();
 
-// ---- de boog ---------------------------------------------------------------
+// ---- the arc ---------------------------------------------------------------
 // lv_arc measures clockwise from 3 o'clock, as SVG does with a y axis pointing
-// beneden wijst. De straal is (456 - 10) / 2: de objectmaat min de lijndikte.
-const BOOG_START = 135, BOOG_EIND = 405, BOOG_R = 223;
+// down. The radius is (456 - 10) / 2: the object size minus the line width.
+const ARC_START = 135, ARC_END = 405, ARC_R = 223;
 
 function arcPath(fromDeg, toDeg) {
   if (toDeg - fromDeg < 0.01) return '';
   const pointAt = g => {
     const r = g * Math.PI / 180;
-    return [240 + BOOG_R * Math.cos(r), 240 + BOOG_R * Math.sin(r)];
+    return [240 + ARC_R * Math.cos(r), 240 + ARC_R * Math.sin(r)];
   };
   const [x1, y1] = pointAt(fromDeg), [x2, y2] = pointAt(Math.min(toDeg, fromDeg + 359.99));
   const largeArc = (toDeg - fromDeg) > 180 ? 1 : 0;
-  return `M ${x1} ${y1} A ${BOOG_R} ${BOOG_R} 0 ${largeArc} 1 ${x2} ${y2}`;
+  return `M ${x1} ${y1} A ${ARC_R} ${ARC_R} 0 ${largeArc} 1 ${x2} ${y2}`;
 }
 
-// ---- de accentkleur --------------------------------------------------------
+// ---- the accent colour -----------------------------------------------------
 // Line for line the same calculation as findAccent() in artwork.cpp: every
 // sixth pixel, first back to the panel's colour depth, then a histogram over
 // hue weighted by saturation times brightness.
@@ -716,7 +716,7 @@ function findAccent(afbeelding) {
       // To RGB565 and back: the panel measures in what its screen can show.
       const r = (d[i] >> 3) / 31, g = (d[i + 1] >> 2) / 63, b = (d[i + 2] >> 3) / 31;
       const mx = Math.max(r, g, b), mn = Math.min(r, g, b), v = mx - mn;
-      if (mx < 0.12 || v < 0.07) continue;          // te donker of te grijs
+      if (mx < 0.12 || v < 0.07) continue;          // too dark or too grey
       let hue;
       if      (mx === r) hue = ((g - b) / v) % 6;
       else if (mx === g) hue = (b - r) / v + 2;
@@ -813,8 +813,8 @@ function drawGlass(s, nu, panelbox, volMax) {
 
   const frac = panelbox.haveVolume
     ? Math.max(0, Math.min(1, (panelbox.volDb + 80) / (volMax + 80))) : 0;
-  $('pTrack').setAttribute('d', arcPath(BOOG_START, BOOG_EIND));
-  $('pFill').setAttribute('d', arcPath(BOOG_START, BOOG_START + (BOOG_EIND - BOOG_START) * frac));
+  $('pTrack').setAttribute('d', arcPath(ARC_START, ARC_END));
+  $('pFill').setAttribute('d', arcPath(ARC_START, ARC_START + (ARC_END - ARC_START) * frac));
   $('pFill').setAttribute('stroke', accent);
   $('pFill').style.opacity = panelbox.muted ? 0.3 : 1;
 
@@ -1359,8 +1359,8 @@ on('kReboot', 'click', async () => {
   panelMessage('Restarting…', true);
 });
 
-// Schuifregelaars: de waarde ernaast in gewone taal, en de helderheid meteen
-// to the panel so you see what you are setting instead of having to save first.
+// Sliders: the value beside them in plain words, and the brightness straight to
+// the panel so you see what you are setting instead of having to save first.
 const SLIDERS = {
   brightness:     ['oBright', v => Math.round(v / 255 * 100) + '%'],
   dimAfterS:      ['oDim',    v => +v === 0 ? 'never' : v + ' s'],

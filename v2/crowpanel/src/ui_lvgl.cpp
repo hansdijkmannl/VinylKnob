@@ -9,8 +9,8 @@
 // simpler than lv_scr_load() and skips the transition animation, which adds
 // nothing on a round panel.
 //
-// The objects are created once in uiBegin(); uiRender() only sets
-// teksten en waarden. Zo hoeft de lus niets te alloceren.
+// The objects are created once in uiBegin(); uiRender() only sets texts and
+// values. That way the loop never has to allocate.
 // ---------------------------------------------------------------------------
 
 #include <Arduino.h>
@@ -37,7 +37,7 @@
 
 static Touch pending = Touch::None;
 
-// -- de lagen ---------------------------------------------------------------
+// -- the layers -------------------------------------------------------------
 static lv_obj_t *lyNow, *lyInputs, *lyBrowse, *lyQr, *lyMsg;
 static lv_obj_t *arc, *lblVol, *lblTitle, *lblArtist, *lblInput, *lblMute, *discNoArtwork;
 static lv_obj_t *lblSource, *lblHot;
@@ -173,8 +173,7 @@ void uiBegin() {
 
   // The sleeve fills the whole screen and sits at the bottom of the stack: the
   // record is the background, not a stamp in the middle. Creation order decides
-  // stacking in LVGL, so this has to come before the
-  // boog en de teksten.
+  // stacking in LVGL, so this has to come before the arc and the texts.
   imgArtwork = lv_img_create(lyNow);
   lv_obj_center(imgArtwork);
   lv_obj_add_flag(imgArtwork, LV_OBJ_FLAG_HIDDEN);
@@ -254,8 +253,8 @@ void uiBegin() {
   // on a touchscreen you want around 44 points, not the height of one line.
   // The listen button goes at the bottom: at the top it lay over the sleeve.
   // Here it sits under the input name, where there is text anyway, and can be
-  // tapped to force a lookup. A generous target, because on a round screen
-  // is de bovenrand krap.
+  // tapped to force a lookup. A generous target, because on a round screen the
+  // top edge is cramped.
   // A dark plate underneath: on a light sleeve the icon was otherwise nearly
   // invisible, and tinting it with the sleeve only makes that worse.
   plateBottom = lv_obj_create(lyNow);
@@ -333,7 +332,7 @@ void uiBegin() {
                          LV_ALIGN_CENTER, 0, -150);
   lv_label_set_text(lblShelfHead, "SHELF");
 
-  // De positieboog, net binnen de letterring.
+  // The position arc, just inside the ring of letters.
   shelfArc = lv_arc_create(lyBrowse);
   lv_obj_set_size(shelfArc, 452, 452);
   lv_obj_center(shelfArc);
@@ -713,9 +712,9 @@ void uiRender(const UiState &s) {
   }
 }
 
-void uiSetRotation(bool omgekeerd) {
+void uiSetRotation(bool upsideDown) {
   lv_disp_t *d = lv_disp_get_default();
-  if (d) lv_disp_set_rotation(d, omgekeerd ? LV_DISP_ROT_180 : LV_DISP_ROT_NONE);
+  if (d) lv_disp_set_rotation(d, upsideDown ? LV_DISP_ROT_180 : LV_DISP_ROT_NONE);
 }
 
 void uiTick() {

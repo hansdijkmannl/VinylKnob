@@ -19,7 +19,7 @@ static const size_t JPEG_MAX = 96 * 1024;
 
 static bool writeBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
   if (!pixels) return false;
-  if (y >= ARTWORK_PX) return false;                 // klaar, de rest overslaan
+  if (y >= ARTWORK_PX) return false;                 // done, skip the rest
   for (uint16_t r = 0; r < h; r++) {
     const int16_t py = y + r;
     if (py < 0 || py >= ARTWORK_PX) continue;
@@ -72,7 +72,7 @@ static void findAccent() {
       const float mx = fmaxf(r, fmaxf(g, b));
       const float mn = fminf(r, fminf(g, b));
       const float d  = mx - mn;
-      if (mx < 0.12f || d < 0.07f) continue;      // te donker of te grijs
+      if (mx < 0.12f || d < 0.07f) continue;      // too dark or too grey
 
       float hue;
       if      (mx == r) hue = fmodf((g - b) / d, 6.0f);
@@ -136,17 +136,17 @@ static bool haalEnDecodeer(const char *url) {
     return false;
   }
 
-  WiFiClient *stroom = http.getStreamPtr();
-  size_t gelezen = 0;
+  WiFiClient *stream = http.getStreamPtr();
+  size_t got = 0;
   const uint32_t deadline = millis() + 3000;
-  while (gelezen < (size_t)length && millis() < deadline) {
-    const int n = stroom->readBytes(jpeg + gelezen, length - gelezen);
+  while (got < (size_t)length && millis() < deadline) {
+    const int n = stream->readBytes(jpeg + got, length - got);
     if (n <= 0) break;
-    gelezen += n;
+    got += n;
   }
   http.end();
-  if (gelezen != (size_t)length) {
-    Serial.printf("[artwork] only read %u of %d bytes\n", (unsigned)gelezen, length);
+  if (got != (size_t)length) {
+    Serial.printf("[artwork] only read %u of %d bytes\n", (unsigned)got, length);
     return false;
   }
 
@@ -162,15 +162,15 @@ static bool haalEnDecodeer(const char *url) {
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(false);
   TJpgDec.setCallback(writeBlock);
-  const JRESULT r = TJpgDec.drawJpg(0, 0, jpeg, gelezen);
+  const JRESULT r = TJpgDec.drawJpg(0, 0, jpeg, got);
   filled = (r == JDR_OK);
   if (!filled) {
     Serial.printf("[artwork] decoding failed (%d)\n", r);
   } else {
-    // Twee pixels ter controle: hiermee is te vergelijken of de kleurvolgorde
-    // is right, without having to look at the screen.
+    // Two pixels as a check: with these you can compare whether the
+    // colour order is right, without having to look at the screen.
     findAccent();
-    Serial.printf("[artwork] %u bytes, accent #%06X\n", (unsigned)gelezen, (unsigned)accent);
+    Serial.printf("[artwork] %u bytes, accent #%06X\n", (unsigned)got, (unsigned)accent);
   }
   return filled;
 }

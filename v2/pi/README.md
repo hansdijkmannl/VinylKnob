@@ -68,7 +68,7 @@ journalctl -u marantzknob-brain -u marantzknob-listen -f
 |---|---|
 | web interface | <http://marantzknob.local> |
 | raw levels as JSON | <http://marantzknob.local/status> |
-| listen right now | `curl -X POST http://marantzknob.local/luister` |
+| listen right now | `curl -X POST http://marantzknob.local/listen` |
 
 `/status` gives you `niveauDb`, `ruisvloerDb` and `drempelDb` — level, noise
 floor and threshold. That is how you tune without guessing: put a record on,
@@ -86,12 +86,12 @@ before starting the service.
 One page, five tabs, served on port 80 and 8791. What sits underneath is still
 split up — the queue and the collection come from the brain on 8790 (passed
 through under `/api/`), the panel's settings from the panel itself (under
-`/paneel/`) — but the browser sees one address, and that saves remembering three
+`/panel/`) — but the browser sees one address, and that saves remembering three
 port numbers.
 
 **Now** carries a copy of the panel's screen, at full size and on the same data:
-the same sleeve from `/hoes`, the same accent colour from the same calculation
-as `bepaalAccent()` in `crowpanel/src/hoes.cpp`, and the same choice between the
+the same sleeve from `/artwork`, the same accent colour from the same calculation
+as `findAccent()` in `crowpanel/src/artwork.cpp`, and the same choice between the
 dB reading, the title, or nothing but the sleeve as in `uiRender()`. Change the
 layout there and it should change here too.
 

@@ -73,8 +73,8 @@ cannot switch the amplifier off by lingering.
 | `knob.{h,cpp}` | quadrature decoding and every gesture of the push button |
 | `board.{h,cpp}` | display and touch bring-up, backlight |
 | `pcf.{h,cpp}` | the PCF8574 port expander at 0x21 |
-| `hoes.{h,cpp}` | the sleeve of what is playing, and its dominant colour |
-| `kast.{h,cpp}` | the record shelf: the list, the thumbnails, the browsing |
+| `artwork.{h,cpp}` | the sleeve of what is playing, and its dominant colour |
+| `shelf.{h,cpp}` | the record shelf: the list, the thumbnails, the browsing |
 | `brain.{h,cpp}` | asking the Pi what is playing |
 | `web.{h,cpp}` | the panel's own settings page |
 | `ui.h` | what a screen must be able to do |

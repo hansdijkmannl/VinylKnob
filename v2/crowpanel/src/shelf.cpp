@@ -6,7 +6,7 @@
 
 #include "config.h"
 
-// -- de lijst ---------------------------------------------------------------
+// -- the list ---------------------------------------------------------------
 // Every name end to end in one block of text, with two offsets into it per
 // album. That saves hundreds of separate allocations on a heap that does not
 // enjoy them, and the block arrives exactly as it went over the wire.
@@ -22,7 +22,7 @@ static int     count  = 0;
 static int     current  = 0;
 static bool    loaded = false;
 
-// -- de plaatjes ------------------------------------------------------------
+// -- the pictures -----------------------------------------------------------
 // Remember a handful of sleeves, not just the three on screen: turning back and
 // forth over the same spot is exactly what you do while searching, and
 // re-fetching what you just had is a waste of time.
@@ -99,16 +99,16 @@ bool shelfLoad(const char *host, uint16_t port) {
   char *fresh = (char *)heap_caps_malloc(length + 1, MALLOC_CAP_SPIRAM);
   if (!fresh) { http.end(); return false; }
 
-  WiFiClient *stroom = http.getStreamPtr();
-  int gelezen = 0;
+  WiFiClient *stream = http.getStreamPtr();
+  int got = 0;
   const uint32_t deadline = millis() + 10000;
-  while (gelezen < length && millis() < deadline) {
-    const int n = stroom->readBytes(fresh + gelezen, length - gelezen);
+  while (got < length && millis() < deadline) {
+    const int n = stream->readBytes(fresh + got, length - got);
     if (n <= 0) break;
-    gelezen += n;
+    got += n;
   }
   http.end();
-  if (gelezen != length) { free(fresh); return false; }
+  if (got != length) { free(fresh); return false; }
   fresh[length] = '\0';
 
   // Count the lines first, then build the table.
@@ -272,23 +272,23 @@ static bool fetchArtwork(const char *host, uint16_t port, int album) {
   const int length = http.getSize();
   if (length <= 0 || (size_t)length > JPEG_MAX) { http.end(); return false; }
 
-  WiFiClient *stroom = http.getStreamPtr();
-  int gelezen = 0;
+  WiFiClient *stream = http.getStreamPtr();
+  int got = 0;
   const uint32_t deadline = millis() + 3000;
-  while (gelezen < length && millis() < deadline) {
-    const int n = stroom->readBytes(jpeg + gelezen, length - gelezen);
+  while (got < length && millis() < deadline) {
+    const int n = stream->readBytes(jpeg + got, length - got);
     if (n <= 0) break;
-    gelezen += n;
+    got += n;
   }
   http.end();
-  if (gelezen != length) return false;
+  if (got != length) return false;
 
   memset(slot->px, 0, PIXELS * 2);
   target = slot;
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(false);
   TJpgDec.setCallback(writeBlock);
-  const JRESULT r = TJpgDec.drawJpg(0, 0, jpeg, gelezen);
+  const JRESULT r = TJpgDec.drawJpg(0, 0, jpeg, got);
   target = nullptr;
 
   if (r != JDR_OK) { slot->vol = false; slot->album = -1; return false; }
@@ -301,7 +301,7 @@ static bool fetchArtwork(const char *host, uint16_t port, int album) {
 // Fetching starts once you hold still. Two hundred milliseconds is long enough
 // not to begin mid-turn, and short enough that the sleeve is there before you
 // have had time to look.
-static const uint32_t RUST_MS = 200;
+static const uint32_t SETTLE_MS = 200;
 static uint32_t lastStep = 0;
 static int      previousIndex = -1;
 
@@ -311,9 +311,9 @@ bool shelfLoop(const char *host, uint16_t port) {
   if (current != previousIndex) {
     previousIndex = current;
     lastStep = millis();
-    return false;                        // eerst de tekst laten bijkomen
+    return false;                        // let the text catch up first
   }
-  if (millis() - lastStep < RUST_MS) return false;
+  if (millis() - lastStep < SETTLE_MS) return false;
 
   // One per call, so the loop keeps answering the knob while the rest arrives.
   // The middle first — that is the one you are looking at.

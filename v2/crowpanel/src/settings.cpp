@@ -8,10 +8,10 @@ Settings settings;
 static Preferences prefs;
 static const char *NS = "mknob";
 
-// Factory list of inputs. You step through these by holding the knob and
-// houden en te draaien.
+// Factory list of inputs. You step through these by holding the knob down and
+// turning it.
 static const InputDef DEFAULT_INPUTS[] = {
-  {"PHONO", "Platenspeler"},
+  {"PHONO", "Turntable"},
   {"CD",    "CD"},
   {"TV",    "TV"},
   {"BT",    "Bluetooth"},

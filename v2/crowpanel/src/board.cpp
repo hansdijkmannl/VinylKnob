@@ -32,7 +32,7 @@ static Arduino_ESP32RGBPanel *bus = new Arduino_ESP32RGBPanel(
     PIN_LCD_B0, PIN_LCD_B1, PIN_LCD_B2, PIN_LCD_B3, PIN_LCD_B4);
 
 Arduino_ST7701_RGBPanel *gfx = new Arduino_ST7701_RGBPanel(
-    bus, GFX_NOT_DEFINED /* RST loopt via de PCF8574 */, 0 /* rotatie */,
+    bus, GFX_NOT_DEFINED /* RST runs through the PCF8574 */, 0 /* rotation */,
     false /* IPS */, SCREEN_W, SCREEN_H,
     st7701_type5_init_operations, sizeof(st7701_type5_init_operations),
     true /* BGR */,

@@ -22,11 +22,11 @@ import pathlib
 from aiohttp import ClientSession, ClientTimeout
 
 CACHE = pathlib.Path(__file__).parent.parent / "brain" / "data" / "appicons"
-OWN = CACHE / "eigen"
+OWN = CACHE / "own"
 SEARCH_URL = "https://itunes.apple.com/lookup"
 
 FIELD = 480          # same size as a sleeve, so the panel need know nothing
-ICON_URL = 130         # the logo itself; the rest is air and room for text
+ICON = 130         # the logo itself; the rest is air and room for text
 
 # The logo sits near the top rather than centred: the title and artist go below
 # it and want that room. On a round screen there is still over 300 pixels of
@@ -56,27 +56,27 @@ def _compose(raw: bytes) -> bytes:
     # white. Hence compositing rather than a blunt convert.
     if source.mode in ("RGBA", "LA", "P"):
         source = source.convert("RGBA")
-        onder = Image.new("RGBA", source.size, (16, 16, 20, 255))
-        source = Image.alpha_composite(onder, source)
+        backdrop = Image.new("RGBA", source.size, (16, 16, 20, 255))
+        source = Image.alpha_composite(backdrop, source)
     source = source.convert("RGB")
 
     # Fit non-square logos (the tv app is wide) without stretching them.
     if source.width != source.height:
-        kant = max(source.size)
-        vierkant = Image.new("RGB", (kant, kant), (16, 16, 20))
-        vierkant.paste(source, ((kant - source.width) // 2, (kant - source.height) // 2))
-        source = vierkant
+        side = max(source.size)
+        square = Image.new("RGB", (side, side), (16, 16, 20))
+        square.paste(source, ((side - source.width) // 2, (side - source.height) // 2))
+        source = square
 
-    icon = source.resize((ICON_URL, ICON_URL), Image.LANCZOS)
+    icon = source.resize((ICON, ICON), Image.LANCZOS)
 
     # App icons are square with rounded corners; without that rounding it looks
     # like a screenshot rather than a logo.
-    masker = Image.new("L", (ICON_URL, ICON_URL), 0)
-    ImageDraw.Draw(masker).rounded_rectangle(
-        (0, 0, ICON_URL - 1, ICON_URL - 1), radius=int(ICON_URL * 0.22), fill=255)
+    mask = Image.new("L", (ICON, ICON), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, ICON - 1, ICON - 1), radius=int(ICON * 0.22), fill=255)
 
     field = Image.new("RGB", (FIELD, FIELD), (16, 16, 20))
-    field.paste(icon, ((FIELD - ICON_URL) // 2, TOP), masker)
+    field.paste(icon, ((FIELD - ICON) // 2, TOP), mask)
 
     out = io.BytesIO()
     field.save(out, "JPEG", quality=88, optimize=True)

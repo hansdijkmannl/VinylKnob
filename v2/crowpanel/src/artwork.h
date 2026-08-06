@@ -4,7 +4,7 @@
 #include <lvgl.h>
 
 // ---------------------------------------------------------------------------
-// De albumhoes ophalen en decoderen.
+// Fetching and decoding the album sleeve.
 //
 // The Pi delivers it ready-sized: scaling on an ESP32 costs memory and time
 // that are better spent elsewhere, and the Pi does it in tens of milliseconds.

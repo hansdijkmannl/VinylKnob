@@ -22,18 +22,18 @@
 // The push button hangs off the I/O expander, pin P5, not the ESP32.
 #define PCF_PIN_BUTTON   5
 
-// -- I2C (aanraakchip en de uitbreider) -------------------------------------
+// -- I2C (touch chip and the expander) --------------------------------------
 #define PIN_I2C_SDA      38
 #define PIN_I2C_SCL      39
 #define PCF8574_ADDR     0x21
 #define TOUCH_ADDR       0x15    // CST826, from Elecrow's sketch
 
 // Elecrow's own code subtracts 20 pixels from the y value. That is a
-// calibration of this panel, not a rounding error — leave it unless taps
-// stelselmatig te hoog of te laag uitkomen.
+// calibration of this panel, not a rounding error — leave it unless taps land
+// consistently too high or too low.
 #define TOUCH_Y_OFFSET   -20
 
-// -- PCF8574-uitbreider -----------------------------------------------------
+// -- PCF8574 expander -------------------------------------------------------
 #define PCF_PIN_TOUCH_RST 0
 #define PCF_PIN_TOUCH_INT 2
 #define PCF_PIN_LCD_POWER 3
@@ -55,8 +55,8 @@
 #define SCREEN_H         480
 
 // ST7701 over parallel RGB. The three wires below (CS/SCK/SDA) are not a data
-// path but the 3-wire SPI the panel receives its initialisation sequence
-// krijgt; de pixels lopen over de RGB-bus eronder.
+// path but the 3-wire SPI over which the panel receives its initialisation
+// sequence; the pixels travel over the RGB bus underneath.
 #define PIN_LCD_CS       16
 #define PIN_LCD_SCK      2
 #define PIN_LCD_SDA      1
@@ -126,14 +126,14 @@
 #define BRAIN_RETRY_MS         30000   // after a few misses: ease off
 
 // Fall back to the volume screen when you stop doing anything. Generous: in
-// the input list you are looking and choosing, and four seconds is just
-// te kort om rustig te bladeren.
+// the input list you are looking and choosing, and four seconds is just too
+// short to browse at your leisure.
 #define IDLE_RETURN_MS         6000
 
 #define MAX_INPUTS             8
 #define AP_SSID                "MarantzKnob-setup"
 // Deliberately not "marantzknob": that is the Pi, which runs avahi and serves
 // the web interface you open daily. Two devices announcing the same name to the
-// router gives you a DNS that resolves to the panel one time and
-// de Pi teruggeeft.
+// router gives you a DNS that resolves to the panel one time and the Pi the
+// next.
 #define MDNS_NAME              "marantzpanel"

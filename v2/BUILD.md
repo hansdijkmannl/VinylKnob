@@ -204,7 +204,7 @@ ssh marantzknob.local 'journalctl -u marantzknob-brain -u marantzknob-listen -f'
 |---|---|
 | web interface | <http://marantzknob.local> |
 | raw levels | <http://marantzknob.local/status> |
-| listen right now | `curl -X POST http://marantzknob.local/luister` |
+| listen right now | `curl -X POST http://marantzknob.local/listen` |
 
 In the web interface, enter your Discogs token and sync the collection — the
 database does not travel with `rsync`. To keep fingerprints you built up

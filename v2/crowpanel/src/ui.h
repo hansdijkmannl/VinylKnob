@@ -85,7 +85,7 @@ void uiTick();                          // every loop; animations and touches
 
 // Rotate the screen 180 degrees without a restart. Useful when the enclosure
 // is the other way round and you want to try it.
-void uiSetRotation(bool omgekeerd);
+void uiSetRotation(bool upsideDown);
 
 // Touches the screen reports back to the logic.
 enum class Touch : uint8_t { None, InputLabel, Artwork, Confirm, Dismiss, Listen,

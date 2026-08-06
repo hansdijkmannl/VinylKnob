@@ -101,11 +101,11 @@ def pi_heat() -> dict:
             out["tempC"] = round(int(f.read()) / 1000, 1)
     except Exception:                                       # noqa: BLE001
         pass
-    for pad in ("/sys/class/hwmon/hwmon0/fan1_input",
+    for file in ("/sys/class/hwmon/hwmon0/fan1_input",
                 "/sys/class/hwmon/hwmon1/fan1_input",
                 "/sys/class/hwmon/hwmon2/fan1_input"):
         try:
-            with open(pad) as f:
+            with open(file) as f:
                 out["fanRpm"] = int(f.read())
                 break
         except Exception:                                   # noqa: BLE001
@@ -172,7 +172,7 @@ class Ears:
         self.album = ""
         self.level_db = -99.0
 
-        # How often the panel asked for /nu. Purely diagnostic: it lets /status
+        # How often the panel asked for /now. Purely diagnostic: it lets /status
         # show whether the panel really reaches you, without writing a log line
         # every four seconds.
         self.panel_polls = 0
@@ -231,19 +231,19 @@ class Ears:
             elif level < self.floor_db + FLOOR_QUIET_DB:
                 self.floor_db += FLOOR_RISE_DB
 
-            nu = self.clock
+            now = self.clock
             luid = level > self.floor_db + TRIGGER_DB
 
             if luid:
                 self.quiet_since = None
                 if self.loud_since is None:
-                    self.loud_since = nu
+                    self.loud_since = now
             else:
                 self.loud_since = None
                 if self.quiet_since is None:
-                    self.quiet_since = nu
+                    self.quiet_since = now
                 # Quiet long enough: the side is over, we may ask again.
-                if self.playing and nu - self.quiet_since > QUIET_S:
+                if self.playing and now - self.quiet_since > QUIET_S:
                     self.playing = False
                     self.retry_at = None
                     # Silence draws a line under what was. What comes next is a
@@ -253,7 +253,7 @@ class Ears:
                 # Clear the picture much later. That keeps the sleeve up
                 # through a soft passage, and drops it when the record is
                 # werkelijk af is.
-                if self.artist and nu - self.quiet_since > COVER_HOLD_S:
+                if self.artist and now - self.quiet_since > COVER_HOLD_S:
                     self.release_id = None
                     self.cover_url = None
                     self.artist = self.title = self.album = ""
@@ -271,13 +271,13 @@ class Ears:
                    and self.amplifier_on)
             begint = (mag
                       and self.loud_since is not None
-                      and nu - self.loud_since > START_S
+                      and now - self.loud_since > START_S
                       and not self.playing)
 
             # A failed lookup: it is still playing, so somewhere further into
             # the record may well work. Waiting for silence would mean seeing
             # nothing for a whole side.
-            retry = (mag and self.retry_at is not None and nu >= self.retry_at
+            retry = (mag and self.retry_at is not None and now >= self.retry_at
                        and self.loud_since is not None)
             if retry:
                 self.retry_at = None
@@ -292,7 +292,7 @@ class Ears:
                 self.playing = True
                 self.loud_since = None
                 try:
-                    await self.vraag(to_wav(pcm))
+                    await self.ask(to_wav(pcm))
                 finally:
                     self.listening = False
 
@@ -311,7 +311,7 @@ class Ears:
         return b"".join(out)
 
     # -- asking the brain --------------------------------------------------
-    async def vraag(self, wav: bytes) -> None:
+    async def ask(self, wav: bytes) -> None:
         print(f"[ears] {len(wav)//1024} kB to the brain", flush=True)
         try:
             async with ClientSession(timeout=ClientTimeout(total=60)) as s:
@@ -324,27 +324,27 @@ class Ears:
             return
 
         rel = body.get("release")
-        treffer = next((r for r in body.get("results", []) if r.get("matched")), {})
+        hit = next((r for r in body.get("results", []) if r.get("matched")), {})
 
         # Only update when something was genuinely recognised. A failed lookup
         # does not mean a different record is on — it is still playing, and one
         # stretch of it happened not to match. Clearing would make the sleeve
-        # vanish in the middle of a side, which is exactly what
-        # gebeurde toen de herkansing na 60 seconden niets opleverde.
+        # vanish in the middle of a side, which is exactly what happened when
+        # the retry after 60 seconds came back with nothing.
         if body.get("matched"):
             self.misses = 0
             self.open_play_id = None
             self.release_id = rel["id"] if rel else None
-            self.cover_url = treffer.get("cover") or None
-            self.artist = treffer.get("artist") or (rel["artist"] if rel else "")
-            self.title = treffer.get("title") or ""
-            self.album = (rel["title"] if rel else "") or treffer.get("album") or ""
+            self.cover_url = hit.get("cover") or None
+            self.artist = hit.get("artist") or (rel["artist"] if rel else "")
+            self.title = hit.get("title") or ""
+            self.album = (rel["title"] if rel else "") or hit.get("album") or ""
 
         if body.get("matched") and rel:
             self.last = f"{rel['artist']} — {rel['title']}"
         elif body.get("matched"):
-            self.last = (f"{treffer.get('artist','?')} — "
-                            f"{treffer.get('title','?')} (not on the shelf)")
+            self.last = (f"{hit.get('artist','?')} — "
+                            f"{hit.get('title','?')} (not on the shelf)")
         else:
             self.open_play_id = body.get("playId")
             self.misses += 1
@@ -379,7 +379,7 @@ async def index(_request):
     the middle of the microphone logic.
 
     The page itself fetches three things from the same address: /status and the
-    Apple TV from this service, /api/* from the brain, and /paneel/* from the
+    Apple TV from this service, /api/* from the brain, and /panel/* from the
     panel. How that works is in the forwarding helper below.
     """
     return web.FileResponse(HERE / "static" / "index.html")
@@ -405,21 +405,21 @@ async def count_linkable() -> int:
 
 
 def _shrink_bytes(data: bytes, px: int | None = None) -> bytes:
-    """Vierkant bijsnijden en terugbrengen tot px (standaard HOES_PX)."""
+    """Crop to a square and bring it down to px (COVER_PX by default)."""
     from PIL import Image
     px = px or COVER_PX
     image = Image.open(io.BytesIO(data)).convert("RGB")
-    kant = min(image.size)
-    links = (image.width - kant) // 2
-    above = (image.height - kant) // 2
-    image = image.crop((links, above, links + kant, above + kant))
+    side = min(image.size)
+    left = (image.width - side) // 2
+    above = (image.height - side) // 2
+    image = image.crop((left, above, left + side, above + side))
     image = image.resize((px, px), Image.LANCZOS)
     out = io.BytesIO()
     image.save(out, "JPEG", quality=82, optimize=True)
     return out.getvalue()
 
 
-async def api_nu(request):
+async def api_now(request):
     """What is playing, in the shortest possible form — for the panel.
 
     Deliberately separate from /status: that one is for people and full of dB
@@ -469,7 +469,7 @@ async def api_nu(request):
         "title": ears.title,
         "album": ears.album,
         "artwork": bool(ears.release_id or ears.cover_url),   # is there anything on /artwork
-        "onShelf": ears.release_id is not None,  # gevonden in de eigen collectie
+        "onShelf": ears.release_id is not None,  # found in your own collection
         "playing": ears.playing,
         "listening": ears.listening,
         # Is there an open lookup that came up empty? Then you can point at an
@@ -568,10 +568,10 @@ async def api_link(request):
     The brain does the real work: linking, and recording the saved clip as
     fingerprints against that release. That makes the same side recognisable
     locally next time, with no service involved — precisely the lesson only you
-    kon geven.
+    could teach it.
     """
     if ears.open_play_id is None:
-        return web.json_response({"ok": False, "error": "niets om te koppelen"},
+        return web.json_response({"ok": False, "error": "nothing to link"},
                                  status=409)
     try:
         rel_id = int(request.query.get("id", ""))
@@ -587,8 +587,8 @@ async def api_link(request):
             # exist. A link is permanent; you do not make one on good
             # vertrouwen.
             async with s.get(f"{BRAIN}/api/collection?q=&limit=5000") as r:
-                lijst = (await r.json()).get("releases", [])
-            rel = next((x for x in lijst if x["id"] == rel_id), None)
+                releases = (await r.json()).get("releases", [])
+            rel = next((x for x in releases if x["id"] == rel_id), None)
             if rel is None:
                 return web.json_response(
                     {"ok": False, "error": f"album {rel_id} does not exist"}, status=404)
@@ -630,9 +630,9 @@ async def api_shelf_cover(request):
         raise web.HTTPBadRequest(text="id and px must be numbers")
 
     SHELF_CACHE.mkdir(parents=True, exist_ok=True)
-    pad = SHELF_CACHE / f"{rel_id}-{px}.jpg"
-    if pad.exists():
-        return web.FileResponse(pad)
+    file = SHELF_CACHE / f"{rel_id}-{px}.jpg"
+    if file.exists():
+        return web.FileResponse(file)
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=20)) as s:
@@ -646,13 +646,13 @@ async def api_shelf_cover(request):
         raise web.HTTPBadGateway(text=f"fetching the sleeve failed: {e!r}")
 
     small = await asyncio.to_thread(_shrink_bytes, raw, px)
-    pad.write_bytes(small)
+    file.write_bytes(small)
     return web.Response(body=small, content_type="image/jpeg")
 
 
 # Where the panel lives.
 #
-# You should not have to configure this. The panel polls /nu every four seconds
+# You should not have to configure this. The panel polls /now every four seconds
 # and every one of those requests carries its address, so the Pi simply
 # remembers who called. Setting PANEL_HOST overrides that — useful if you have
 # two panels, or if you want to reach one that is not polling yet.
@@ -684,13 +684,13 @@ async def _forward(request, target: str, what: str):
         target += "?" + request.query_string
 
     body = await request.read() if request.method != "GET" else None
-    kop = {}
+    headers = {}
     if request.headers.get("Content-Type"):
-        kop["Content-Type"] = request.headers["Content-Type"]
+        headers["Content-Type"] = request.headers["Content-Type"]
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=60)) as s:
-            async with s.request(request.method, target, data=body, headers=kop) as r:
+            async with s.request(request.method, target, data=body, headers=headers) as r:
                 raw = await r.read()
                 return web.Response(body=raw, status=r.status,
                                     content_type=r.content_type)
@@ -707,7 +707,7 @@ async def brain_proxy(request):
 async def panel_proxy(request):
     """Pass the panel through.
 
-    The panel's own page uses relative paths, so hanging it under /paneel/ works
+    The panel's own page uses relative paths, so hanging it under /panel/ works
     without rewriting anything — both for the panel's own page and for the
     rebuilt version in the tabs here.
     """
@@ -718,7 +718,7 @@ async def panel_proxy(request):
                  "as it polls this Pi")
     return await _forward(request,
                            f"http://{host}/{request.match_info.get('tail', '')}",
-                           "paneel")
+                           "panel")
 
 
 async def panel_root(request):
@@ -835,7 +835,7 @@ def main() -> None:
     app.router.add_get("/", index)
     app.router.add_post("/listen", api_listen_now)
     app.router.add_get("/status", api_status)
-    app.router.add_get("/now", api_nu)
+    app.router.add_get("/now", api_now)
     app.router.add_get("/artwork", api_cover)
     app.router.add_get("/shelf", api_shelf)
     app.router.add_get("/shelfcover", api_shelf_cover)
@@ -847,7 +847,7 @@ def main() -> None:
     app.router.add_post("/appletv/forget", atv_forget)
 
     # The two forwarding routes. They come last because they end in a wildcard
-    # en anders de vaste routes hierboven zouden opslokken.
+    # that would otherwise swallow the fixed routes above.
     app.router.add_route("*", "/api/{tail:.*}", brain_proxy)
     app.router.add_route("*", "/panel", panel_root)
     app.router.add_route("*", "/panel/{tail:.*}", panel_proxy)

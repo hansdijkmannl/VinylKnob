@@ -40,7 +40,7 @@ static bool     pendingSingle   = false;
 static uint32_t pendingSingleAt = 0;
 static uint32_t lastReleaseAt   = 0;
 
-// Acht seconden vasthouden wist de wifi-gegevens.
+// Holding for eight seconds wipes the Wi-Fi credentials.
 static const uint32_t WIFI_RESET_HOLD_MS = 8000;
 
 void knobBegin() {

@@ -446,7 +446,7 @@ async def api_avr_state(_request):
 
 
 async def api_avr_send(request):
-    """Ruw commando over de open verbinding, bijvoorbeeld MUON of SIPHONO."""
+    """A raw command over the open connection, for instance MUON or SIPHONO."""
     command = request.query.get("cmd", "")
     if not command:
         return web.json_response({"ok": False, "error": "no command"}, status=400)

@@ -105,7 +105,7 @@ turn never does recognition — it asks the Pi. Neither guesses about the other'
 job.
 
 Your browser only ever sees one address: `/api/*` is passed through to the brain
-and `/paneel/*` to the panel, so three services look like one page.
+and `/panel/*` to the panel, so three services look like one page.
 
 The design decisions, and why they went the way they did, are in
 [v2/PLAN.md](v2/PLAN.md).

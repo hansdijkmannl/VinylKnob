@@ -11,7 +11,7 @@ struct AvrState {
   bool     haveVolume   = false;
   int      volHalfSteps = 0;
   int      volMaxHalf   = 196;     // overwritten by MVMAX
-  char     input[24]    = "?";     // protocolcode zoals de AVR hem meldt
+  char     input[24]    = "?";     // protocol code as the AVR reports it
   char     inputLabel[24] = "?";   // your label, if the code is in the list
   uint32_t revision     = 0;       // increments on every change
 };
@@ -31,7 +31,7 @@ void avrSetVolumeHalf(int halfSteps);
 int avrVolumeCeilingHalf();
 
 // The volume we are on our way to (or the current one when nothing is
-// in de wachtrij staat).
+// queued).
 int avrPendingVolumeHalf();
 
 // Drop the connection so avrLoop reconnects. Use after the receiver's address

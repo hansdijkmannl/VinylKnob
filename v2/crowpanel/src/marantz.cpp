@@ -19,7 +19,7 @@ AvrState avrState;
 
 static WiFiClient client;
 static String   rxBuf;
-static int      targetHalf     = -1;   // -1 = niets te versturen
+static int      targetHalf     = -1;   // -1 = nothing to send
 static uint32_t lastCmdSent    = 0;
 static uint32_t lastConnectTry = 0;
 static uint32_t txCount        = 0;
@@ -119,7 +119,7 @@ static void handleResponse(const String &line) {
     return;
   }
 
-  // ZMON/ZMOFF (hoofdzone) en PWON/PWSTANDBY (heel toestel).
+  // ZMON/ZMOFF (main zone) and PWON/PWSTANDBY (the whole unit).
   if (line.startsWith("ZM") || line.startsWith("PW")) {
     avrState.powered = line.endsWith("ON");
     touched();
