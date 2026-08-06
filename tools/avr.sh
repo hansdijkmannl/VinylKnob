@@ -12,7 +12,7 @@ set -euo pipefail
 
 HOST="${1:-}"
 if [[ -z "$HOST" ]]; then
-  echo "gebruik: $0 <ip-van-avr> [commando]" >&2
+  echo "usage: $0 <avr-address> [command]" >&2
   exit 1
 fi
 
@@ -20,6 +20,6 @@ if [[ $# -ge 2 ]]; then
   printf '%s\r' "$2" | nc -w 2 "$HOST" 23
   echo
 else
-  echo "Verbonden met $HOST:23 - typ commando's (bv. MV?, SIPHONO). Ctrl-C stopt."
+  echo "Connected to $HOST:23 - type commands (e.g. MV?, SIPHONO). Ctrl-C quits."
   nc "$HOST" 23
 fi
