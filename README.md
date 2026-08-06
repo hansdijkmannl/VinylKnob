@@ -9,8 +9,6 @@ collection. Wasn't recognised? Browse your shelf on the knob itself and point at
 the album. It links the two and remembers, so next time it knows without asking
 anyone.
 
-<img src="3D%20Print/AVR_Knob_preview.svg" alt="" width="360">
-
 ## What it does
 
 | Gesture | Effect |
@@ -31,15 +29,6 @@ There is a web interface at the Pi's address — one page, five tabs: what's
 playing (a live copy of the panel's screen), the queue of unrecognised records,
 your collection, the panel's settings, and the system.
 
-## Two versions
-
-**`v2/` is the one described above**, and the one that gets the work: a round
-480×480 touchscreen with a rotary ring, plus a Raspberry Pi that listens.
-
-**`src/` is version 1**: a bare ESP32 with a rotary encoder. No screen, no
-recognition — volume, inputs, mute. It still works and is a fine afternoon
-project if the knob is all you want. See [docs/version-1.md](docs/version-1.md).
-
 ## What you need
 
 Around €150. The full list with the reasoning behind each part is in
@@ -51,13 +40,37 @@ Around €150. The full list with the reasoning behind each part is in
 | **Raspberry Pi 5** | 1 GB is enough; it listens, recognises and holds your collection |
 | microSD card | 32 GB, A1, high-endurance |
 | Power supply | the official 27 W USB-C one for a Pi 5, not a generic charger |
-| USB-A to JST MX1.25, 4-pin | Pi to panel. **The CrowPanel has no USB-C** — power and data share this connector. Usually in the box |
+
+The cable from the Pi to the panel comes with the panel. Plain USB-A at the Pi
+end, and it carries power and data both — see [How it listens](#how-it-listens)
+for the other end of that.
 
 No microphone. See [How it listens](#how-it-listens).
 
 And a **Denon or Marantz receiver with network control**. Any model speaking the
 telnet protocol on port 23 should do; in the receiver's menu set *Network →
 Network Control* to **Always On**, or the port disappears in standby.
+
+## Two sources
+
+**Records** come off the line feed and are recognised. **Everything over HDMI**
+does not need recognising: an Apple TV knows exactly what it is playing, and
+[pyatv](https://github.com/postlund/pyatv) asks it. No noise floor, no Shazam,
+no waiting — artist, title, album and artwork arrive the moment the track
+changes.
+
+Pairing is on the Apple TV tab of the web interface: scan, pick the device,
+type the PIN that appears on the television. It wants one for each of two
+protocols. The credentials land in `v2/brain/data/appletv.json` and survive a
+restart.
+
+The panel switches on its own. With the receiver on the turntable it shows what
+the line feed produced; on any other input, whatever the Apple TV reports. When
+a track has no artwork — YouTube, a podcast — it shows the app's own logo
+instead, fetched once and cached, with the title over it rather than behind it.
+
+One thing nothing can fix from this side: an app may withhold its metadata.
+Netflix does. Apple TV+, Music and most others do not.
 
 ## How it listens
 
@@ -82,8 +95,6 @@ only recognition needs it.
 
 ## Getting it running
 
-1. **Print the enclosure** — `3D Print/`. It is not finished; see
-   [Known rough edges](#known-rough-edges).
 2. **Flash the panel** — see [v2/crowpanel/README.md](v2/crowpanel/README.md).
    Needs PlatformIO. It boots into its own access point called
    `MarantzKnob-setup`; connect to it, fill in your network and your receiver's
@@ -149,9 +160,11 @@ still spinning, and every link teaches the local database one more side.
 
 ## Known rough edges
 
-- **The enclosure is not finished.** Nine STL revisions and no lid yet; treat
-  `3D Print/` as work in progress. The microphone channel in there is a
-  leftover — there is no microphone any more.
+- **There is no enclosure here yet.** It went through nine revisions and is
+  still changing too fast to be worth publishing, so nothing is printed from
+  this repository. What the shape has to do is in [v2/BOM.md](v2/BOM.md):
+  weight in the base and feet under it, or the whole thing walks across the
+  table when you turn the knob.
 - **The web interface has no password** and listens on your whole network. That
   is a deliberate trade-off for a device on your own LAN — there is nothing in
   it more sensitive than your record collection — but do not forward it through
@@ -172,10 +185,8 @@ still spinning, and every link teaches the local database one more side.
 | `v2/brain/` | the brain: recognition, Discogs, fingerprints, database |
 | `v2/recognizer/` | standalone fingerprinting prototype, with its own notes |
 | `v2/mockup/` | the interface sketch the design came from |
-| `src/` | version 1 firmware |
-| `3D Print/` | enclosure |
 | `logos/` | source logos for the app icons |
-| `tools/` | `avr.sh` — poke the receiver's telnet port by hand |
+| `v2/avr.sh` | poke the receiver's telnet port by hand, before anything else owns it |
 
 ## Licence
 

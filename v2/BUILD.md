@@ -212,6 +212,26 @@ digitised.
 
 ---
 
+## Step 6b — Pair the Apple TV
+
+Only if you have one. Records come off the line feed and get recognised;
+anything over HDMI does not need recognising, because the Apple TV knows what it
+is playing and will say so.
+
+Open the web interface, **Apple TV** tab, and press Scan. Pick your device and
+press Pair: a PIN appears on the television, type it on your phone. It asks
+twice, once for each protocol it needs. The credentials land in
+`v2/brain/data/appletv.json` and survive a restart.
+
+After that the panel switches by itself — the turntable input shows what the
+line feed produced, any other input shows what the Apple TV reports. A track
+with no artwork gets the app's own logo instead.
+
+Netflix withholds its metadata and there is nothing to be done about that from
+here. Apple TV+, Music and most others do not.
+
+---
+
 ## Step 7 — See whether the Pi runs
 
 ```bash

@@ -15,22 +15,24 @@ via Amazon or Tindie; the rest from any of the usual suppliers.
 | 2 | 1 | **Raspberry Pi 5**, 1 GB | see [Which Pi](#which-pi) | €50 |
 | 3 | 1 | microSD card | 32 GB, **A1** — not A2, see [The SD card](#the-sd-card) | €25 |
 | 4 | 1 | Power supply | the **official 27 W USB-C PD** adapter, not a generic one — see [Power](#power) | €13 |
-| 5 | 1 | USB-A to JST MX1.25, 4-pin | Pi to panel. Usually supplied with the panel — check the box, it is hard to find separately | €4 |
-| 6 | 1 | Heatsink or cooling case for the Pi 5 | passive is enough here | €5-10 |
-| 7 | ~300 g | Ballast | steel washers, M8 nuts or lead shot — see [Ballast](#ballast-and-feet) | €0-4 |
-| 8 | 4 | Non-slip feet, ~12 mm | **do not skip these** | €1 |
-| 9 | 4 | M3 heat-set inserts + M3×10 screws | for the base plate | €0.60 |
-| 10 | — | Filament | PETG, or ASA for a matte finish | — |
+| 5 | 1 | Heatsink or cooling case for the Pi 5 | passive is enough here | €5-10 |
+| 6 | ~300 g | Ballast | steel washers, M8 nuts or lead shot — see [Ballast](#ballast-and-feet) | €0-4 |
+| 7 | 4 | Non-slip feet, ~12 mm | **do not skip these** | €1 |
+| 8 | 4 | M3 heat-set inserts + M3×10 screws | for the base plate | €0.60 |
+| 9 | — | Filament | PETG, or ASA for a matte finish | — |
 
 **Around €140 all in**, of which the panel is a third. There is not one
 mechanical precision part in it, and no microphone — see
 [How it listens](#how-it-listens-no-microphone).
 
 The enclosure is printed yourself: a plinth for the panel to stand on, with the
-Pi inside. Files in `3D Print/`.
+Pi inside. No files here yet — the shape is still changing too fast to publish.
+What it has to do is below, under [Ballast and feet](#ballast-and-feet).
 
-> **The CrowPanel has no USB-C.** Power and data both run over the `USB-5V-IN`
-> connector, a 4-pin JST MX1.25 (`GND · D+ · D− · VCC`).
+> **The cable comes with the panel** and is not something to source. It is
+> plain USB-A at the Pi end; at the panel end it is a 4-pin JST MX1.25 into
+> `USB-5V-IN`, because the CrowPanel has no USB-C. One cable, power and data
+> both.
 
 ---
 
@@ -172,7 +174,3 @@ non-slip feet under it.
 That also fixes the weakest point of this approach. The built-in encoder is
 small and light, and a heavy base underneath makes a noticeable difference to
 how the whole thing feels.
-
----
-
-See [../BOM.md](../BOM.md) for version 1's parts, which still works on its own.

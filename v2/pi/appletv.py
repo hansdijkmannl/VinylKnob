@@ -1,9 +1,10 @@
 """
 What is playing on the Apple TV, straight from the device.
 
-The microphone is for records. For anything arriving over HDMI, listening in is
-nonsense: the Apple TV *knows* what it is playing, artwork included, and pyatv
-simply asks. No recognition, no noise floor, no Shazam.
+The line feed is for records. For anything arriving over HDMI it would be no
+use anyway — the receiver only digitises its analog inputs — and listening in
+would be nonsense regardless: the Apple TV *knows* what it is playing, artwork
+included, and pyatv simply asks. No recognition, no noise floor, no Shazam.
 
 Pairing happens through the web interface rather than the command line: a PIN
 appears on the television and you type it on your phone. The credentials land in

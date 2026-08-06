@@ -557,7 +557,7 @@ async def index(request):
     """The brain has no page of its own any more.
 
     The web interface became one page with tabs, and the ears (listen.py) serve
-    it, because the microphone, the Apple TV and the proxy to the panel all live
+    it, because the line feed, the Apple TV and the proxy to the panel all live
     there. What is left here is the API, which that page reaches through /api/*
     on the same address.
 

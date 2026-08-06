@@ -109,6 +109,34 @@ searching and browsing work on the same list.
 follows the amplifier, so when the main zone goes off — by remote, or by your
 Apple TV over HDMI — the display goes with it, and comes back when it returns.
 
+## The Apple TV
+
+The second source, and the one that needs no recognising at all. pyatv connects
+with stored credentials and subscribes; artist, title, album and artwork arrive
+the moment the track changes.
+
+Pairing is in the web interface rather than on the command line, because a PIN
+appears on the television and you are holding a phone, not a keyboard. Two
+protocols, AirPlay and Companion, so it asks twice. `data/appletv.json` keeps
+the result.
+
+Two things worth knowing:
+
+- **Two listeners, and the second is not a luxury.** The push updater reports
+  *what* is playing; the device listener reports *that* the connection is gone.
+  Without the second, a dropped connection is invisible and the screen freezes
+  on the last title it saw. `/appletv/status` also carries `ageSeconds`, so a
+  frozen connection can be told apart from an Apple TV that has genuinely been
+  showing the same thing for an hour.
+- **No artwork means the app's logo.** YouTube and podcasts give a title and
+  nothing to look at, so `appicon.py` fetches the app's icon once and caches it.
+  The panel treats a logo differently from real artwork: it hides text behind a
+  sleeve, and puts it over a logo — otherwise you would be looking at a brand
+  instead of at what is playing.
+
+An app may withhold its metadata entirely. Netflix does; most others do not.
+Nothing can be done about that from this side.
+
 ## How the listening works
 
 Lookups happen **on an event, not a timer**: sound after silence. That is the

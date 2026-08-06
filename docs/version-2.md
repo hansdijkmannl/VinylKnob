@@ -9,8 +9,12 @@ on, so the unit can simply stay next to the sofa.
 The parts are in [../v2/BOM.md](../v2/BOM.md), the build order in
 [../v2/PLAN.md](../v2/PLAN.md).
 
-This document is the analysis beforehand, not the build description. The simple
-version (see [../README.md](../README.md)) stays as it is and works on its own.
+This document is the analysis beforehand, not the build description, and it is
+kept as it was written — including the parts that turned out differently. There
+was a version 1 at the time it was written: a bare ESP32 with a rotary encoder
+and no screen. It has since been removed from the repository, so the references
+below are to something that no longer ships. They are left standing because the
+reasoning only makes sense with them in it.
 
 ---
 
@@ -602,8 +606,8 @@ Directly reusable, whatever the platform:
 
 - **The protocol knowledge.** `MV`/`SI`/`MU`/`ZM`, the volume model
   (`dB = value - 80`, half steps), `MVMAX`, and that the receiver pushes
-  unasked. See [`src/marantz.cpp`](../src/marantz.cpp) — that translates line
-  for line into Python.
+  unasked. It lives on in
+  [`v2/crowpanel/src/marantz.cpp`](../v2/crowpanel/src/marantz.cpp).
 - **The quadrature decoder** (the 16-value table in `src/main.cpp`).
 - **The 250 ms delay on an input choice**, so the receiver does not touch every
   input on the way.
