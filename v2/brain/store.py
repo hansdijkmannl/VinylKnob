@@ -96,6 +96,20 @@ KNOWN_INPUTS = [
 ]
 
 
+# Words that appear in a title without identifying a record: compilation and
+# edition boilerplate. They are not dropped from the comparison — "Greatest
+# Hits" is a perfectly good album title and matches exactly like any other — but
+# they cannot on their own carry a *containment* match. See contained_in below
+# for the wrong sleeve that produced this list.
+GENERIC_TITLE_WORDS = {
+    "greatest", "hits", "best", "collection", "anthology", "singles",
+    "essential", "very", "volume", "live", "album", "songs", "music",
+    "edition", "deluxe", "remaster", "remastered", "anniversary", "expanded",
+    "compilation", "complete", "ultimate", "selected", "favourites",
+    "favorites", "more", "vol",
+}
+
+
 def _normalise(text: str) -> str:
     """For comparing titles: lower case, no punctuation."""
     keep = [c.lower() if c.isalnum() else " " for c in (text or "")]
@@ -229,6 +243,24 @@ class Store:
         if not want_artist or not want_album:
             return None
 
+        def drop_artist(heard: set, have: set) -> tuple[set, set]:
+            """Both titles with the artist's name taken out, where it is noise.
+
+            Services regularly hand the artist back glued onto the title:
+            Shazam called Hans Zimmer's album "Live" simply "HANS ZIMMER LIVE".
+            Those two words are not part of the title, they are the artist
+            again, and leaving them in turns an exact match into a partial one
+            that containment then has to rescue — on the word "live", which is
+            exactly what containment should not trust.
+
+            But an artist's name can genuinely be part of a title: "The
+            Greatest Showman" by "The Greatest Showman Cast". So only words
+            that are *not* on both sides are dropped. Present in both means it
+            belongs to the title, not to the artist.
+            """
+            noise = want_artist - (heard & have)
+            return (heard - noise) or heard, (have - noise) or have
+
         def overlap(a: set, b: set) -> float:
             return len(a & b) / len(a | b) if (a and b) else 0.0
 
@@ -238,10 +270,25 @@ class Store:
             The length requirement guards against albums called "1" or "Live":
             those fit inside anything and would otherwise stick to the first
             record by the same artist.
+
+            The second requirement is the same guard for a subtler case, and it
+            cost a wrong sleeve to find. Shazam heard "I Will Talk And Hollywood
+            Will Listen" and named it from the compilation "In And Out Of
+            Consciousness: Greatest Hits 1990 - 2010". The record on the
+            turntable was "Swing When You're Winning" — but "Greatest Hits" is
+            also a release on this shelf, and those two words sit inside that
+            compilation title, so containment fired and the wrong sleeve came
+            up.
+
+            Containment therefore needs one word that actually identifies a
+            record. "Reprise" does, "Showman" does; "greatest hits" is a phrase
+            half the compilations in the world carry. Note this only tightens
+            the containment path: own a record genuinely called "Greatest Hits"
+            and a service that names it exactly still matches on overlap.
             """
             if not small or not small <= large:
                 return False
-            return any(len(w) >= 4 for w in small)
+            return any(len(w) >= 4 and w not in GENERIC_TITLE_WORDS for w in small)
 
         # High enough to clear the thresholds, just below a genuine full
         # overlap, so a literally identical title always wins.
@@ -250,11 +297,12 @@ class Store:
         best, best_score = None, 0.0
         for row in self.db.execute("SELECT * FROM releases"):
             have_artist = set(_normalise(row["artist"]).split())
-            have_album = set(_normalise(row["title"]).split())
+            heard_album, have_album = drop_artist(
+                want_album, set(_normalise(row["title"]).split()))
 
             score_artist = overlap(want_artist, have_artist)
-            score_album = overlap(want_album, have_album)
-            if contained_in(have_album, want_album) or contained_in(want_album, have_album):
+            score_album = overlap(heard_album, have_album)
+            if contained_in(have_album, heard_album) or contained_in(heard_album, have_album):
                 score_album = max(score_album, SCORE_CONTAINED)
             if score_artist < 0.5 or score_album < 0.5:
                 continue

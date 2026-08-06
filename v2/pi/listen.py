@@ -108,6 +108,20 @@ TRIGGER_DB    = float(os.environ.get("TRIGGER_DB", "15"))       # above the nois
 FLOOR_RISE_DB = 0.02          # per 0.1 s block, so ~0.2 dB per second
 FLOOR_QUIET_DB  = 6.0           # this close to the floor counts as "the room"
 
+# A ceiling on the noise floor, and the whole reason it exists: the floor is
+# seeded from the first block read, and a line feed gives no clue whether that
+# block is silence or the middle of a chorus. Restart the service during a side
+# and the floor seeds on music — after which the threshold sits above the music
+# and that side never triggers a lookup. With a microphone the room noise hid
+# this, because there was always something quieter than the record.
+#
+# The fix is to say what a line's noise floor can physically be. It is a
+# property of the input, not of the room: measured between -80 and -92 dBFS on
+# the receivers this has run on, while music sits around -37. A floor claiming
+# to be up near the music is not a floor, it is a bad seed. Capping it costs
+# nothing in the normal case, where the floor is thirty decibels below this.
+FLOOR_MAX_DB = float(os.environ.get("FLOOR_MAX_DB", "-55"))
+
 BYTES_PER_BLOCK = int(RATE * BLOCK_S) * 2       # 16-bit mono
 
 
@@ -329,11 +343,12 @@ class Ears:
                 self.floor_db = level
             elif level < self.floor_db + FLOOR_QUIET_DB:
                 self.floor_db += FLOOR_RISE_DB
+            self.floor_db = min(self.floor_db, FLOOR_MAX_DB)
 
             now = self.clock
-            luid = level > self.floor_db + TRIGGER_DB
+            loud = level > self.floor_db + TRIGGER_DB
 
-            if luid:
+            if loud:
                 self.quiet_since = None
                 if self.loud_since is None:
                     self.loud_since = now
