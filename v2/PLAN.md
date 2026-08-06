@@ -1,283 +1,287 @@
-# Luxe versie — bouwvolgorde
+# Version 2 — the order it was built in
 
-Rond touchscreen met draaiknop, voor de Marantz SR7015. Ontwerpanalyse staat in
-[../docs/version-2.md](../docs/version-2.md), onderdelen in [BOM.md](BOM.md).
+A round touchscreen with a knob, for a Marantz SR7015. The design analysis is in
+[../docs/version-2.md](../docs/version-2.md), the parts in [BOM.md](BOM.md).
 
-## De architectuur
+## The architecture
 
-**Route C**: een kant-en-klaar CrowPanel voor de bediening, met een kale
-Raspberry Pi Zero ernaast als brein.
+**Route C**: an off-the-shelf CrowPanel for the controls, with a bare Raspberry
+Pi next to it as the brain.
 
-| Doet | Wat |
+| Does | What |
 |---|---|
-| **Elecrow CrowPanel 2.1"** | scherm, knop, touch, telnet naar de AVR, de hele bediening. ESP32-S3, LVGL, meteen aan |
-| **Pi Zero 2 W, headless** | INMP441-microfoon, shazamio, lokale fingerprint-database, Discogs, de webinterface met de koppelwachtrij |
+| **Elecrow CrowPanel 2.1"** | screen, knob, touch, telnet to the AVR, all of the controls. ESP32-S3, LVGL, on instantly |
+| **Raspberry Pi, headless** | microphone, shazamio, local fingerprint database, Discogs, the web interface with the linking queue |
 
-Ze praten over het netwerk, of over de UART-connector van het CrowPanel.
+They talk over the network, or over the CrowPanel's UART connector.
 
-Waarom dit beter uitpakt dan een Pi met een HyperPixel: **de Pi hoeft geen
-scherm aan te sturen.** Daarmee vervalt het GPIO-probleem van een DPI-display,
-de tweede microcontroller voor de encoder, en het wachten op een opstartend
-Linux — het CrowPanel is meteen aan en de Pi start op de achtergrond op. En
-omdat de 40-pins header vrij is, kan de microfoon een rauwe I2S-MEMS zijn in
-plaats van een USB-dongel met verborgen ruisonderdrukking.
+Why this works out better than a Pi with a HyperPixel: **the Pi does not have to
+drive a screen.** That removes the GPIO problem of a DPI display, the second
+microcontroller for the encoder, and the wait for Linux to boot — the CrowPanel
+is on instantly and the Pi starts up in the background. And because the 40-pin
+header is free, the microphone can be a raw I2S MEMS part instead of a USB
+dongle with hidden noise suppression.
 
-Ongeveer €100, en er zit geen enkel mechanisch precisiedeel meer in.
+About €100, and there is no mechanical precision part left in it.
 
 ---
 
-## Fase 0 — Herkenning bewijzen ✅
+## Phase 0 — Prove recognition ✅
 
-**Klaar.** [recognizer/](recognizer/): eigen fingerprinting in Python, foutloos
-tot 20 dB SNR met snelheidsafwijking, grenzen rond 100 kanten.
+**Done.** [recognizer/](recognizer/): own fingerprinting in Python, faultless
+down to 20 dB SNR with a speed deviation, limits around 100 sides.
 
-Rest hier: de index in het geheugen (factor 20-50 in zoektijd), en toetsen op
-echte naaldopnames in plaats van synthetische.
+Left here: the index in memory (a factor of 20-50 in search time), and testing
+on real needle recordings instead of synthetic ones.
 
-## Fase 0b — Herkenning met een microfoon ✅
+## Phase 0b — Recognition with a microphone ✅
 
-**Klaar en geslaagd.** [webproef/](webproef/) herkende op 31 juli 2026 in 8
-seconden vrijwel alles, van een iPhone-luidspreker via de microfoon van een
-MacBook, inclusief hoes.
+**Done and successful.** [webtest/](webtest/) recognised nearly everything in 8
+seconds on 31 July 2026, from an iPhone speaker through a MacBook's microphone,
+sleeve included.
 
-Gevolg: de eigen fingerprint-database uit fase 0 zakt van hoofdmechanisme naar
-**cache**, die alleen groeit waar Shazam tekortschiet.
+Consequence: the own fingerprint database from phase 0 drops from main mechanism
+to **cache**, growing only where Shazam falls short.
 
-Randvoorwaarde die daarbij hoort: **niet op een timer opvragen maar bij een
-gebeurtenis** (ingang gaat naar phono, of geluid begint na stilte). shazamio is
-een onofficiële client zonder sleutel; een handvol opzoekingen per avond is
-onopvallend, honderden niet.
+The condition that comes with it: **do not ask on a timer but on an event** (the
+input goes to phono, or sound starts after silence). shazamio is an unofficial
+client without a key; a handful of lookups an evening is unobtrusive, hundreds
+are not.
 
-## Fase 1 — Het CrowPanel bestellen en voelen ✅
+## Phase 1 — Order the CrowPanel and feel it ✅
 
-Binnen en in gebruik. De knop heeft detents; met de versnelling erop
-(0,5 dB rustig, 4,0 dB doordraaiend) is dat in de praktijk geen bezwaar
-gebleken, dus de eigen ring is niet nodig.
+Arrived and in use. The knob has detents; with acceleration on top (0.5 dB
+gently, 4.0 dB turning through) that has turned out not to matter in practice,
+so the custom ring is not needed.
 
-## Fase 1b — Interface-mockup ✅
+## Phase 1b — Interface mockup ✅
 
-**Klaar.** [mockup/](mockup/) is een werkende schets van de vier schermen en het
-bedieningsmodel, te openen in je browser. Dient als referentie bij het schrijven
-van de LVGL-firmware.
+**Done.** [mockup/](mockup/) is a working sketch of the four screens and the
+control model, openable in your browser. It serves as the reference while
+writing the LVGL firmware.
 
-Kern van het model: met rotatie, druk én touch hoeft niets modaal te zijn.
-**Draaien is altijd volume**, in elk scherm. Alles wat je zonder kijken wil doen
-zit op de knop (mute, favoriet, aan/uit); alles waarvoor je toch naar het scherm
-kijkt zit op het scherm (ingang, platenkast).
+The heart of the model: with rotation, press *and* touch, nothing has to be
+modal. **Turning is always volume**, on every screen. Everything you want to do
+without looking is on the knob (mute, favourite, on/off); everything you look at
+the screen for anyway is on the screen (input, record shelf).
 
-## Fase 2 — Het CrowPanel als bediening ✅
+## Phase 2 — The CrowPanel as the controls ✅
 
-**Af en beproefd op hardware, 1 augustus 2026.** Werkend: scherm, aanraking,
-volume met de knop, mute, aan/uit, de ingangenlijst en telnet naar de SR7015.
-17,5% flash, 29,9% RAM. Zie [crowpanel/](crowpanel/).
+**Finished and tested on hardware, 1 August 2026.** Working: screen, touch,
+volume on the knob, mute, on/off, the input list and telnet to the SR7015.
+17.5% flash, 29.9% RAM. See [crowpanel/](crowpanel/).
 
-Vier dingen bleken pas met het paneel op tafel:
+Four things only became apparent with the panel on the table:
 
-- **Een bootlus** door `board_build.flash_size`, dat niets doet — de bootloader
-  leest `board_upload.flash_size`. Zie de bijlage in [BUILD.md](BUILD.md).
-- **`lv_label_set_text_fmt` kan geen `%f`.** LVGL's eigen printf laat drijvende
-  komma standaard weg, dus er stond letterlijk `f` op het scherm.
-- **De encoder telt andersom** dan die van versie 1 (`ENC_INVERT`), en één
-  detent is precies één stap. Rustig 0,5 dB, snel 4,0 dB.
-- **Het uitstel van 250 ms bij een ingangkeuze moest juist weg.** In versie 1
-  was draaien de keuze; hier is er een lijst en een bevestiging, en meesturen
-  tijdens het bladeren sleepte je door elke tussenliggende ingang.
+- **A boot loop** caused by `board_build.flash_size`, which does nothing — the
+  bootloader reads `board_upload.flash_size`. See the appendix in
+  [BUILD.md](BUILD.md).
+- **`lv_label_set_text_fmt` cannot do `%f`.** LVGL's own printf leaves floating
+  point out by default, so the screen literally read `f`.
+- **The encoder counts the other way round** from version 1's (`ENC_INVERT`),
+  and one detent is exactly one step. 0.5 dB gently, 4.0 dB fast.
+- **The 250 ms delay on an input choice had to go, in fact.** In version 1
+  turning *was* the choice; here there is a list and a confirmation, and sending
+  while browsing dragged you through every input on the way.
 
-En één ding dat niet aan de firmware lag: een Marantz negeert `SI`-commando's
-voor bronnen die op `DEL` staan. `SSSOD ?` vraagt op welke dat zijn.
+And one thing that was not the firmware's fault: a Marantz ignores `SI` commands
+for sources set to `DEL`. `SSSOD ?` asks which those are.
 
-De driver stond hier lang als het enige dat pas met hardware op tafel te
-schrijven viel. Dat bleek maar half waar. Uit Elecrow's eigen repo:
+The driver stood here for a long time as the one thing that could only be
+written with the hardware on the table. That turned out to be half true. From
+Elecrow's own repository:
 
-- de ST7701-initialisatiereeks is **niet** paneelspecifiek maar gewoon
-  `st7701_type5_init_operations` uit Arduino_GFX, en hun meegeleverde kopie is
-  byte voor byte upstream **v1.3.1** (nieuwere versies hebben een herschreven
-  API én een andere BGR-bit, dus die tag staat vastgepind);
-- de aanraakchip is een **CST826** op `0x15`;
-- wat wél niet te raden was, is de **opstartvolgorde** — LCD en aanraakchip
-  hangen allebei achter de PCF8574 en willen elk hun eigen resetpuls vóór
-  `gfx->begin()`. Die staat nu in `board.cpp`.
+- the ST7701 initialisation sequence is **not** panel-specific but simply
+  `st7701_type5_init_operations` from Arduino_GFX, and their bundled copy is
+  byte for byte upstream **v1.3.1** (newer versions have a rewritten API *and* a
+  different BGR bit, so that tag is pinned);
+- the touch chip is a **CST826** at `0x15`;
+- what really could not be guessed is the **start-up order** — the LCD and the
+  touch chip both hang off the PCF8574 and each want their own reset pulse
+  before `gfx->begin()`. That now lives in `board.cpp`.
 
-`ui_serial.cpp` blijft bestaan als tweede omgeving: dezelfde firmware met de
-seriële monitor als scherm, om de bediening te volgen zonder dat het paneel in
-de weg zit.
+`ui_serial.cpp` stays as a second environment: the same firmware with the serial
+monitor as the screen, to follow the controls without the panel in the way.
 
-## Fase 3 — De sokkel
+## Phase 3 — The plinth
 
-Geprinte sokkel waar het CrowPanel op staat, met de Pi en de microfoon erin.
-Geen tandwielen, geen lager, geen precisiewerk meer — maar wél **gewicht**: het
-CrowPanel weegt 80 gram en schuift anders over je tafel als je aan de knop
-draait. Holte voor ~300 g ballast, vier antislipvoetjes eronder, en een
-akoestische opening voor de microfoon.
+A printed plinth for the CrowPanel to stand on, with the Pi and the microphone
+inside. No gears, no bearing, no precision work left — but it does need
+**weight**: the CrowPanel weighs 80 grams and otherwise slides across your table
+when you turn the knob. A cavity for ~300 g of ballast, four anti-slip feet
+underneath, and an acoustic opening for the microphone.
 
-## Fase 4 — De Pi als brein ✅
+## Phase 4 — The Pi as the brain ✅
 
-**Draait, 1 augustus 2026.** Raspberry Pi 5 (`AVRKNOB`, Debian 13 trixie),
-beide diensten actief en ingeschakeld. Volledige keten beproefd: microfoon →
-drempel → Shazam → koppeling aan de collectie, zonder de Mac.
+**Running, 1 August 2026.** Raspberry Pi 5 (Debian 13 trixie), both services
+active and enabled. The full chain tested: microphone → threshold → Shazam →
+link to the collection, without the Mac.
 
-Drie dingen die pas op de echte Pi bovenkwamen:
+Three things that only surfaced on the real Pi:
 
-- **Pi OS is inmiddels Debian 13, met Python 3.13**, en daar is `audioop` uit de
-  standaardbibliotheek gesloopt terwijl pydub — waar shazamio op leunt — hem in
-  drie bestanden importeert. `audioop-lts` lost dat op; het installatiescript
-  zet hem er nu bij en controleert daarna of `import shazamio` echt lukt.
-- **ffmpeg ontbrak**, en dat faalt stil: shazamio laat pydub de opname omzetten,
-  en zonder ffmpeg belandde alles onherkend in de wachtrij zonder dat er iets op
-  een fout leek. Staat nu in de pakketlijst.
-- **De USB-dasspeldmicrofoon heeft geen AGC**, en dat is nu gemeten in plaats van
-  gehoopt: de ruisvloer bleef strak op −53 dB terwijl het signaal tussen −32 en
-  −53 bewoog. Bij automatische versterking was die vloer meegekropen.
+- **Pi OS is Debian 13 now, with Python 3.13**, and there `audioop` has been
+  removed from the standard library while pydub — which shazamio leans on —
+  imports it in three files. `audioop-lts` fixes that; the installer now adds it
+  and then checks that `import shazamio` really works.
+- **ffmpeg was missing**, and that fails silently: shazamio has pydub convert
+  the recording, and without ffmpeg everything landed unrecognised in the queue
+  without anything looking like an error. It is in the package list now.
+- **The USB lavalier microphone has no AGC**, and that is now measured rather
+  than hoped: the noise floor stayed firmly at −53 dB while the signal moved
+  between −32 and −53. With automatic gain that floor would have crept along.
 
-Wat er nog los van staat: het signaal komt maar 10 à 20 dB boven de ruisvloer
-uit — de ondergrens van waarop de vingerafdrukker beproefd is. Voorlopig genoeg,
-maar `Mic Capture Volume` (nu 80%) is de knop als het tegenvalt.
+What stands apart from that: the signal only comes 10 to 20 dB above the noise
+floor — the bottom end of what the fingerprinter has been tested at. Enough for
+now, but `Mic Capture Volume` (80% at the moment) is the knob if it disappoints.
 
-**Oorspronkelijke opzet, ongewijzigd:** Zie [pi/](pi/): een installatiescript voor een
-verse Raspberry Pi OS Lite 64-bits, twee systemd-diensten, en een luisteraar op
-de USB-dasspeldmicrofoon.
+**Original design, unchanged:** see [pi/](pi/): an install script for a fresh
+Raspberry Pi OS Lite 64-bit, two systemd services, and a listener on the USB
+lavalier microphone.
 
-Er is niets gewijzigd in [brein/](brein/) — dat blijft het testbed op de Mac.
-`pi/web.py` onderschept alleen de bindkeuze zodat de webinterface vanaf je
-telefoon bereikbaar is.
+Nothing was changed in [brain/](brain/) — that stays the test bed on the Mac.
+`pi/web.py` only intercepts the bind choice so that the web interface is
+reachable from your phone.
 
-Het luisteren gaat **op een gebeurtenis, niet op een timer**: geluid na stilte,
-met een drempel die de kamer volgt (de stilste tien procent van de afgelopen
-minuut is de ruisvloer, aanslaan bij 12 dB daarboven). Dat werkt zonder dat de
-Pi iets van de versterker hoeft te weten, en dat is noodzaak: de SR7015 laat
-maar één telnet-sessie toe en die is van het CrowPanel.
+Listening happens **on an event, not on a timer**: sound after silence, with a
+threshold that follows the room (the quietest ten per cent of the past minute is
+the noise floor, trigger at 12 dB above it). That works without the Pi having to
+know anything about the amplifier, and that is a necessity: the SR7015 allows
+only one telnet session and it belongs to the CrowPanel.
 
-Eén ding dat bij het uitproberen bovenkwam en makkelijk mis te gaan was: de
-drempels lopen op een **klok die geluid telt, geen wandtijd**. Met `time.time()`
-kan een hapering van `arecord` een kant overslaan of juist midden in een plaat
-opnieuw laten vragen.
+One thing that came up while trying it and would have been easy to get wrong:
+the thresholds run on a **clock that counts audio, not wall time**. With
+`time.time()` a hiccup in `arecord` can skip a side, or ask again in the middle
+of a record.
 
-De referentieopnames lopen zo automatisch via dezelfde microfoon op dezelfde
-plek, waardoor kamerakoestiek en luidsprekerkleuring tegen elkaar wegvallen.
+The reference recordings then automatically run through the same microphone in
+the same place, so room acoustics and speaker colouration cancel out.
 
-## Fase 5 — Paneel en Pi aan elkaar ✅
+## Phase 5 — Panel and Pi joined up ✅
 
-**Werkt sinds 2 augustus 2026.** Het paneel haalt elke vier seconden bij de Pi
-op wat er speelt, toont artiest en album, en de hoes erbij.
+**Working since 2 August 2026.** The panel fetches what is playing from the Pi
+every four seconds, shows artist and album, and the sleeve with it.
 
-Keuze die het meeste bepaalde: **HTTP over wifi, niet serieel.** De USB-kabel
-draagt wel degelijk een seriële verbinding (`/dev/ttyACM0`, nagemeten), maar die
-gebruiken vraagt een eigen protocol met framing, een seriële client op de Pi, en
-het opgeven van de monitor waarmee dit paneel te volgen is. Het paneel zit al op
-wifi — dat moet, voor telnet — en de Pi serveert al HTTP. Eén GET volstaat.
+The choice that decided the most: **HTTP over Wi-Fi, not serial.** The USB cable
+does carry a serial connection (`/dev/ttyACM0`, verified), but using it would
+need a protocol of its own with framing, a serial client on the Pi, and giving
+up the monitor this panel is followed with. The panel is on Wi-Fi already — it
+has to be, for telnet — and the Pi already serves HTTP. One GET is enough.
 
 | | |
 |---|---|
-| `GET /nu` | artiest, album, of er een hoes klaarstaat, hoeveel er te koppelen valt |
-| `GET /hoes` | de hoes, door de Pi teruggebracht tot 240×240 (~9 kB) |
-| `POST /luister` | het paneel vraagt om een opzoeking |
+| `GET /now` | artist, album, whether a sleeve is waiting, how much there is to link |
+| `GET /artwork` | the sleeve, brought down to 240×240 by the Pi (~9 kB) |
+| `POST /listen` | the panel asks for a lookup |
 
-Drie dingen die daarbij opvielen:
+Three things that stood out:
 
-- **De Pi schaalt de hoes, niet het paneel.** Een ESP32 die een JPEG van 600
-  pixels moet verkleinen kost geheugen en tijd die hij niet heeft; de Pi doet
-  het in tientallen milliseconden met Pillow, en het paneel decodeert één op één
-  in een buffer die het vooraf kan reserveren.
-- **De QR-code dringt zich niet op.** Er staat een stipje op het volumescherm
-  als er iets te koppelen valt; tikken op de hoes brengt je naar de code. Een
-  scherm dat zichzelf naar voren duwt terwijl je aan de volumeknop draait is
-  precies wat je niet wilt.
-- **Het paneel lokt een opzoeking uit** zodra de ingang naar je favoriet gaat.
-  Dat is het moment waarop je de naald neerzet, en het scheelt de Pi het wachten
-  tot hij het zelf hoort.
+- **The Pi scales the sleeve, not the panel.** An ESP32 that has to shrink a
+  600-pixel JPEG costs memory and time it does not have; the Pi does it in tens
+  of milliseconds with Pillow, and the panel decodes one to one into a buffer it
+  can reserve in advance.
+- **The QR code does not impose itself.** There is a dot on the volume screen
+  when there is something to link; tapping the sleeve takes you to the code. A
+  screen that pushes itself forward while you are turning the volume knob is
+  exactly what you do not want.
+- **The panel provokes a lookup** as soon as the input goes to your favourite.
+  That is the moment you put the needle down, and it saves the Pi waiting until
+  it hears it itself.
 
-Bijvangst: [crowpanel/flash-via-pi.sh](crowpanel/flash-via-pi.sh) flasht het
-paneel over het netwerk via de Pi. De kabel hoeft niet meer heen en weer, want
-esptool zet de S3 zelf in de bootloader over zijn native USB.
+A by-product: [crowpanel/flash-via-pi.sh](crowpanel/flash-via-pi.sh) flashes the
+panel over the network through the Pi. The cable no longer has to travel back
+and forth, because esptool puts the S3 into the bootloader itself over its
+native USB.
 
-## Fase 5b — De wachtrij en de webinterface ✅
+## Phase 5b — The queue and the web interface ✅
 
-**Draait op de Pi.** Zie [brein/](brein/): luisteren met eerst de eigen
-database en dan pas een dienst, beide motoren naast elkaar,
-Discogs-collectie synchroniseren en doorzoeken, de koppelwachtrij met
-geluidsfragmenten, zelf invoeren met een eigen hoes, en een "dit klopt
-niet"-knop. Dezelfde code gaat straks op de Pi draaien; dan komt de opname van
-de USB-microfoon in plaats van uit de browser.
+**Running on the Pi.** See [brain/](brain/): listening with the own database
+first and only then a service, both engines side by side, syncing and searching
+the Discogs collection, the linking queue with audio clips, entering something
+by hand with your own sleeve, and a "that is wrong" button. The same code later
+runs on the Pi; the recording then comes from the USB microphone instead of the
+browser.
 
-Wat er nog moet: de QR-code op het scherm van het CrowPanel, en het eindpunt
-waarmee het paneel om een opzoeking vraagt.
+What still has to happen: the QR code on the CrowPanel's screen, and the
+endpoint the panel asks for a lookup with.
 
-Onherkende kanten belanden in een wachtrij met hun geluidsfragment. In de
-webinterface koppel je die aan een Discogs-release of upload je zelf een hoes;
-daarna herkent het apparaat ze zelf, zonder dienst. Zo groeit de lokale
-database precies daar waar Shazam tekortschiet.
+Unrecognised sides land in a queue with their audio clip. In the web interface
+you link those to a Discogs release, or upload a sleeve yourself; after that the
+device recognises them on its own, without a service. That way the local
+database grows precisely where Shazam falls short.
 
-Mislukt een opzoeking, dan blijft de Pi nog 60-90 seconden doorluisteren. Acht
-seconden is genoeg om het te vrágen, maar te weinig als eigen referentie: dan
-dek je acht seconden van een kant van twintig minuten.
+When a lookup fails, the Pi keeps listening for another 60-90 seconds. Eight
+seconds is enough to *ask* with, but too little as a reference of your own: that
+covers eight seconds of a twenty-minute side.
 
-Naar die webinterface toe: een **QR-code op het scherm** met het IP-adres
-eronder in gewone cijfers. Hij verschijnt op het moment dat er iets te koppelen
-valt — dan is het ook precies het moment waarop je je telefoon pakt.
+Getting to that web interface: a **QR code on the screen** with the address
+below it in plain digits. It appears the moment there is something to link — and
+that is exactly the moment you reach for your phone.
 
-## Fase 6 — De collectiebladeraar ✅
+## Phase 6 — The collection browser ✅
 
-Drie hoezen op een rij, de knop als positie, de sprongindex als letterring langs
-de binnenrand. Tik op de hoes om erin te komen, druk om eruit te gaan; draaien
-bladert, ingedrukt draaien springt per letter.
+Three sleeves in a row, the knob as the position, the jump index as a ring of
+letters along the inner rim. Tap the sleeve to get in, press to get out; turning
+browses, turning while held jumps by letter.
 
-**Kiezen doet twee dingen, afhankelijk van wat er speelt.**
+**Choosing does two things, depending on what is playing.**
 
-Draait er een plaat die niet herkend werd, dan is kiezen een **koppeling**. Het
-brein hangt jouw keuze aan die luisterbeurt én legt het bewaarde fragment vast
-als vingerafdruk, waarna dezelfde kant voortaan lokaal herkend wordt zonder
-dienst. Dat is precies de les die alleen jij kunt geven, en dit is het moment
-waarop je hem kunt geven: met de naald er nog in en de hoes in je hand, in
-plaats van 's avonds met je telefoon door een wachtrij. De kop van het scherm
-zegt dan **KOPPEL AAN WAT SPEELT**, want je hoort te weten dat je iets vastlegt.
+If a record is playing that was not recognised, choosing is a **link**. The
+brain hangs your choice on that listen *and* enrols the stored clip as a
+fingerprint, after which the same side is recognised locally from then on
+without a service. That is exactly the lesson only you can teach, and this is
+the moment you can teach it: with the needle still down and the sleeve in your
+hand, instead of working through a queue on your phone in the evening. The head
+of the screen then reads **LINK TO WHAT IS PLAYING**, because you ought to know
+you are recording something.
 
-Speelt er niets bijzonders, dan is kiezen alleen "laat zien": de hoes komt
-schermvullend terug. Opleggen kan dit apparaat niet. Die keuze blijft staan tot
-het brein iets anders meldt — zet je daarna werkelijk een plaat op, dan wint de
-herkenning. Wat er klinkt is waarheid, wat je aanwees was een keuze.
+If nothing particular is playing, choosing is only "show me": the sleeve comes
+back filling the screen. Putting it on is not something this device can do. That
+choice stands until the brain reports something else — put a record on shortly
+after and recognition wins. What sounds is truth, what you pointed at was a
+choice.
 
-De Pi houdt daarvoor bij welke opzoeking nog openstaat (`open_play_id`). Die
-vervalt bij een geslaagde herkenning en na vijf minuten stilte, want dan hoort
-wat je aanwijst niet meer bij wat je hoorde. Koppelen gebeurt alleen aan een
-album dat werkelijk in de kast staat: een koppeling is blijvend en zet een
-vingerafdruk vast, dus die maak je niet op goed vertrouwen.
+For that the Pi keeps track of which lookup is still open (`open_play_id`). It
+expires on a successful recognition and after five minutes of silence, because
+by then what you point at no longer belongs to what you heard. Linking only
+happens to an album that really is on the shelf: a link is permanent and fixes a
+fingerprint, so you do not make one on trust.
 
-Tijdens het springen per letter komt die letter groot in beeld, in Montserrat op
-130 pixels. Daar is een eigen lettertype voor gegenereerd (`font_kastletter.c`,
-alleen A-Z en `#`, 52 kB flash): LVGL levert Montserrat tot 48 px en dat is op
-een scherm van 480 te klein om tijdens het draaien te lezen. De ring blijft
-klein — die laat zien wáár je bent, de grote letter waar je naartoe gaat.
+While jumping by letter that letter comes up large on screen, in Montserrat at
+130 pixels. A font was generated for it (`font_shelf_letter.c`, only A-Z and
+`#`, 52 kB of flash): LVGL supplies Montserrat up to 48 px and on a 480-pixel
+screen that is too small to read while turning. The ring stays small — that
+shows *where* you are, the large letter where you are going.
 
-De verdeling is dezelfde als overal: de Pi weet, het paneel toont. De namen komen
-in één keer binnen via `/kast` — 25 kB platte tekst, want 40 kB JSON ontleden
-kost een ESP32 seconden en regels splitsen op een tab bijna niets. De hoezen
-komen per stuk via `/kasthoes`, op maat gemaakt door de Pi, en alleen die van de
-drie die in beeld staan; er passen er negen in het geheugen zodat heen en weer
-draaien over dezelfde plek niets kost.
+The division is the same as everywhere: the Pi knows, the panel shows. The names
+arrive in one go through `/shelf` — 25 kB of flat text, because parsing 40 kB of
+JSON costs an ESP32 seconds and splitting lines on a tab almost nothing. The
+sleeves come one at a time through `/shelfcover`, made to size by the Pi, and
+only for the three on screen; nine fit in memory so that turning back and forth
+over the same spot costs nothing.
 
-Ophalen gebeurt nooit tijdens het draaien: de tekst schuift meteen mee, de
-hoezen komen na als je tweehonderd milliseconden stilhoudt. Een knop die per
-stap op het netwerk staat te wachten voelt kapot, ook al is er niets mis.
+Fetching never happens while you are turning: the text moves with you at once,
+the sleeves follow when you hold still for two hundred milliseconds. A knob that
+waits on the network every step feels broken, even when nothing is wrong.
 
-Alle drie de hoezen zijn even groot. Dat scheelt werk: was het middelste plaatje
-groter, dan zou één stap drie nieuwe plaatjes vergen in plaats van één. Welke de
-huidige is zie je aan de rand eromheen en aan de titel eronder.
+All three sleeves are the same size. That saves work: were the middle one
+larger, one step would need three new pictures instead of one. Which is the
+current one you can see from the border around it and the title underneath.
 
-Sinds de hoes naar de kast leidt heeft de QR-code voor het koppelen een eigen
-aanraakvlak gekregen rond het stipje — tien pixels raak je niet met een vinger.
+Since the sleeve leads to the shelf, the QR code for linking has been given a
+touch area of its own around the dot — you do not hit ten pixels with a finger.
 
 ---
 
-## Wat overkomt uit versie 1
+## What carries over from version 1
 
-Versie 1 blijft zelfstandig werken en is geen weggooiwerk. Direct herbruikbaar:
+Version 1 keeps working on its own and is not throwaway work. Directly reusable:
 
-- het protocol (`MV`/`SI`/`MU`/`ZM`, `dB = waarde - 80`, halve stappen, `MVMAX`)
-- dat de receiver ongevraagd pusht, dus geen polling nodig
-- de quadratuur-decoder en de `encDivider`-gedachte, om de stapgrootte per klik
-  af te stemmen
-- het uitstel van 250 ms bij ingangkeuze
-- de rolverdeling: apparaat toont, webinterface configureert
+- the protocol (`MV`/`SI`/`MU`/`ZM`, `dB = value - 80`, half steps, `MVMAX`)
+- that the receiver pushes unasked, so no polling is needed
+- the quadrature decoder and the `encDivider` idea, to tune the step size per
+  click
+- the 250 ms delay on an input choice
+- the division of labour: the device shows, the web interface configures
 
-En de twee randvoorwaarden: Netwerkbesturing op "Altijd aan", en één
-telnet-sessie tegelijk.
+And the two conditions: Network Control on "Always On", and one telnet session
+at a time.
