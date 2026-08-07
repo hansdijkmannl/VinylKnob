@@ -38,7 +38,7 @@
 static Touch pending = Touch::None;
 
 // -- the layers -------------------------------------------------------------
-static lv_obj_t *lyNow, *lyInputs, *lyBrowse, *lyQr, *lyMsg;
+static lv_obj_t *lyNow, *lyInputs, *lyBrowse, *lyQr, *lyMsg, *lySet;
 static lv_obj_t *arc, *lblVol, *lblTitle, *lblArtist, *lblInput, *lblMute, *discNoArtwork;
 static lv_obj_t *lblSource, *lblHot;
 static lv_obj_t *imgArtwork, *scrim, *plateCentre, *plateBottom, *lblNoArtwork, *linkDot, *listenButton;
@@ -58,6 +58,7 @@ static lv_obj_t *lblShelfLetter, *letterVeil;
 LV_FONT_DECLARE(font_shelf_letter);
 static lv_obj_t *lblQrIp, *lblQrHost, *lblQrHead, *qr;
 static lv_obj_t *lblMsgHead, *lblMsgText;
+static lv_obj_t *lblSetHead, *lblSetBody, *lblSetHint, *lblSetBig, *setArc;
 
 // LVGL draws into PSRAM: two full screens of 480x480x2 = 460 kB each, the way
 // Elecrow does it. Smaller buffers in internal memory are faster, but this is
@@ -569,7 +570,7 @@ void uiBegin() {
 
   // -- layer 4: linking ------------------------------------------------------
   lyQr = makeLayer();
-  lblQrHead = makeLabel(lyQr, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0, -130);
+  lblQrHead = makeLabel(lyQr, &lv_font_montserrat_20, COL_ACCENT, LV_ALIGN_CENTER, 0, -132);
   lv_label_set_text(lblQrHead, "UNKNOWN RECORD");
   qr = lv_qrcode_create(lyQr, 168, lv_color_hex(0x101014), lv_color_white());
   lv_obj_align(qr, LV_ALIGN_CENTER, 0, -14);
@@ -580,7 +581,36 @@ void uiBegin() {
   lv_label_set_text(lblQrHost, "scan to link it");
   makeTappable(lyQr, Touch::Dismiss);
 
-  // -- layer 5: messages (setup, no receiver) --------------------------------
+  // -- layer 5: settings -----------------------------------------------------
+  // Its own layer rather than borrowing the message screen: this one is read
+  // from a metre away while you stand there, so everything on it is a size up
+  // and in full white instead of the grey used for asides. The only grey left
+  // is the bottom line, which says what the knob does — that is genuinely an
+  // aside, and it is the same line on every page.
+  lySet = makeLayer();
+  lblSetHead = makeLabel(lySet, &lv_font_montserrat_20, COL_ACCENT, LV_ALIGN_CENTER, 0, -120);
+  lblSetBig  = makeLabel(lySet, &lv_font_montserrat_48, COL_TEXT,   LV_ALIGN_CENTER, 0,  -30);
+  lblSetBody = makeLabel(lySet, &lv_font_montserrat_20, COL_TEXT,   LV_ALIGN_CENTER, 0,   10);
+  lv_obj_set_style_text_align(lblSetBody, LV_TEXT_ALIGN_CENTER, 0);
+  lblSetHint = makeLabel(lySet, &lv_font_montserrat_14, COL_DIM,    LV_ALIGN_CENTER, 0,  128);
+  lv_obj_set_style_text_align(lblSetHint, LV_TEXT_ALIGN_CENTER, 0);
+
+  // The same ring the volume uses, for the same reason: on a round screen the
+  // rim is the one place a quantity can sit without crowding the words.
+  setArc = lv_arc_create(lySet);
+  lv_obj_set_size(setArc, 456, 456);
+  lv_obj_center(setArc);
+  lv_arc_set_bg_angles(setArc, ARC_START, ARC_END);
+  lv_arc_set_range(setArc, 0, 100);
+  lv_obj_remove_style(setArc, NULL, LV_PART_KNOB);
+  lv_obj_clear_flag(setArc, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_arc_width(setArc, 10, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(setArc, 10, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(setArc, lv_color_hex(COL_TRACK), LV_PART_MAIN);
+  lv_obj_set_style_arc_color(setArc, lv_color_hex(COL_ACCENT), LV_PART_INDICATOR);
+  makeTappable(lySet, Touch::Dismiss);
+
+  // -- layer 6: messages (setup, no receiver) --------------------------------
   lyMsg = makeLayer();
   lblMsgHead   = makeLabel(lyMsg, &lv_font_montserrat_20, COL_ACCENT,  LV_ALIGN_CENTER, 0, -40);
   lblMsgText = makeLabel(lyMsg, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0,  10);
@@ -593,7 +623,7 @@ void uiBegin() {
 
 // ---------------------------------------------------------------------------
 static void show(lv_obj_t *which) {
-  lv_obj_t *alle[] = {lyNow, lyInputs, lyBrowse, lyQr, lyMsg};
+  lv_obj_t *alle[] = {lyNow, lyInputs, lyBrowse, lyQr, lyMsg, lySet};
   for (lv_obj_t *o : alle) {
     if (o == which) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
     else            lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
@@ -889,61 +919,87 @@ void uiRender(const UiState &s) {
     // back. Every page says what the knob does, because there is nothing else
     // here to tell you.
     case Screen::Settings: {
-      switch (s.settingsPage) {
-        case SETTINGS_WEB: {
-          show(lyQr);
-          // The web interface lives on the Pi when there is one; before that,
-          // this panel's own page is the only thing to point at — and it is
-          // where you set the receiver's address anyway.
-          const bool viaPi = s.brainHost[0] != '\0';
-          char address[64];
-          snprintf(address, sizeof(address), "http://%s",
-                   viaPi ? s.brainHost : s.ip);
-          lv_label_set_text(lblQrHead, viaPi ? "WEB INTERFACE" : "THIS PANEL");
-          lv_qrcode_update(qr, address, strlen(address));
-          lv_label_set_text(lblQrIp, viaPi ? s.brainHost : s.ip);
-          lv_obj_set_style_text_color(lblQrIp, lv_color_hex(COL_TEXT), 0);
-          // The panel's own address always, even when the QR points at the Pi:
-          // that is the one you need when the Pi is the thing that is broken.
-          lv_label_set_text_fmt(lblQrHost, viaPi ? "panel at %s" : "scan it", s.ip);
-          break;
-        }
+      const bool bright = s.settingsPage == SETTINGS_BRIGHT;
 
+      if (s.settingsPage == SETTINGS_WEB) {
+        show(lyQr);
+        // One address, not two. The panel's own page is reachable through the
+        // web interface anyway, and a screen offering you a choice of addresses
+        // when you asked "where do I go" is a screen that answered a different
+        // question.
+        const bool viaPi = s.brainHost[0] != '\0';
+        char address[64];
+        snprintf(address, sizeof(address), "http://%s", viaPi ? s.brainHost : s.ip);
+        lv_label_set_text(lblQrHead, viaPi ? "WEB INTERFACE" : "THIS PANEL");
+        lv_qrcode_update(qr, address, strlen(address));
+        lv_label_set_text(lblQrIp, viaPi ? s.brainHost : s.ip);
+        lv_obj_set_style_text_color(lblQrIp, lv_color_hex(COL_TEXT), 0);
+        lv_label_set_text(lblQrHost, "turn for more, press to close");
+        break;
+      }
+
+      show(lySet);
+      // The ring only where there is a quantity to put on it.
+      if (bright) {
+        lv_arc_set_value(setArc, s.brightness);
+        lv_obj_clear_flag(setArc, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(setArc, LV_OBJ_FLAG_HIDDEN);
+      }
+      // And the big number only next to that ring; everywhere else the body
+      // text is what you came to read.
+      if (bright) lv_obj_clear_flag(lblSetBig, LV_OBJ_FLAG_HIDDEN);
+      else        lv_obj_add_flag(lblSetBig, LV_OBJ_FLAG_HIDDEN);
+
+      switch (s.settingsPage) {
         case SETTINGS_WIFI:
-          show(lyMsg);
-          lv_label_set_text(lblMsgHead, "WI-FI");
-          lv_label_set_text_fmt(lblMsgText, "%s\n%s\n%d dBm\n\nturn for more, press to close",
+          lv_label_set_text(lblSetHead, "WI-FI");
+          lv_label_set_text_fmt(lblSetBody, "%s\n%s\n%d dBm",
                                 s.wifiSsid[0] ? s.wifiSsid : "not set",
                                 s.ip[0] ? s.ip : "no address", s.rssi);
           break;
 
         case SETTINGS_PI:
-          show(lyMsg);
-          lv_label_set_text(lblMsgHead, "THE PI");
-          lv_label_set_text_fmt(lblMsgText, "%s\n%s\n\nturn for more, press to close",
+          lv_label_set_text(lblSetHead, "THE PI");
+          lv_label_set_text_fmt(lblSetBody, "%s\n%s",
                                 s.brainHost[0] ? s.brainHost : "not found yet",
                                 s.brainUp ? "answering" : "no answer");
           break;
 
         case SETTINGS_AVR:
-          show(lyMsg);
-          lv_label_set_text(lblMsgHead, "RECEIVER");
-          lv_label_set_text_fmt(lblMsgText, "%s\n%s\n%s\n\nturn for more, press to close",
+          lv_label_set_text(lblSetHead, "RECEIVER");
+          lv_label_set_text_fmt(lblSetBody, "%s\n%s\n%s",
                                 settings.avrHost[0] ? settings.avrHost : "no address set",
                                 s.inputLabel[0] ? s.inputLabel : "-",
                                 s.powered ? "on" : "off");
           break;
 
         case SETTINGS_BRIGHT:
-          show(lyMsg);
-          lv_label_set_text(lblMsgHead, "BRIGHTNESS");
-          lv_obj_set_style_text_color(lblMsgHead,
-              lv_color_hex(s.settingsAdjust ? COL_ACCENT : COL_ACCENT), 0);
-          lv_label_set_text_fmt(lblMsgText, "%d%%\n\n%s", s.brightness,
-                                s.settingsAdjust ? "turn to change, press to keep"
-                                                 : "press to change it");
+          lv_label_set_text(lblSetHead, "BRIGHTNESS");
+          lv_label_set_text_fmt(lblSetBig, "%d%%", s.brightness);
+          lv_label_set_text(lblSetBody, "");
+          break;
+
+        case SETTINGS_CLOSE:
+          lv_label_set_text(lblSetHead, "CLOSE");
+          lv_label_set_text(lblSetBody, "back to the volume");
           break;
       }
+
+      // What the knob does, in the same place every time. On the brightness
+      // page it is two different things depending on whether you have taken
+      // hold of it yet, and that is exactly the bit that needs saying out loud:
+      // one press to take it, turn, one press to give it back.
+      if (bright && s.settingsAdjust)
+        lv_label_set_text(lblSetHint, "turn to change  ·  press when it is right");
+      else if (bright)
+        lv_label_set_text(lblSetHint, "press once, then turn to change it");
+      else if (s.settingsPage == SETTINGS_CLOSE)
+        lv_label_set_text(lblSetHint, "press to go back");
+      else
+        lv_label_set_text(lblSetHint, "turn for more, press to close");
+      lv_obj_set_style_text_color(lblSetHint,
+          lv_color_hex(bright && s.settingsAdjust ? COL_ACCENT : COL_DIM), 0);
       break;
     }
 

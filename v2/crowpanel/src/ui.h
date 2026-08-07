@@ -22,6 +22,7 @@
 // address, because that is the one you came for.
 enum SettingsPage : uint8_t {
   SETTINGS_WEB = 0, SETTINGS_WIFI, SETTINGS_PI, SETTINGS_AVR, SETTINGS_BRIGHT,
+  SETTINGS_CLOSE,
   SETTINGS_PAGES
 };
 

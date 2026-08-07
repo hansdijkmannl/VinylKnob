@@ -32,12 +32,16 @@ your collection, the panel's settings, and the system.
 
 Getting to it is the awkward part on a device with no keyboard, so the panel
 tells you itself: at the bottom of the input list is **Settings**, and its first
-page is a QR code to the web interface with the address written underneath. Turn
-for the Wi-Fi it is on, the Pi, the receiver, and the brightness; press to
-close. The same page appears by itself the moment Wi-Fi comes up, which is when
-you need it and cannot look it up anywhere else. It is also the one screen that
-stays reachable when there is no receiver or no network — a press of the knob
-gets you there — because those are exactly the moments you want an address.
+page is a QR code with the address written underneath. Turn for the Wi-Fi it is
+on, the Pi, the receiver, the brightness, and a way back; press to close. On the
+brightness page one press hands the knob over, and it says so — the level fills
+the same ring the volume uses, so you set it by feel rather than by reading a
+number.
+
+That page appears by itself the moment Wi-Fi comes up, which is when you need it
+and cannot look it up anywhere else. It is also the one screen that stays
+reachable when there is no receiver or no network — a press of the knob gets you
+there — because those are exactly the moments you want an address.
 
 ## What you need
 

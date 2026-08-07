@@ -419,11 +419,20 @@ experiment could not strand anything.
 That fix needed somewhere to say "here is the address", and the address turns
 out to be the thing you can never look up at the moment you need it: standing at
 the shelf, just after setup, with no idea what the router handed out. So there
-is a settings screen — a QR to the web interface with the address written under
-it, then the Wi-Fi, the Pi, the receiver, and the brightness. Turn to page,
-press to close; on the brightness page press hands the knob over and press again
-gives it back, and each page says which of the two it is, because there is
-nothing else on this device to tell you.
+is a settings screen — a QR with the address written under it, then the Wi-Fi,
+the Pi, the receiver, the brightness, and a way back. Turn to page, press to
+close.
+
+Three corrections came straight from standing in front of it. It showed two
+addresses, this panel's and the Pi's, which is a screen answering a different
+question than the one you asked — the panel's own page is reachable through the
+web interface anyway, so one address it is. Everything was set in the sizes used
+for asides, fourteen point and grey, where this is read from a metre away while
+you stand there; it went up a size and into full white, and the only grey left
+is the one line that says what the knob does. And the brightness needed a press
+before turning would do anything, which nothing on screen said: it says it now,
+and the level fills the same ring the volume uses, because a quantity you set by
+feel should not be a number you read.
 
 Three things about where it lives:
 
