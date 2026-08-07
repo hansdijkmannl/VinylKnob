@@ -94,20 +94,8 @@ static bool atvPost(const char *path) {
   return code == HTTP_CODE_OK;
 }
 
-bool atvKey(const char *name) {
-  char path[64];
-  snprintf(path, sizeof(path), "/appletv/key?name=%s", name);
-  return atvPost(path);
-}
-
 bool atvPower(bool on) {
   return atvPost(on ? "/appletv/power?on=1" : "/appletv/power?on=0");
-}
-
-bool atvLaunch(const char *bundleId) {
-  char path[128];
-  snprintf(path, sizeof(path), "/appletv/launch?id=%s", bundleId);
-  return atvPost(path);
 }
 
 void brainLoop() {

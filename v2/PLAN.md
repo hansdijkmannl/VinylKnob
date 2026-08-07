@@ -447,53 +447,54 @@ Three things about where it lives:
   you go looking for an address. A press of the knob on either of them opens it,
   because on those screens there is nothing to mute and no list to confirm.
 
-## Phase 11 — The Apple TV, within limits ✅
+## Phase 11 — The Apple TV, built and then taken back out ✅
 
-**7 August 2026.** The Pi has been paired with the Apple TV for a week, over
+**7 August 2026.** The Pi had been paired with the Apple TV for a week, over
 AirPlay for the now-playing and Companion for the connection that carries it.
-Companion is also what a remote control speaks, so the ability was already
-there and simply unused.
+Companion is also what a remote speaks, so the ability was there and unused.
 
-Measured before deciding anything: a key press over that connection is a median
-of **11 ms** and a worst case of 26; through the Pi's own HTTP endpoint it is
-about 20 ms end to end. That settles the question the design was waiting on —
-the knob may send one press per click with no smoothing, no batching and no
-local prediction.
+Measured first, which is the only part of this that was never in doubt: a key
+press over that connection is a median of **11 ms** and a worst case of 26;
+about 20 ms through an HTTP endpoint on the Pi. Fast enough to send one press
+per click of the knob with no smoothing, no batching and no local prediction.
 
-What it does was chosen by asking what the remote on the sofa is bad at, and the
-answer is *starting things*. So the panel gets the app launcher: the shelf's own
-carousel with the Apple TV's 24 apps in it, turn and press and you are in. 15 of
-them have a logo, fetched from the same public App Store endpoint the
-now-playing screen already used; Apple's own apps are not in the store and get
-their initial instead, which is honest and still reads from the sofa.
+So it was built. A launcher with the 24 installed apps in the shelf's own
+carousel, 15 of them with a logo from the same App Store endpoint the
+now-playing screen already used and the rest showing their initial. A blind
+remote after that — turning sends left and right, a press selects, a long press
+goes back, and you look at the television, which is the only thing that knows
+what is focused. Pause instead of mute while watching. Waking on choosing the
+input and sleeping on switching off.
 
-After that the panel is blind, and says so rather than pretending otherwise.
-Nothing reports back what is focused over there, so turning sends left and
-right, a press selects, a long press goes back, and you look at the television.
-The moment something plays the knob is a volume knob again on the ordinary
-now-playing screen, where a press pauses rather than mutes — you are watching,
-not listening.
+**And then it came out again, at the owner's word: the real remote is nicer.**
 
-Three things that came out of building it:
+That was the risk named before a line of it was written — that it becomes a
+second remote control worse than the first, which is already lying on the sofa —
+and the answer to "what is this better at" turned out to be thinner in the hand
+than on paper. Skipping the navigating is a real gain right up until you notice
+you have swapped a device with buttons under your thumb for one you have to look
+at.
 
-- **The long press became the one back control**, everywhere, which is the
-  CarPlay rule for exactly this hardware and the one we followed worst: a BACK
+What stayed is the part with no competition: choosing the Apple TV's input wakes
+it, and switching everything off puts it to sleep. Two things always done
+together and no reason for them to stay two, on the one device here with no
+light and no fan to tell you it is still on.
+
+Three things outlived the removal, and they are why the afternoon was not
+wasted:
+
+- **The long press became the one back control**, everywhere. That is the
+  CarPlay rule for exactly this hardware and the one we followed worst — a BACK
   button in the shelf, a CLOSE page in the settings, a press elsewhere, a tap on
-  the glass somewhere else again. It could be freed because the amplifier toggle
-  it used to carry is already at the bottom of the input list. On the volume
-  screen, where there is nowhere to go back to, it keeps the old job.
+  the glass somewhere else again. It could be freed because switching off lives
+  in the input list, which is also where you now land coming out of standby:
+  record or Apple TV is the question at that moment, not how loud.
+- **The gesture that wakes the screen must not also act.** It hardly mattered
+  while waking landed on the volume, where the worst a press did was mute. On
+  the input list a press means "this one".
 - **Companion reports success for any bundle identifier**, installed or not, so
-  a typo launched nothing and said it worked. The identifier is checked against
-  the installed list first, which was already in hand.
-- **The launcher is ours, the rest is not.** Turning in the launcher moves a
-  list we hold, instantly; turning in an app sends a key. Same gesture, and the
-  difference is which screen you are looking at — which is the rule the whole
-  thing is built on.
-
-Deliberately absent: a keyboard on a 480-pixel round screen, any attempt to beat
-Netflix's own menu, the Apple TV's own volume (the knob is the receiver's, and
-two volumes on one knob is a confusion you never get out of), and Siri, which is
-not in what the connection offers.
+  a typo launched nothing and said it had worked. Worth knowing about a protocol
+  that is otherwise unusually well behaved.
 
 ---
 

@@ -20,7 +20,6 @@
 #include "config.h"
 #include "artwork.h"
 #include "shelf.h"
-#include "apps.h"
 #include "settings.h"
 #include "ui.h"
 
@@ -39,7 +38,7 @@
 static Touch pending = Touch::None;
 
 // -- the layers -------------------------------------------------------------
-static lv_obj_t *lyNow, *lyInputs, *lyBrowse, *lyQr, *lyMsg, *lySet, *lyApps;
+static lv_obj_t *lyNow, *lyInputs, *lyBrowse, *lyQr, *lyMsg, *lySet;
 static lv_obj_t *arc, *lblVol, *lblTitle, *lblArtist, *lblInput, *lblMute, *discNoArtwork;
 static lv_obj_t *lblSource, *lblHot;
 static lv_obj_t *imgArtwork, *scrim, *plateCentre, *plateBottom, *lblNoArtwork, *linkDot, *listenButton;
@@ -50,8 +49,6 @@ static lv_obj_t *lblPickHead, *lblPickAbove, *lblPickCurrent, *lblPickBelow;
 // outside it; the ring can never need more places than that.
 #define SHELF_RING_MAX 27
 static lv_obj_t *shelfSlot[3], *shelfThumb[3];
-static lv_obj_t *appSlot[3], *appThumb[3], *appLetter[3];
-static lv_obj_t *lblAppHead, *lblAppName, *lblAppCount;
 static lv_obj_t *lblShelfHead, *lblShelfTitle, *lblShelfArtist, *lblShelfCount;
 static lv_obj_t *shelfBackPlate, *lblShelfBack;
 static lv_obj_t *shelfRing[SHELF_RING_MAX];
@@ -584,52 +581,7 @@ void uiBegin() {
   lv_label_set_text(lblQrHost, "scan to link it");
   makeTappable(lyQr, Touch::Dismiss);
 
-  // -- layer 5: the Apple TV's apps ------------------------------------------
-  // The shelf's layout, deliberately: three tiles, the middle one bright, the
-  // name below. Knowing one of these screens should be knowing both.
-  //
-  // The difference is what fills a tile when there is no picture. A record
-  // always has a sleeve; Apple's own apps are not in the App Store and have no
-  // logo at all, so those get their first letter, large. Better than an empty
-  // square, and it still reads at a glance from the sofa.
-  lyApps = makeLayer();
-  lblAppHead = makeLabel(lyApps, &lv_font_montserrat_14, COL_DIM,
-                         LV_ALIGN_CENTER, 0, -150);
-  lv_label_set_text(lblAppHead, "APPLE TV");
-
-  static const int APP_X[3] = {-144, 0, 144};
-  for (int i = 0; i < 3; i++) {
-    appSlot[i] = lv_obj_create(lyApps);
-    lv_obj_remove_style_all(appSlot[i]);
-    lv_obj_set_size(appSlot[i], APPS_PX + 8, APPS_PX + 8);
-    lv_obj_align(appSlot[i], LV_ALIGN_CENTER, APP_X[i], -14);
-    lv_obj_set_style_radius(appSlot[i], 12, 0);
-    lv_obj_set_style_bg_color(appSlot[i], lv_color_hex(0x1c1c22), 0);
-    lv_obj_set_style_bg_opa(appSlot[i], LV_OPA_COVER, 0);
-    lv_obj_clear_flag(appSlot[i], LV_OBJ_FLAG_SCROLLABLE);
-
-    appThumb[i] = lv_img_create(appSlot[i]);
-    lv_obj_center(appThumb[i]);
-
-    appLetter[i] = lv_label_create(appSlot[i]);
-    lv_obj_center(appLetter[i]);
-    lv_obj_set_style_text_font(appLetter[i], &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(appLetter[i], lv_color_hex(COL_DIM), 0);
-
-    if (i != 1) {
-      lv_obj_set_style_img_recolor(appThumb[i], lv_color_hex(COL_BACKGROUND), 0);
-      lv_obj_set_style_img_recolor_opa(appThumb[i], LV_OPA_50, 0);
-      lv_obj_set_style_text_color(appLetter[i], lv_color_hex(COL_TRACK), 0);
-    }
-  }
-
-  lblAppName  = makeLabel(lyApps, &lv_font_montserrat_20, COL_TEXT,
-                          LV_ALIGN_CENTER, 0, 88);
-  lblAppCount = makeLabel(lyApps, &lv_font_montserrat_14, COL_TRACK,
-                          LV_ALIGN_CENTER, 0, 150);
-  makeTappable(lyApps, Touch::Dismiss);
-
-  // -- layer 6: settings -----------------------------------------------------
+  // -- layer 5: settings -----------------------------------------------------
   // Its own layer rather than borrowing the message screen: this one is read
   // from a metre away while you stand there, so everything on it is a size up
   // and in full white instead of the grey used for asides. The only grey left
@@ -658,7 +610,7 @@ void uiBegin() {
   lv_obj_set_style_arc_color(setArc, lv_color_hex(COL_ACCENT), LV_PART_INDICATOR);
   makeTappable(lySet, Touch::Dismiss);
 
-  // -- layer 7: messages (setup, no receiver) --------------------------------
+  // -- layer 6: messages (setup, no receiver) --------------------------------
   lyMsg = makeLayer();
   lblMsgHead   = makeLabel(lyMsg, &lv_font_montserrat_20, COL_ACCENT,  LV_ALIGN_CENTER, 0, -40);
   lblMsgText = makeLabel(lyMsg, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0,  10);
@@ -671,7 +623,7 @@ void uiBegin() {
 
 // ---------------------------------------------------------------------------
 static void show(lv_obj_t *which) {
-  lv_obj_t *alle[] = {lyNow, lyInputs, lyBrowse, lyQr, lyMsg, lySet, lyApps};
+  lv_obj_t *alle[] = {lyNow, lyInputs, lyBrowse, lyQr, lyMsg, lySet};
   for (lv_obj_t *o : alle) {
     if (o == which) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
     else            lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);

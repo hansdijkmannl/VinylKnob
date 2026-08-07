@@ -16,10 +16,10 @@ anyone.
 | Wake it | the input list: record or Apple TV is the question at that moment, not how loud |
 | Turn | volume; turning faster takes bigger steps |
 | Hold + turn | step through inputs |
-| Short press | mute; on the Apple TV, pause |
+| Short press | mute |
 | Double press | jump to your favourite input |
 | Hold 1 s | back, one level — the same gesture on every screen. From the volume that is the input list |
-| Tap the sleeve | browse your record shelf; **BACK** at the bottom leaves without choosing. On the Apple TV input, the same tap gives you its apps |
+| Tap the sleeve | browse your record shelf; **BACK** at the bottom leaves without choosing |
 | Tap the note | listen now |
 | Tap the input name, turn to **Settings** | where to reach it, what it is talking to, the brightness |
 
@@ -29,27 +29,18 @@ the amplifier does and comes back when it returns.
 
 ## The Apple TV
 
-The Pi is already paired with it — that is where the artist and title come from
-when something plays over HDMI — and the same connection carries commands. So
-the knob can drive it, within limits chosen on purpose.
+The Pi is paired with it — that is where the artist and title come from when
+something plays over HDMI — and the same connection can switch it on and off.
+So choosing the Apple TV's input wakes it, and switching everything off with
+**Turn Off + Amp** puts it back to sleep. Two things you always did together,
+one on the receiver and one with a remote in your other hand, and no reason for
+them to stay two. It is also the one device here with no light and no fan, so
+leaving it awake all night is the thing you forget.
 
-What it does is the part the remote on your sofa is bad at: **starting things**.
-Tap the screen while the receiver is on the Apple TV input and you get its apps,
-three at a time, the same carousel as the record shelf. Turn, press, and you are
-in the app — no walking a grid with a direction pad. Choosing that input also
-wakes the Apple TV, and switching everything off puts it back to sleep.
-
-After that the panel goes blind on purpose. Nothing reports back what is focused
-over there, so it stops pretending: turning sends left and right, a press
-selects, a long press goes back, and you look at the television, which does
-know. The moment something starts playing the knob is a volume knob again and
-the screen is the ordinary now-playing — a press pauses instead of muting,
-because you are watching rather than listening.
-
-What it deliberately is not is a second remote. There is no keyboard on a
-480-pixel round screen, no attempt to beat Netflix's own menu, and no Siri
-button. Set which input the Apple TV is on in the web interface, under the panel
-tab.
+That is all it does, and that is on purpose. A launcher of the installed apps, a
+direction pad, transport on the knob — all of it was built, all of it worked,
+and all of it lost to the remote already lying on the sofa. Set which input the
+Apple TV is on in the web interface, under the panel tab.
 
 There is a web interface at the Pi's address — one page, five tabs: what's
 playing (a live copy of the panel's screen), the queue of unrecognised records,

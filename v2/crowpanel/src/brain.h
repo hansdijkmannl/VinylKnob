@@ -63,10 +63,11 @@ void brainAskLookup();
 
 // -- the Apple TV, through the Pi -------------------------------------------
 // The panel holds no credentials and speaks no Companion; the Pi is paired and
-// already has the connection open for the now-playing. So these are one HTTP
-// call each and the Pi does the rest. Measured end to end on the Pi: a key
-// press is about 20 ms, which is why the knob may send one per click without
-// any smoothing.
-bool atvKey(const char *name);
+// already has the connection open for the now-playing, so this is one HTTP call
+// and the Pi does the rest.
+//
+// Waking and sleeping only. A launcher, a direction pad and transport on the
+// knob were all built here and taken back out again: they lost to the remote
+// already lying on the sofa, which is the honest answer to a question that was
+// worth asking once.
 bool atvPower(bool on);
-bool atvLaunch(const char *bundleId);
