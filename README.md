@@ -193,6 +193,11 @@ laid out and one press each.
   is a deliberate trade-off for a device on your own LAN — there is nothing in
   it more sensitive than your record collection — but do not forward it through
   your router.
+- **It speaks plain HTTP**, and a phone can refuse that. Safari's HTTPS-Only
+  will not open the address the panel's QR code gives you; the setting lives
+  under Settings → Apps → Safari → Advanced, and takes a per-site exception. A
+  self-signed certificate would satisfy the scheme and then fail on the
+  certificate instead, which is not an improvement, so it stays as it is.
 - **Tested against one receiver**, an SR7015. The protocol is shared across the
   Denon and Marantz range, and the code reads the volume ceiling from the device
   instead of hardcoding it, but nobody has confirmed another model yet. If you

@@ -280,6 +280,7 @@ address and the sleeve appears.
 | wrong colours on the screen | Arduino_GFX is not on v1.3.1 — check `pio pkg list` |
 | `vinylknob.local` not found | avahi not up yet; try the IP from your router |
 | one input does nothing, others work | that source is set to `DEL` in the receiver |
+| the QR scans but the phone refuses to open it | Safari's **HTTPS-Only** blocks any `http://` address. Settings -> Apps -> Safari -> Advanced, or add an exception for this one |
 
 ---
 
