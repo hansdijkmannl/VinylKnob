@@ -36,6 +36,7 @@ static void clear() {
   brainState.artist[0] = '\0';
   brainState.title[0]   = '\0';
   brainState.album[0]   = '\0';
+  brainState.trackNo[0] = '\0';
   brainState.app[0]     = '\0';
   // And the question lapses with it: with the Pi gone there is nothing to hang
   // an answer on, so the shelf should not still be narrowed down to three.
@@ -153,6 +154,7 @@ void brainLoop() {
   strlcpy(fresh.artist, doc["artist"] | "", sizeof(fresh.artist));
   strlcpy(fresh.title,   doc["title"]   | "", sizeof(fresh.title));
   strlcpy(fresh.album,   doc["album"]   | "", sizeof(fresh.album));
+  strlcpy(fresh.trackNo, doc["trackNo"] | "", sizeof(fresh.trackNo));
   strlcpy(fresh.app,     doc["app"]     | "", sizeof(fresh.app));
 
   // Which of your records this track is on, when it is on more than one.
@@ -174,6 +176,7 @@ void brainLoop() {
       strcmp(fresh.artist, brainState.artist) != 0 ||
       strcmp(fresh.title,   brainState.title)   != 0 ||
       strcmp(fresh.album,   brainState.album)   != 0 ||
+      strcmp(fresh.trackNo, brainState.trackNo) != 0 ||
       strcmp(fresh.app,     brainState.app)     != 0 ||
       fresh.linkable   != brainState.linkable  ||
       fresh.choiceCount != brainState.choiceCount ||

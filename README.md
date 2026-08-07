@@ -188,6 +188,18 @@ Records are identified three ways, cheapest first:
 Linking by hand is not a chore here. It happens on the knob, while the record is
 still spinning, and every link teaches the local database one more side.
 
+The screen says where on the record you are, briefly, each time the track
+changes: **A4 · Angels**, as the sleeve prints it rather than "track eight of
+eleven". Briefly on purpose — between two tracks on one side nothing else on the
+screen moves, so that is the moment the information is worth having, and a minute
+later you are looking at the record and not at this.
+
+Every play also teaches it more of the side. A record that has been identified
+is sampled again every half minute and those stretches join its fingerprints, so
+one play covers a whole side where it used to take dozens. That is what keeps
+this working without a service: the local database is checked first, and it only
+grows.
+
 A service names the track it heard and then names an album to go with it, and
 that second part is its opinion, not yours: for anything with a hit on it the
 metadata reaches for a compilation. So the Pi asks your own tracklists first —

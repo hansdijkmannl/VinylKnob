@@ -747,6 +747,17 @@ void uiRender(const UiState &s) {
       lv_obj_set_style_text_color(listenButton,
           lv_color_hex(s.listening ? artworkAccent() : COL_TEXT), 0);
 
+      // The track, briefly, when it changes. This is the one thing worth putting
+      // over a sleeve: between two tracks on one side nothing else on the screen
+      // moves, so without it the picture is identical while the music is not.
+      // It uses the source line because that line is empty for a record — an
+      // app name is for the Apple TV — and it goes away by itself.
+      if (s.nowTrack[0] && !s.turning) {
+        lv_label_set_text(lblSource, s.nowTrack);
+        lv_obj_set_style_text_color(lblSource, lv_color_hex(artworkAccent()), 0);
+        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+      }
+
       // Just linked: confirm it briefly. You have recorded something the device
       // remembers permanently, and silently jumping back to the volume is too
       // little acknowledgement of that.

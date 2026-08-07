@@ -52,6 +52,13 @@ static uint32_t ownListenUntil = 0;   // our own tap, until the Pi takes over
 static const uint32_t LETTER_MS = 900;
 static uint32_t letterUntil = 0;
 
+// How long the track stays on screen after it changes. Long enough to read
+// while your hand is still on the knob, short enough not to become furniture on
+// top of a sleeve.
+static const uint32_t TRACK_MS = 5000;
+static uint32_t trackUntil = 0;
+static char     shownTrack[56] = "";
+
 // How long "linked" stays on screen after you hang an album on an unknown
 // record.
 static const uint32_t LINKED_MS = 3000;
@@ -301,6 +308,7 @@ static void refreshUi() {
   ui.shelfLinkable = brainState.canLink;
   ui.shelfNarrowed = shelfNarrowed();
   ui.choiceCount   = userPicked ? 0 : brainState.choiceCount;
+  strlcpy(ui.nowTrack, millis() < trackUntil ? shownTrack : "", sizeof(ui.nowTrack));
   ui.justLinked    = millis() < linkedUntil;
   ui.haveArtwork   = brainState.haveArtwork;
   ui.artworkIsLogo = brainState.artworkIsLogo;
@@ -873,6 +881,17 @@ void loop() {
   static uint32_t lastBrain = 0;
   if (brainState.revision != lastBrain) {
     lastBrain = brainState.revision;
+    // A different track on the same record: say so briefly. The sleeve does not
+    // change between two tracks on one side, so without this the screen looks
+    // identical while what you are hearing is not.
+    if (brainState.trackNo[0] && brainState.title[0]) {
+      char line[56];
+      snprintf(line, sizeof(line), "%s  %s", brainState.trackNo, brainState.title);
+      if (strcmp(line, shownTrack) != 0) {
+        strlcpy(shownTrack, line, sizeof(shownTrack));
+        trackUntil = millis() + TRACK_MS;
+      }
+    }
     // The sleeve belongs to this record; fetch it when a different one comes.
     // It takes a few hundred milliseconds, so exactly once per record.
     if (brainState.haveArtwork) artworkLoad(settings.brainHost, BRAIN_PORT);

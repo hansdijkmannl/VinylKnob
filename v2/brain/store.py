@@ -451,6 +451,22 @@ class Store:
                         (TRACKS_V, release_id))
         self.db.commit()
 
+    def track_on(self, release_id: int, title: str) -> dict | None:
+        """The one entry on this record that a service's answer names.
+
+        Same three ways in as the chooser uses — exact, or with a pressing's
+        qualifier taken off either side — because it is the same question asked
+        of one record instead of all of them.
+        """
+        want, loose = _normalise(title), _bare(title)
+        row = self.db.execute(
+            "SELECT * FROM tracks WHERE release_id = ? AND ("
+            "  norm = ? OR (bare != '' AND bare = ?)"
+            "  OR (? != '' AND norm = ?) OR (? != '' AND bare = ?))"
+            " ORDER BY position LIMIT 1",
+            (release_id, want, want, loose, loose, loose, loose)).fetchone()
+        return dict(row) if row else None
+
     def side_of(self, release_id: int, title: str) -> list:
         """The side a track is on, in running order, with that track marked.
 

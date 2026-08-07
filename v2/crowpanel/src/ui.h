@@ -89,6 +89,12 @@ struct UiState {
   // which. The now-playing screen has to show that it is asking, or the answer
   // never comes: a sleeve that looks settled is one nobody goes and corrects.
   uint8_t  choiceCount    = 0;
+  // The track, as the sleeve prints it: "A4 · Angels". Shown for a few seconds
+  // when it changes and then gone again, because with a sleeve on the screen the
+  // sleeve is the picture and standing text over it takes away from that. At the
+  // moment it changes you want to know; a minute later you are looking at the
+  // record, not at this.
+  char     nowTrack[56]   = "";
   bool     justLinked     = false;   // just linked; confirm briefly
 
   // network

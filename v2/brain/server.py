@@ -39,6 +39,21 @@ PORT = 8790
 store = Store()
 
 
+def track_seen(release_id, title: str) -> dict | None:
+    """Where on the record we are, as the sleeve prints it.
+
+    A service names a track; the sleeve names a side and a number. "A4 · Angels"
+    is what you would say out loud and "track eight of eleven" is not, and the
+    difference is only knowable because the printed position is kept.
+    """
+    if not release_id or not title:
+        return None
+    row = store.track_on(release_id, title)
+    if row is None:
+        return None
+    return {"printed": row["printed"], "title": row["title"], "secs": row["secs"]}
+
+
 def row_to_release(row) -> dict:
     return {
         "id": row["id"],
@@ -98,6 +113,10 @@ async def api_listen(request):
                                  "cover": f"/api/cover/{row['id']}"}],
                     "playId": play_id, "matched": True, "local": found,
                     "release": row_to_release(row),
+                    # Recognised from our own fingerprints, so there is no track
+                    # name in the answer — the offset says where on the side we
+                    # are, and the tracklist can say which track that is.
+                    "track": None,
                 })
 
     results = await recognise.recognise(audio, store.get("audd_token"))
@@ -140,6 +159,8 @@ async def api_listen(request):
     return web.json_response({
         "results": results, "playId": play_id, "matched": True,
         "release": row_to_release(match) if match else None,
+        "track": track_seen(match["id"] if match else None,
+                            hit.get("title") or ""),
         # The records this track is on, when there is more than one. Empty
         # otherwise, so nothing downstream has to care about the common case.
         "choices": [row_to_release(r) for r in choices] if len(choices) > 1 else [],

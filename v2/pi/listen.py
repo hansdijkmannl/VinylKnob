@@ -288,6 +288,8 @@ class Ears:
         self.force = asyncio.Event()
         self.last = "nothing heard yet"
         self.release_id: int | None = None     # artwork from your own shelf
+        # Where on the record we are, as the sleeve prints it: "A4".
+        self.track_no = ""
         self.cover_url: str | None = None       # artwork from the service, second choice
         self.artist = ""                      # separate fields, for the panel
         self.title = ""
@@ -397,6 +399,7 @@ class Ears:
         # belongs to the sound it was recorded from.
         self.open_play_id = None
         self.choices = []
+        self.track_no = ""
         self.learn_at = 0.0
         self.learned = 0
 
@@ -591,15 +594,22 @@ class Ears:
             # screen answers the question with the guess we just rejected, and
             # it looks settled, so nobody ever goes and picks. Name the track
             # instead and let the panel say it is asking.
+            seen = body.get("track") or {}
+            self.track_no = seen.get("printed") or ""
             if self.choices:
                 self.cover_url = None
                 self.album = ""
+                self.track_no = ""        # not settled, so not a position either
             else:
                 self.cover_url = hit.get("cover") or None
                 self.album = (rel["title"] if rel else "") or hit.get("album") or ""
 
         if body.get("matched") and rel:
-            self.last = f"{rel['artist']} — {rel['title']}"
+            # The printed position goes in the line itself, so everything that
+            # shows this line — the page, the log, the status — says where on the
+            # record we are without any of them having to know about sides.
+            where = f" · {self.track_no} {self.title}" if self.track_no else ""
+            self.last = f"{rel['artist']} — {rel['title']}{where}"
         elif body.get("matched") and self.choices:
             self.last = (f"{hit.get('artist','?')} — {hit.get('title','?')} "
                             f"(on {len(self.choices)} of your records — pick one)")
@@ -735,6 +745,7 @@ async def api_now(request):
         "artwork": bool(ears.release_id or ears.cover_url),   # is there anything on /artwork
         "onShelf": ears.release_id is not None,  # found in your own collection
         "playing": ears.playing,
+        "trackNo": ears.track_no,
         "listening": ears.listening,
         # Is there an open lookup that came up empty? Then you can point at an
         # album on the panel and hang it on that.
@@ -1082,6 +1093,7 @@ async def api_status(_request):
         "thresholdDb": round(ears.threshold_db(), 1),
         "minLevelDb": MIN_LEVEL_DB,
         "playing": ears.playing,
+        "trackNo": ears.track_no,
         "listening": ears.listening,
         "last": ears.last,
         "releaseId": ears.release_id,
