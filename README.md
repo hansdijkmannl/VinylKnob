@@ -13,11 +13,12 @@ anyone.
 
 | Gesture | Effect |
 |---|---|
+| Wake it | the input list: record or Apple TV is the question at that moment, not how loud |
 | Turn | volume; turning faster takes bigger steps |
 | Hold + turn | step through inputs |
-| Short press | mute |
+| Short press | mute; on the Apple TV, pause |
 | Double press | jump to your favourite input |
-| Hold 1 s | back, one level — the same gesture on every screen. On the volume screen, where there is nowhere to go back to, the amplifier on or off |
+| Hold 1 s | back, one level — the same gesture on every screen. From the volume that is the input list |
 | Tap the sleeve | browse your record shelf; **BACK** at the bottom leaves without choosing. On the Apple TV input, the same tap gives you its apps |
 | Tap the note | listen now |
 | Tap the input name, turn to **Settings** | where to reach it, what it is talking to, the brightness |

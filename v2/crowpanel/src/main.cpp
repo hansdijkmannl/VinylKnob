@@ -7,11 +7,14 @@
 // Controls:
 //   turn                    volume; in a list, the position
 //   hold + turn             step through inputs; in the shelf, jump by letter
-//   short press             mute, or confirm in a list; on a screen with
-//                           nothing to mute, the settings
+//   short press             mute, or confirm in a list; pause on the Apple TV
 //   double press            straight to your favourite input
-//   hold (1 s)              back, one level; on the volume screen, where there
-//                           is nowhere to go back to, the amplifier on/off
+//   hold (1 s)              back, one level, on every screen. From the volume
+//                           that is the input list, which is also where you
+//                           switch things off — so the power has one path and
+//                           the knob has one meaning
+//   out of standby          the input list: record or Apple TV is the question
+//                           at that moment, not how loud
 //   hold (8 s)              clear Wi-Fi, boot into setup mode
 //   tap the input name      input list — and at the bottom of it, the settings:
 //                           a QR to the web interface, the addresses, the
@@ -69,16 +72,49 @@ static char     pickedTitle[48]   = "";
 static uint32_t lastTouchAt = 0;
 static bool     dimmed           = false;
 
-static void screenWake() {
+static void enterInputs();
+
+// Wakes the screen, and says whether that is all it did.
+//
+// The gesture that wakes must not also act. It never mattered much while waking
+// landed on the volume — the worst it did was mute — but it lands on the input
+// list now, and there a press means "this one", so a single press would wake
+// the panel and choose an input in the same motion.
+static bool screenWake() {
   lastTouchAt = millis();
 
-  // If it was off, any touch or press is the on switch. That is the whole
-  // answer to "can I turn it back on with the knob": yes, and with the side
-  // effect that you land straight back on the volume.
+  // Coming out of standby you land on the input list, not on the volume.
+  //
+  // Because that is the actual question at that moment: record or Apple TV.
+  // The volume was the answer to a different one — "how loud" — which only
+  // matters once something is playing, and nothing is yet. It also puts the
+  // power on the same path as everything else: choosing an input switches the
+  // receiver on, so there is no separate gesture for it any more.
   if (ui.screen == Screen::Off) {
-    ui.screen = Screen::Volume;
+    if (settings.inputCount > 0) {
+      enterInputs();
+      // Roomier than an input list you opened on purpose: you have just woken
+      // the thing up and are still deciding, not correcting.
+      idleReturnAt = millis() + IDLE_RETURN_MS * 2;
+    } else {
+      ui.screen = Screen::Volume;
+    }
     uiDirty = true;
+    if (dimmed) dimmed = false;
+    boardBacklight(settings.brightness);
+    return true;                       // that was the whole gesture
   }
+  if (dimmed) dimmed = false;
+  boardBacklight(settings.brightness);
+  return false;
+}
+
+// The screen coming back on because the *amplifier* did, which is a different
+// event: you did not ask for anything, so there is no question to put in front
+// of you. Straight to the volume, as it always was.
+static void screenOn() {
+  lastTouchAt = millis();
+  if (ui.screen == Screen::Off) { ui.screen = Screen::Volume; uiDirty = true; }
   if (dimmed) dimmed = false;
   boardBacklight(settings.brightness);
 }
@@ -233,7 +269,7 @@ static void followAmplifier() {
   // On that very first reading, only darken and never wake: otherwise the
   // screen lights up because the panel restarted, not because you did anything.
   if (now == 0)       powerDown(false);      // amplifier off: screen follows
-  else if (!first)    screenWake();          // and back on when it returns
+  else if (!first)    screenOn();            // and back on when it returns
 }
 
 static void sendInput(const char *code) {
@@ -331,6 +367,12 @@ static void enterInputs() {
 // back gives the knob its ordinary meaning again rather than leaving the screen
 // — you would otherwise have to press twice to undo one press.
 static void goBack() {
+  // From the volume, up is the input list. That is where you came from after
+  // standby and it is where switching off lives, so the long press no longer
+  // powers anything down by itself — one gesture, one meaning, and the power
+  // on one path instead of two.
+  if (ui.screen == Screen::Volume) { enterInputs(); return; }
+
   // On the Apple TV, back belongs to the Apple TV: you are looking at its menu,
   // not at this. Only from the launcher — the one screen here that is genuinely
   // ours — does it leave.
@@ -359,12 +401,15 @@ static void enterAppleTv() {
   if (settings.brainHost[0] == '\0') return;      // no Pi, no Apple TV
   ui.screen    = Screen::AppleTV;
   ui.atvRemote = false;
-  // Waking is free when it is already awake, and the list cannot be fetched
-  // from a device that is asleep — so this order, and not the other one.
-  atvPower(true);
-  if (!appsLoaded()) appsLoad(settings.brainHost, BRAIN_PORT);
   idleReturnAt = millis() + IDLE_RETURN_MS * 5;
   refreshUi();
+  // Waking and fetching happen after the screen is up, not before it. Both are
+  // network calls of up to a second, and doing them first meant the panel stood
+  // still on the screen you were leaving for as long as they took — which looks
+  // exactly like a press that did not land.
+  atvPower(true);
+  if (!appsLoaded() && appsLoad(settings.brainHost, BRAIN_PORT)) refreshUi();
+  Serial.printf("[atv] launcher open, %d apps\n", appsCount());
 }
 
 // Where to reach it, what it is talking to, and how bright it is.
@@ -559,7 +604,7 @@ static void confirmInput() {
 static void handleKnob() {
   const KnobInput in = knobPoll();
 
-  if (in.steps != 0 || in.event != KnobEvent::None) screenWake();
+  if ((in.steps != 0 || in.event != KnobEvent::None) && screenWake()) return;
 
   if (in.steps != 0) {
     if (ui.screen == Screen::Settings) {
@@ -649,11 +694,7 @@ static void handleKnob() {
       // On the home screen there is nowhere to go back to, so there the gesture
       // keeps the job it has always had. That is not a second meaning smuggled
       // in: it is the one screen where the first meaning has nothing to do.
-      if (ui.screen == Screen::Volume || ui.screen == Screen::Off ||
-          ui.screen == Screen::Setup  || ui.screen == Screen::NoAvr)
-        avrSend(avrState.powered ? "ZMOFF" : "ZMON");
-      else
-        goBack();
+      goBack();
       break;
 
     case KnobEvent::WifiReset:
@@ -669,7 +710,7 @@ static void handleKnob() {
 
 static void handleTouch() {
   const Touch tik = uiTakeTouch();
-  if (tik != Touch::None) screenWake();
+  if (tik != Touch::None && screenWake()) return;
   switch (tik) {
     case Touch::InputLabel: enterInputs();   break;
     case Touch::Confirm:
@@ -832,7 +873,7 @@ void setup() {
   uiBegin();
 
   boardBacklight(settings.brightness);
-  screenWake();
+  screenOn();
 
   connectWifi();
 
@@ -939,7 +980,20 @@ void loop() {
   // volume knob, on the screen that already shows what is playing. That is the
   // whole reason this is not a second remote control — it gets out of the way
   // the moment there is nothing left to choose.
-  if (ui.screen == Screen::AppleTV && brainState.playing) leaveToVolume();
+  //
+  // Only on the change, and only from the remote. Written as a plain "is it
+  // playing" it fired the instant you opened the launcher with the Apple TV
+  // already showing something, so the apps flashed by and you were back on the
+  // volume before you could turn — which is exactly what it did. And opening
+  // the launcher while something plays is not an accident: it is you wanting
+  // something else on.
+  static bool wasPlaying = false;
+  if (ui.screen == Screen::AppleTV && ui.atvRemote &&
+      brainState.playing && !wasPlaying) {
+    Serial.println("[atv] something is playing, back to the volume");
+    leaveToVolume();
+  }
+  wasPlaying = brainState.playing;
 
   // Try again when a sleeve is waiting but nothing is here. Fetching used to
   // hang solely on the moment of change, and if that one moment failed the
