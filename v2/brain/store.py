@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS settings (
 -- network every time, and so that it works offline.
 CREATE TABLE IF NOT EXISTS releases (
     id          INTEGER PRIMARY KEY,
+    tracks_v    INTEGER NOT NULL DEFAULT 0,   -- see TRACKS_V
     discogs_id  TEXT UNIQUE NOT NULL,
     artist      TEXT NOT NULL,
     title       TEXT NOT NULL,
@@ -47,10 +48,12 @@ CREATE INDEX IF NOT EXISTS idx_rel_title  ON releases(title);
 -- chooser can show it the way the sleeve does.
 CREATE TABLE IF NOT EXISTS tracks (
     release_id  INTEGER NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
-    position    INTEGER NOT NULL,
+    position    INTEGER NOT NULL,          -- running order over the whole record
     title       TEXT NOT NULL,
     norm        TEXT NOT NULL,
-    bare        TEXT NOT NULL DEFAULT ''   -- without "(Live at ...)" and the like
+    bare        TEXT NOT NULL DEFAULT '',  -- without "(Live at ...)" and the like
+    printed     TEXT NOT NULL DEFAULT '',  -- as on the sleeve: "A1", "B3"
+    secs        INTEGER NOT NULL DEFAULT 0 -- 0 when Discogs left it blank
 );
 CREATE INDEX IF NOT EXISTS idx_tracks_norm    ON tracks(norm);
 CREATE INDEX IF NOT EXISTS idx_tracks_release ON tracks(release_id);
@@ -123,6 +126,14 @@ GENERIC_TITLE_WORDS = {
     "compilation", "complete", "ultimate", "selected", "favourites",
     "favorites", "more", "vol",
 }
+
+
+# What a stored tracklist is expected to contain. Bumped when a pass over the
+# collection has to happen again because there is a new field in it — the title
+# alone at 1, the printed position and duration from 2 on. Written per release
+# rather than guessed from whether a column looks empty: a record can genuinely
+# have no positions, and guessing would refetch it every night for ever.
+TRACKS_V = 2
 
 
 def _normalise(text: str) -> str:
@@ -230,6 +241,24 @@ class Store:
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(tracks)")}
         if "bare" not in cols:
             self.db.execute("ALTER TABLE tracks ADD COLUMN bare TEXT NOT NULL DEFAULT ''")
+        # The printed position and the duration arrived after the tracklists
+        # did. Unlike `bare` these cannot be worked out from what is already
+        # here — they only exist at Discogs — so the columns appear empty and
+        # the pass over the collection fills them.
+        if "printed" not in cols:
+            self.db.execute("ALTER TABLE tracks ADD COLUMN printed TEXT NOT NULL DEFAULT ''")
+        if "secs" not in cols:
+            self.db.execute("ALTER TABLE tracks ADD COLUMN secs INTEGER NOT NULL DEFAULT 0")
+
+        rel = {r["name"] for r in self.db.execute("PRAGMA table_info(releases)")}
+        if "tracks_v" not in rel:
+            self.db.execute("ALTER TABLE releases ADD COLUMN tracks_v INTEGER NOT NULL DEFAULT 0")
+            # A shelf that already has titles is at version 1, not at nothing —
+            # so the pass that follows is a top-up and not a fetch of all 549
+            # from scratch.
+            self.db.execute(
+                "UPDATE releases SET tracks_v = 1 WHERE id IN "
+                "(SELECT DISTINCT release_id FROM tracks)")
         self.db.execute("CREATE INDEX IF NOT EXISTS idx_tracks_bare ON tracks(bare)")
         if self.db.execute("SELECT COUNT(*) c FROM tracks WHERE bare != ''").fetchone()["c"] == 0:
             rows = list(self.db.execute("SELECT rowid, title FROM tracks"))
@@ -400,24 +429,73 @@ class Store:
         return best if best_score >= 0.55 else None
 
     # -- what is on the records --------------------------------------------
-    def set_tracks(self, release_id: int, titles: list[str]) -> None:
+    def set_tracks(self, release_id: int, tracks: list) -> None:
+        """What is on one record. Accepts plain titles or full entries.
+
+        Plain strings are still allowed because two callers use them: the pass
+        that marks a release answered with a single blank row, and the tests,
+        which are about titles and have no business knowing about sides.
+        """
+        rows = []
+        for i, track in enumerate(tracks):
+            if isinstance(track, str):
+                track = {"title": track, "printed": "", "secs": 0}
+            title = track.get("title") or ""
+            rows.append((release_id, i, title, _normalise(title), _bare(title),
+                         track.get("printed") or "", int(track.get("secs") or 0)))
         self.db.execute("DELETE FROM tracks WHERE release_id = ?", (release_id,))
         self.db.executemany(
-            "INSERT INTO tracks (release_id, position, title, norm, bare) "
-            "VALUES (?, ?, ?, ?, ?)",
-            [(release_id, i, t, _normalise(t), _bare(t)) for i, t in enumerate(titles)])
+            "INSERT INTO tracks (release_id, position, title, norm, bare, printed, secs) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+        self.db.execute("UPDATE releases SET tracks_v = ? WHERE id = ?",
+                        (TRACKS_V, release_id))
         self.db.commit()
 
+    def side_of(self, release_id: int, title: str) -> list:
+        """The side a track is on, in running order, with that track marked.
+
+        One recognition is enough to know where you are on a record: which side,
+        how far in, and what is coming. Discogs prints the position on every
+        entry and gives a duration for most, and both were being thrown away.
+        """
+        rows = list(self.db.execute(
+            "SELECT * FROM tracks WHERE release_id = ? ORDER BY position",
+            (release_id,)))
+        if not rows:
+            return []
+        want, loose = _normalise(title), _bare(title)
+        hit = next((r for r in rows
+                    if r["norm"] == want
+                    or (r["bare"] and r["bare"] == loose)
+                    or (loose and r["norm"] == loose)), None)
+        if hit is None:
+            return []
+        # The side is the letter the printed position starts with. Records that
+        # never got one — a CD, a hand-entered release — are one long side, and
+        # that is the right answer for them.
+        side = (hit["printed"] or "")[:1].upper()
+        if not side.isalpha():
+            return [dict(r) for r in rows]
+        return [dict(r) for r in rows
+                if (r["printed"] or "")[:1].upper() == side]
+
     def releases_without_tracks(self, limit: int = 50) -> list:
+        """Records whose tracklist is missing or older than what we now keep."""
         return list(self.db.execute(
-            "SELECT r.id, r.discogs_id, r.artist, r.title FROM releases r "
-            "LEFT JOIN tracks t ON t.release_id = r.id "
-            "WHERE t.release_id IS NULL ORDER BY r.id LIMIT ?", (limit,)))
+            "SELECT id, discogs_id, artist, title FROM releases "
+            "WHERE tracks_v < ? ORDER BY id LIMIT ?", (TRACKS_V, limit)))
 
     def track_counts(self) -> tuple[int, int]:
-        """(releases with a tracklist, releases in total)."""
+        """(releases with a current tracklist, releases in total).
+
+        Current, not merely present. A shelf whose tracklists predate the
+        printed positions counted as fully done and the pass stopped after one
+        batch, reporting nothing left to do while five hundred records still had
+        no sides on them.
+        """
         with_tracks = self.db.execute(
-            "SELECT COUNT(DISTINCT release_id) c FROM tracks").fetchone()["c"]
+            "SELECT COUNT(*) c FROM releases WHERE tracks_v >= ?",
+            (TRACKS_V,)).fetchone()["c"]
         total = self.release_count()
         return with_tracks, total
 

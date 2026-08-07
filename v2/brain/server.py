@@ -146,6 +146,36 @@ async def api_listen(request):
     })
 
 
+async def api_enrol(request):
+    """More of a side we already know, as fingerprints against that release.
+
+    Not a lookup. Nothing is recognised here and nothing is asked of anybody —
+    the caller already knows which record is on, and this only widens what this
+    device can recognise by itself next time.
+
+    It exists because coverage was the quiet weakness. Each listen enrolled the
+    eight seconds it happened to sample, so a twenty-minute side needed dozens
+    of plays before the needle was likely to land on a stretch we knew. Forty
+    three records out of five hundred and forty nine after a week says it
+    plainly enough. Sampling the same side every half minute while it plays
+    costs no requests to anyone and covers the whole of it in one go.
+    """
+    try:
+        release_id = int(request.query.get("release", ""))
+    except ValueError:
+        return web.json_response({"ok": False, "error": "no release"}, status=400)
+    if store.release(release_id) is None:
+        return web.json_response({"ok": False, "error": "no such release"}, status=404)
+
+    audio = await request.read()
+    samples = local.decode_wav(audio)
+    if samples is None:
+        return web.json_response({"ok": False, "error": "unreadable audio"}, status=400)
+
+    hashes = local.remember(store.db, release_id, samples)
+    return web.json_response({"ok": True, "hashes": hashes})
+
+
 # ---------------------------------------------------------------------------
 # The queue
 # ---------------------------------------------------------------------------
@@ -575,6 +605,7 @@ def main():
     app = web.Application(client_max_size=32 * 1024 * 1024)
     app.router.add_get("/", index)
     app.router.add_post("/api/listen", api_listen)
+    app.router.add_post("/api/enrol", api_enrol)
     app.router.add_get("/api/plays", api_plays)
     app.router.add_post("/api/plays/{id}/link", api_link)
     app.router.add_post("/api/plays/{id}/unlink", api_unlink)

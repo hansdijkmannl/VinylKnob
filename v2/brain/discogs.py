@@ -98,7 +98,18 @@ async def fetch_collection(token: str, user: str, on_page=None) -> list[dict]:
     return out
 
 
-async def fetch_tracklist(token: str, discogs_id: str) -> list[str]:
+def _seconds(duration: str) -> int:
+    """"3:55" as 235. Zero when Discogs left it blank, which it often does."""
+    parts = (duration or "").strip().split(":")
+    if not parts or not all(p.isdigit() for p in parts):
+        return 0
+    total = 0
+    for p in parts:
+        total = total * 60 + int(p)
+    return total if total < 60 * 60 else 0        # a bad field, not an hour
+
+
+async def fetch_tracklist(token: str, discogs_id: str) -> list[dict]:
     """The track titles on one release.
 
     The collection listing does not carry these — it gives the sleeve and the
@@ -107,6 +118,13 @@ async def fetch_tracklist(token: str, discogs_id: str) -> list[str]:
     it to whichever release its own metadata prefers, which for anything with a
     hit on it is a compilation. Knowing what is actually on your copies turns
     that guess into a lookup.
+
+    Each entry keeps three things and not one. The title is what a service's
+    answer is compared against. The printed position — "A1", "B3" — is the only
+    thing here that knows a record has sides, and it is what you would say out
+    loud: not "track four" but "A4". And the duration turns a single recognition
+    into a timeline of the whole side, which is what lets the screen move on to
+    the next track without asking anybody anything.
     """
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
         data = await _get(session, f"{BASE}/releases/{discogs_id}", token)
@@ -117,7 +135,11 @@ async def fetch_tracklist(token: str, discogs_id: str) -> list[str]:
             continue
         title = (track.get("title") or "").strip()
         if title:
-            out.append(title)
+            out.append({
+                "title": title,
+                "printed": (track.get("position") or "").strip(),
+                "secs": _seconds(track.get("duration") or ""),
+            })
     return out
 
 

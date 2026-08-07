@@ -77,6 +77,16 @@ START_S      = float(os.environ.get("START_SECONDS", "2.5"))   # sound this long
 QUIET_S     = float(os.environ.get("QUIET_SECONDS", "15"))    # silence this long = side over
 RETRY_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # after a failed lookup
 
+# How often a side we already know gets sampled again, purely to learn it.
+#
+# Coverage was the quiet weakness of the whole thing. Each listen enrolled the
+# eight seconds it happened to hear, so a twenty-minute side needed dozens of
+# plays before the needle was likely to land somewhere already known — forty
+# three records out of five hundred and forty nine after a week of listening.
+# Half a minute apart covers a side in one play, costs no request to anybody,
+# and is the difference between leaning on a service and not.
+LEARN_S = float(os.environ.get("LEARN_SECONDS", "30"))
+
 # How many times in a row we retry when nothing is recognised.
 #
 # Without a limit this runs for as long as there is any sound, and that is
@@ -283,6 +293,8 @@ class Ears:
         self.title = ""
         self.album = ""
         self.level_db = -99.0
+        self.learn_at = 0.0          # next sample of a side we already know
+        self.learned = 0             # clips enrolled this side, for the log
 
         # How often the panel asked for /now. Purely diagnostic: it lets /status
         # show whether the panel really reaches you, without writing a log line
@@ -385,6 +397,8 @@ class Ears:
         # belongs to the sound it was recorded from.
         self.open_play_id = None
         self.choices = []
+        self.learn_at = 0.0
+        self.learned = 0
 
     def threshold_db(self) -> float:
         """The level sound has to clear before we ask on our own.
@@ -468,6 +482,22 @@ class Ears:
             if retry:
                 self.retry_at = None
 
+            # Learning what is already identified. Not a lookup and not a
+            # decision: we know the record, this only widens what can be
+            # recognised without asking anyone next time. Deliberately last of
+            # the four, so it never delays a real one.
+            learn = (self.release_id is not None
+                     and self.playing
+                     and self.loud_since is not None
+                     and self.level_db > self.threshold_db()
+                     and self.clock >= self.learn_at)
+
+            if learn and not (asked or starts or retry):
+                self.learn_at = self.clock + LEARN_S
+                pcm = await self.grab(source, CLIP_S)
+                await self.enrol(to_wav(pcm))
+                continue
+
             if asked or starts or retry:
                 self.force.clear()
                 self.listening = True
@@ -477,6 +507,8 @@ class Ears:
                 pcm = await self.grab(source, CLIP_S)
                 self.playing = True
                 self.loud_since = None
+                self.learn_at = self.clock + LEARN_S
+                self.learned = 0
                 try:
                     await self.ask(to_wav(pcm))
                 finally:
@@ -495,6 +527,25 @@ class Ears:
             out.append(await source.stdout.readexactly(BYTES_PER_BLOCK))
             self.clock += BLOCK_S
         return b"".join(out)
+
+    async def enrol(self, wav: bytes) -> None:
+        """Hand another stretch of a known side to the brain to remember."""
+        release_id = self.release_id
+        if release_id is None:
+            return
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=30)) as s:
+                async with s.post(f"{BRAIN}/api/enrol?release={release_id}",
+                                  data=wav,
+                                  headers={"Content-Type": "audio/wav"}) as r:
+                    body = await r.json()
+        except Exception as e:                                  # noqa: BLE001
+            print(f"[learn] brain unreachable: {e!r}", flush=True)
+            return
+        if body.get("ok"):
+            self.learned += 1
+            print(f"[learn] {self.learned} x {CLIP_S:.0f}s of "
+                  f"{self.artist} — {self.album or self.title}", flush=True)
 
     # -- asking the brain --------------------------------------------------
     async def ask(self, wav: bytes) -> None:
