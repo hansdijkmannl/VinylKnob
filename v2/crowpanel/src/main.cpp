@@ -10,12 +10,13 @@
 //   short press             mute, or confirm in a list; on a screen with
 //                           nothing to mute, the settings
 //   double press            straight to your favourite input
-//   hold (1 s)              amplifier on/off
+//   hold (1 s)              back, one level; on the volume screen, where there
+//                           is nowhere to go back to, the amplifier on/off
 //   hold (8 s)              clear Wi-Fi, boot into setup mode
 //   tap the input name      input list — and at the bottom of it, the settings:
 //                           a QR to the web interface, the addresses, the
 //                           brightness
-//   tap the sleeve          the record shelf
+//   tap the sleeve          the record shelf; on the Apple TV input, its apps
 // ---------------------------------------------------------------------------
 
 #include <Arduino.h>
@@ -27,6 +28,7 @@
 #include "board.h"
 #include "artwork.h"
 #include "shelf.h"
+#include "apps.h"
 #include "knob.h"
 #include "marantz.h"
 #include "pcf.h"
@@ -138,6 +140,16 @@ static bool onTurntable() {
          strcmp(avrState.input, settings.inputs[settings.favouriteInput].code) == 0;
 }
 
+// Is the receiver on the input the Apple TV hangs off? That decides three
+// things: whether tapping the screen opens the launcher or the record shelf,
+// whether choosing that input should also wake the Apple TV, and whether
+// switching everything off should put it back to sleep.
+static bool onAppleTv() {
+  return settings.appleTvInput >= 0 &&
+         settings.appleTvInput < settings.inputCount &&
+         strcmp(avrState.input, settings.inputs[settings.appleTvInput].code) == 0;
+}
+
 static const char *pickName(int i) {
   const int n = pickCount();
   if (n <= 0) return "";
@@ -155,11 +167,13 @@ static void pickAlbum();
 static void forgetTheQuestion();
 static void enterSettings(uint8_t page);
 static void leaveToVolume();
+static void goBack();
+static void enterAppleTv();
 
 // For web.cpp: the order is that of enum class Screen in ui.h.
 const char *uiScreenName() {
-  static const char *NAMES[] = {"volume", "inputs", "browse",
-                                "pairing", "settings", "off", "setup", "noavr"};
+  static const char *NAMES[] = {"volume", "inputs", "browse", "pairing",
+                                "settings", "appletv", "off", "setup", "noavr"};
   const uint8_t i = (uint8_t)ui.screen;
   return i < (sizeof(NAMES) / sizeof(NAMES[0])) ? NAMES[i] : "?";
 }
@@ -168,7 +182,13 @@ const char *uiScreenName() {
 // keeps running — it powers this panel over USB, so shutting it down would mean
 // only a plug could bring it back.
 static void powerDown(bool alsoAmplifier) {
-  if (alsoAmplifier) avrSend("ZMOFF");
+  // With the amplifier goes the Apple TV. Leaving it awake all night is the
+  // thing you forget, and it is the one device here that cannot be seen to be
+  // on — no light, no fan, nothing but a bill.
+  if (alsoAmplifier) {
+    avrSend("ZMOFF");
+    if (settings.appleTvInput >= 0) atvPower(false);
+  }
   ui.screen = Screen::Off;
   boardBacklight(0);
   // Switching off ends the evening, so it ends the record with it. Come back to
@@ -269,6 +289,7 @@ static void refreshUi() {
   ui.brainUp    = brainState.reachable;
   strlcpy(ui.brainHost, settings.brainHost, sizeof(ui.brainHost));
   strlcpy(ui.wifiSsid,  settings.wifiSsid,  sizeof(ui.wifiSsid));
+  ui.atvOn = onAppleTv();
   strlcpy(ui.ip, netApMode ? WiFi.softAPIP().toString().c_str()
                            : WiFi.localIP().toString().c_str(), sizeof(ui.ip));
 
@@ -299,6 +320,50 @@ static void enterInputs() {
   pickIndex = (found >= 0) ? found : 0;
   ui.screen = Screen::Inputs;
   idleReturnAt = millis() + IDLE_RETURN_MS;
+  refreshUi();
+}
+
+// Up one level, whatever "up" happens to mean here.
+//
+// Deliberately not a stack. There are seven screens and you reach almost all of
+// them from the volume, so a history would be a data structure recording a fact
+// already known. The one place with a level inside it is the brightness, where
+// back gives the knob its ordinary meaning again rather than leaving the screen
+// — you would otherwise have to press twice to undo one press.
+static void goBack() {
+  // On the Apple TV, back belongs to the Apple TV: you are looking at its menu,
+  // not at this. Only from the launcher — the one screen here that is genuinely
+  // ours — does it leave.
+  if (ui.screen == Screen::AppleTV) {
+    if (ui.atvRemote) atvKey("menu");
+    else              leaveToVolume();
+    return;
+  }
+  if (ui.screen == Screen::Settings && ui.settingsAdjust) {
+    ui.settingsAdjust = false;
+    settingsSave();
+    idleReturnAt = millis() + IDLE_RETURN_MS * 5;
+    refreshUi();
+    return;
+  }
+  leaveToVolume();
+}
+
+// Into the Apple TV's apps.
+//
+// The launcher is the one thing this does better than the remote already on the
+// sofa: one turn and one press and you are in the app, rather than walking a
+// grid with a direction pad. Everything after that you do while looking at the
+// television, so the panel stops drawing and starts sending.
+static void enterAppleTv() {
+  if (settings.brainHost[0] == '\0') return;      // no Pi, no Apple TV
+  ui.screen    = Screen::AppleTV;
+  ui.atvRemote = false;
+  // Waking is free when it is already awake, and the list cannot be fetched
+  // from a device that is asleep — so this order, and not the other one.
+  atvPower(true);
+  if (!appsLoaded()) appsLoad(settings.brainHost, BRAIN_PORT);
+  idleReturnAt = millis() + IDLE_RETURN_MS * 5;
   refreshUi();
 }
 
@@ -390,6 +455,18 @@ static void enterBrowse() {
   refreshUi();
 }
 
+// Pointing at an app: start it, and hand the knob to the television.
+static void pickApp() {
+  const int i = appsIndex();
+  if (!appsLoaded() || i < 0) { leaveToVolume(); return; }
+  atvLaunch(appsId(i));
+  // From here we are blind — nothing reports back what is focused over there —
+  // so the panel stops showing a list it can no longer keep in step with.
+  ui.atvRemote = true;
+  idleReturnAt = millis() + IDLE_RETURN_MS * 5;
+  refreshUi();
+}
+
 // Pointing at an album.
 //
 // Two things at once, and which one happens depends on what is playing.
@@ -467,6 +544,15 @@ static void confirmInput() {
   }
   if (pickIndex >= 0 && pickIndex < settings.inputCount)
     sendInput(settings.inputs[pickIndex].code);
+
+  // Choosing the Apple TV wakes it as well. Two things you always did together
+  // — the receiver's input here, the remote in your other hand there — and no
+  // reason for them to stay two. The launcher follows, because after switching
+  // to it the next thing you want is an app.
+  if (pickIndex == settings.appleTvInput && settings.appleTvInput >= 0) {
+    enterAppleTv();
+    return;
+  }
   leaveToVolume();
 }
 
@@ -478,6 +564,16 @@ static void handleKnob() {
   if (in.steps != 0) {
     if (ui.screen == Screen::Settings) {
       turnSettings(in.steps);
+    } else if (ui.screen == Screen::AppleTV) {
+      // In the launcher the list is ours, so it moves here and instantly. In an
+      // app it is not ours to move, so each click goes over as a key press —
+      // about twenty milliseconds, which is why this needs no smoothing.
+      if (ui.atvRemote) {
+        for (int i = 0; i < abs(in.steps); i++) atvKey(in.steps > 0 ? "right" : "left");
+      } else {
+        appsMove(in.steps);
+      }
+      idleReturnAt = millis() + IDLE_RETURN_MS * 5;
     } else if (ui.screen == Screen::Browse) {
       // On the shelf the knob does something else. Turning while held jumps by
       // letter: with hundreds of albums, one at a time is no way to travel, and
@@ -515,8 +611,19 @@ static void handleKnob() {
         confirmInput();
       } else if (ui.screen == Screen::Settings) {
         pressSettings();
+      } else if (ui.screen == Screen::AppleTV) {
+        // Select in the launcher, select in an app, and pause once something is
+        // playing — three names for one gesture, and never two at once, because
+        // the screen you are looking at settles which it is.
+        if (!ui.atvRemote)          pickApp();
+        else if (brainState.playing) atvKey("playpause");
+        else                         atvKey("select");
       } else if (ui.screen == Screen::Browse) {
         pickAlbum();
+      } else if (onAppleTv() && brainState.playing) {
+        // Watching, not listening: a press should stop the picture too, and
+        // muting a film is not what anyone means by it.
+        atvKey("playpause");
       } else if (ui.screen == Screen::Setup || ui.screen == Screen::NoAvr) {
         // Nothing to mute and no list to open, so the press is free — and this
         // is where the address is, which is what you are standing there for.
@@ -533,7 +640,20 @@ static void handleKnob() {
       break;
 
     case KnobEvent::LongPress:
-      avrSend(avrState.powered ? "ZMOFF" : "ZMON");
+      // One way back, the same one everywhere. CarPlay makes this a rule for
+      // exactly this hardware — a knob, a small screen, and someone who is only
+      // half looking at it — and until now every screen had its own answer: a
+      // BACK button in the shelf, a CLOSE page in the settings, a press
+      // elsewhere, a tap on the glass somewhere else again.
+      //
+      // On the home screen there is nowhere to go back to, so there the gesture
+      // keeps the job it has always had. That is not a second meaning smuggled
+      // in: it is the one screen where the first meaning has nothing to do.
+      if (ui.screen == Screen::Volume || ui.screen == Screen::Off ||
+          ui.screen == Screen::Setup  || ui.screen == Screen::NoAvr)
+        avrSend(avrState.powered ? "ZMOFF" : "ZMON");
+      else
+        goBack();
       break;
 
     case KnobEvent::WifiReset:
@@ -567,7 +687,10 @@ static void handleTouch() {
       break;
     case Touch::Dismiss:    leaveToVolume(); break;
     case Touch::Artwork:
-      enterBrowse();
+      // The same gesture on the same spot, pointed at whatever the receiver is
+      // playing. A record gives you the shelf; the Apple TV gives you its apps.
+      if (onAppleTv()) enterAppleTv();
+      else             enterBrowse();
       break;
     case Touch::Pairing:
       // The QR code used to be behind a tap on the sleeve. Now that the shelf
@@ -701,6 +824,7 @@ void setup() {
   brainBegin();
   artworkBegin();
   shelfBegin();
+  appsBegin();
 
   // uiBegin() brings the panel up itself — power, resets, the ST7701 and the
   // touch chip all live in board.cpp. The serial implementation does none of
@@ -772,12 +896,23 @@ void loop() {
   // there is something to draw.
   if (ui.screen == Screen::Browse &&
       shelfLoop(settings.brainHost, BRAIN_PORT)) refreshUi();
+  if (ui.screen == Screen::AppleTV && !ui.atvRemote) {
+    // The list may not have arrived yet — the Apple TV was asleep when we asked
+    // and cannot answer then. Keep asking while you are looking at it.
+    static uint32_t retryAt = 0;
+    if (!appsLoaded() && millis() > retryAt) {
+      retryAt = millis() + 2000;
+      if (appsLoad(settings.brainHost, BRAIN_PORT)) refreshUi();
+    }
+    if (appsLoop(settings.brainHost, BRAIN_PORT)) refreshUi();
+  }
   uiTick();
   handleTouch();
   screenDimLoop();
 
   // Fall back to the volume screen when you stop doing anything
-  if ((ui.screen == Screen::Inputs || ui.screen == Screen::Settings) &&
+  if ((ui.screen == Screen::Inputs || ui.screen == Screen::Settings ||
+       ui.screen == Screen::AppleTV) &&
       idleReturnAt && millis() > idleReturnAt) {
     idleReturnAt = 0;
     leaveToVolume();
@@ -799,6 +934,12 @@ void loop() {
   }
 
   askIfNeeded();
+
+  // Something started: the panel stops being a remote and goes back to being a
+  // volume knob, on the screen that already shows what is playing. That is the
+  // whole reason this is not a second remote control — it gets out of the way
+  // the moment there is nothing left to choose.
+  if (ui.screen == Screen::AppleTV && brainState.playing) leaveToVolume();
 
   // Try again when a sleeve is waiting but nothing is here. Fetching used to
   // hang solely on the moment of change, and if that one moment failed the

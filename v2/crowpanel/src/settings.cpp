@@ -35,6 +35,7 @@ void settingsLoad() {
   settings.longPressMs    = DEF_LONG_PRESS_MS;
   settings.doublePressMs  = DEF_DOUBLE_PRESS_MS;
   settings.favouriteInput = DEF_FAVOURITE_INPUT;
+  settings.appleTvInput   = -1;
   settings.inputCount     = DEFAULT_INPUT_COUNT;
   for (int i = 0; i < DEFAULT_INPUT_COUNT; i++) settings.inputs[i] = DEFAULT_INPUTS[i];
 
@@ -59,6 +60,7 @@ void settingsLoad() {
   settings.longPressMs    = prefs.getUShort("longms",   settings.longPressMs);
   settings.doublePressMs  = prefs.getUShort("dblms",    settings.doublePressMs);
   settings.favouriteInput = prefs.getChar  ("fav",      settings.favouriteInput);
+  settings.appleTvInput   = prefs.getChar  ("atvin",    settings.appleTvInput);
 
   const uint8_t stored = prefs.getUChar("ninputs", 255);
   if (stored != 255) {
@@ -77,6 +79,7 @@ void settingsLoad() {
   prefs.end();
 
   if (settings.favouriteInput >= settings.inputCount) settings.favouriteInput = -1;
+  if (settings.appleTvInput   >= settings.inputCount) settings.appleTvInput   = -1;
 }
 
 void settingsSave() {
@@ -100,6 +103,7 @@ void settingsSave() {
   prefs.putUShort("longms",   settings.longPressMs);
   prefs.putUShort("dblms",    settings.doublePressMs);
   prefs.putChar  ("fav",      settings.favouriteInput);
+  prefs.putChar  ("atvin",    settings.appleTvInput);
 
   prefs.putUChar("ninputs", settings.inputCount);
   for (int i = 0; i < settings.inputCount; i++) {
@@ -149,6 +153,7 @@ void settingsToJson(String &out) {
   doc["longPressMs"]    = settings.longPressMs;
   doc["doublePressMs"]  = settings.doublePressMs;
   doc["favouriteInput"] = settings.favouriteInput;
+  doc["appleTvInput"]   = settings.appleTvInput;
   doc["maxInputs"]      = MAX_INPUTS;
 
   JsonArray arr = doc["inputs"].to<JsonArray>();
@@ -244,7 +249,12 @@ bool settingsFromJson(const String &body, String &err, bool &wifiChanged) {
     const int v = (int)doc["favouriteInput"];
     settings.favouriteInput = (v >= 0 && v < settings.inputCount) ? (int8_t)v : -1;
   }
+  if (!doc["appleTvInput"].isNull()) {
+    const int v = (int)doc["appleTvInput"];
+    settings.appleTvInput = (v >= 0 && v < settings.inputCount) ? (int8_t)v : -1;
+  }
   if (settings.favouriteInput >= settings.inputCount) settings.favouriteInput = -1;
+  if (settings.appleTvInput   >= settings.inputCount) settings.appleTvInput   = -1;
 
   settingsSave();
   return true;

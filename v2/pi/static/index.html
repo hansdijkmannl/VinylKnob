@@ -487,6 +487,11 @@ button.danger{background:var(--warn);color:#fff}
     <button class="sec mini" id="addInput" style="margin-top:.5rem">Add input</button>
     <label for="favouriteInput">Favourite (double press)</label>
     <select id="favouriteInput"></select>
+    <label for="appleTvInput">The Apple TV is on</label>
+    <select id="appleTvInput"></select>
+    <p class="hint">Choosing that input also wakes the Apple TV, switching
+      everything off puts it back to sleep, and tapping the screen while it is
+      selected opens the app launcher instead of the record shelf.</p>
   </div>
 
   <h2>Controls</h2>
@@ -1265,7 +1270,7 @@ on('dSync', 'click', async () => {
 // ===========================================================================
 // PANEL — the panel's own settings, through the proxy
 // ===========================================================================
-let CODES = [], MAX_INPUTS = 8, inputs = [], favourite = -1;
+let CODES = [], MAX_INPUTS = 8, inputs = [], favourite = -1, appleTv = -1;
 
 const P_TEXT = ['avrHost', 'brainHost', 'wifiSsid'];
 const P_NUMBER = ['avrPort', 'brightness', 'dimAfterS', 'halfDbPerClick', 'accelFactor',
@@ -1291,6 +1296,7 @@ async function loadPanel() {
   $('offWithAmp').value = S.offWithAmp ? '1' : '0';
   inputs = (S.inputs || []).map(b => ({code: b.code, label: b.label}));
   favourite = S.favouriteInput;
+  appleTv   = S.appleTvInput;
   drawInputs();
   sliderLabels();
 }
@@ -1307,9 +1313,12 @@ function drawInputs() {
 }
 
 function drawFavourite() {
-  $('favouriteInput').innerHTML = '<option value="-1">none</option>' +
-    inputs.map((b, i) => `<option value="${i}"${i === favourite ? ' selected' : ''}
-      >${esc(b.label || b.code)}</option>`).join('');
+  // Two lists of the same inputs answering two different questions: which one
+  // the double press jumps to, and which one the Apple TV hangs off.
+  for (const [id, chosen] of [['favouriteInput', favourite], ['appleTvInput', appleTv]])
+    $(id).innerHTML = '<option value="-1">none</option>' +
+      inputs.map((b, i) => `<option value="${i}"${i === chosen ? ' selected' : ''}
+        >${esc(b.label || b.code)}</option>`).join('');
 }
 
 $('t-panel').addEventListener('input', e => {
@@ -1322,11 +1331,12 @@ $('t-panel').addEventListener('click', e => {
   const i = (e.target.dataset || {}).del;
   if (i === undefined) return;
   inputs.splice(+i, 1);
-  favourite = -1;
+  favourite = appleTv = -1;
   drawInputs();
 });
 
 on('favouriteInput', 'change', e => { favourite = parseInt(e.target.value, 10); });
+on('appleTvInput',  'change', e => { appleTv   = parseInt(e.target.value, 10); });
 on('addInput', 'click', () => {
   if (inputs.length >= MAX_INPUTS) return;
   inputs.push({code: CODES[0], label: CODES[0]});
@@ -1360,6 +1370,7 @@ function panelMessage(text, ok) {
 
 on('kSave', 'click', async () => {
   const b = {inputs: inputs, favouriteInput: parseInt($('favouriteInput').value, 10),
+             appleTvInput: parseInt($('appleTvInput').value, 10),
              encDivider: parseInt($('encDivider').value, 10),
              rotated: $('rotated').value === '1',
              screenAngle: Math.round(parseFloat($('screenAngle').value || '0') * 10),

@@ -996,6 +996,51 @@ async def atv_forget(_request):
     return web.json_response({"ok": True})
 
 
+async def atv_key(request):
+    """One press on the Apple TV. The panel sends these blind.
+
+    Blind on purpose: you are looking at the television. Nothing comes back to
+    draw, so there is nothing here to keep in step, and that is the whole reason
+    this is cheap enough to be worth building.
+    """
+    return web.json_response(await atv.key(request.query.get("name", "")))
+
+
+async def atv_power(request):
+    on = request.query.get("on", "1") not in ("0", "false", "no")
+    return web.json_response(await atv.set_power(on))
+
+
+async def atv_apps(_request):
+    """What is installed, and which of them have a logo to show.
+
+    The panel wants to know up front which tiles will have a picture: it draws
+    the name for the rest, rather than leaving a hole while it waits for an icon
+    that is never coming. Apple's own apps are not in the store and have none
+    unless you supplied one yourself.
+    """
+    apps = await atv.app_list()
+    for a in apps:
+        a["icon"] = bool(await appicon.thumb(a["id"], 120))
+    return web.json_response({"apps": apps})
+
+
+async def atv_launch(request):
+    return web.json_response(await atv.launch(request.query.get("id", "")))
+
+
+async def atv_icon(request):
+    """A logo at the size the caller asks for, as a JPEG."""
+    try:
+        px = max(16, min(480, int(request.query.get("px", "120"))))
+    except ValueError:
+        px = 120
+    blob = await appicon.thumb(request.query.get("id", ""), px)
+    if not blob:
+        return web.Response(status=404, text="no icon")
+    return web.Response(body=blob, content_type="image/jpeg")
+
+
 async def atv_status(_request):
     g = atv.paired()
     return web.json_response({
@@ -1096,6 +1141,11 @@ def main() -> None:
     app.router.add_post("/appletv/pair", atv_pair)
     app.router.add_post("/appletv/pin", atv_pin)
     app.router.add_post("/appletv/forget", atv_forget)
+    app.router.add_post("/appletv/key", atv_key)
+    app.router.add_post("/appletv/power", atv_power)
+    app.router.add_get("/appletv/apps", atv_apps)
+    app.router.add_get("/appletv/icon", atv_icon)
+    app.router.add_post("/appletv/launch", atv_launch)
 
     # The two forwarding routes. They come last because they end in a wildcard
     # that would otherwise swallow the fixed routes above.

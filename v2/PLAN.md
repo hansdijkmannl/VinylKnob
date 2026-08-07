@@ -447,6 +447,54 @@ Three things about where it lives:
   you go looking for an address. A press of the knob on either of them opens it,
   because on those screens there is nothing to mute and no list to confirm.
 
+## Phase 11 — The Apple TV, within limits ✅
+
+**7 August 2026.** The Pi has been paired with the Apple TV for a week, over
+AirPlay for the now-playing and Companion for the connection that carries it.
+Companion is also what a remote control speaks, so the ability was already
+there and simply unused.
+
+Measured before deciding anything: a key press over that connection is a median
+of **11 ms** and a worst case of 26; through the Pi's own HTTP endpoint it is
+about 20 ms end to end. That settles the question the design was waiting on —
+the knob may send one press per click with no smoothing, no batching and no
+local prediction.
+
+What it does was chosen by asking what the remote on the sofa is bad at, and the
+answer is *starting things*. So the panel gets the app launcher: the shelf's own
+carousel with the Apple TV's 24 apps in it, turn and press and you are in. 15 of
+them have a logo, fetched from the same public App Store endpoint the
+now-playing screen already used; Apple's own apps are not in the store and get
+their initial instead, which is honest and still reads from the sofa.
+
+After that the panel is blind, and says so rather than pretending otherwise.
+Nothing reports back what is focused over there, so turning sends left and
+right, a press selects, a long press goes back, and you look at the television.
+The moment something plays the knob is a volume knob again on the ordinary
+now-playing screen, where a press pauses rather than mutes — you are watching,
+not listening.
+
+Three things that came out of building it:
+
+- **The long press became the one back control**, everywhere, which is the
+  CarPlay rule for exactly this hardware and the one we followed worst: a BACK
+  button in the shelf, a CLOSE page in the settings, a press elsewhere, a tap on
+  the glass somewhere else again. It could be freed because the amplifier toggle
+  it used to carry is already at the bottom of the input list. On the volume
+  screen, where there is nowhere to go back to, it keeps the old job.
+- **Companion reports success for any bundle identifier**, installed or not, so
+  a typo launched nothing and said it worked. The identifier is checked against
+  the installed list first, which was already in hand.
+- **The launcher is ours, the rest is not.** Turning in the launcher moves a
+  list we hold, instantly; turning in an app sends a key. Same gesture, and the
+  difference is which screen you are looking at — which is the rule the whole
+  thing is built on.
+
+Deliberately absent: a keyboard on a 480-pixel round screen, any attempt to beat
+Netflix's own menu, the Apple TV's own volume (the knob is the receiver's, and
+two volumes on one knob is a confusion you never get out of), and Siri, which is
+not in what the connection offers.
+
 ---
 
 ## What carries over from version 1

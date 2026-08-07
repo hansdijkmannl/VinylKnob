@@ -60,3 +60,13 @@ bool brainLink(uint16_t releaseId);
 // Ask the Pi to listen now. Used when the input switches to your favourite:
 // that is the moment you put the needle down.
 void brainAskLookup();
+
+// -- the Apple TV, through the Pi -------------------------------------------
+// The panel holds no credentials and speaks no Companion; the Pi is paired and
+// already has the connection open for the now-playing. So these are one HTTP
+// call each and the Pi does the rest. Measured end to end on the Pi: a key
+// press is about 20 ms, which is why the knob may send one per click without
+// any smoothing.
+bool atvKey(const char *name);
+bool atvPower(bool on);
+bool atvLaunch(const char *bundleId);

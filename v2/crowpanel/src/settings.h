@@ -41,6 +41,12 @@ struct Settings {
   uint16_t doublePressMs;        // double-press window; 0 = disabled
   int8_t   favouriteInput;       // index for the double press; -1 = off
 
+  // Which of the inputs above is the Apple TV, as an index; -1 = none. Three
+  // things need to know: choosing it wakes the Apple TV, switching everything
+  // off puts it back to sleep, and tapping the screen while it is selected
+  // opens the app launcher instead of the record shelf.
+  int8_t   appleTvInput;
+
 
   uint8_t  inputCount;           // 0 .. MAX_INPUTS
   InputDef inputs[MAX_INPUTS];   // the list you step through by holding and turning

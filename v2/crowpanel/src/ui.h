@@ -32,6 +32,7 @@ enum class Screen : uint8_t {
   Browse,      // browsing the record shelf
   Pairing,     // QR code and address, when something is waiting to be linked
   Settings,    // where to reach it, what it is connected to, and the brightness
+  AppleTV,     // the app launcher, and the knob as a remote once you are in one
   Off,         // switched off; any touch or turn wakes it
   Setup,       // own access point, no Wi-Fi yet
   NoAvr,       // Wi-Fi yes, receiver unreachable
@@ -106,6 +107,15 @@ struct UiState {
   bool     brainUp        = false;
   char     brainHost[40]  = "";
   char     wifiSsid[33]   = "";
+
+  // -- the Apple TV ---------------------------------------------------------
+  // Two faces on one screen. The launcher is ours: we have the list, so we draw
+  // it and turning moves through it here, instantly. Once an app is running we
+  // are blind — nothing comes back about what is focused on the television — so
+  // the panel stops trying to show anything and the knob simply sends keys
+  // while you look at the screen that does know.
+  bool     atvRemote      = false;
+  bool     atvOn          = false;
 };
 
 void uiBegin();

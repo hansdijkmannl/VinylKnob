@@ -48,33 +48,54 @@ async def _fetch(bundle: str) -> bytes:
             return await r.read() if r.status == 200 else b""
 
 
-def _compose(raw: bytes) -> bytes:
+def _rounded(raw: bytes, px: int):
+    """The bare logo at `px`, square, on the dark field, with rounded corners.
+
+    Shared by the full-screen version and the thumbnail, because the awkward
+    parts are the same for both: a transparent background belongs on the dark
+    field rather than on white, a non-square logo (the tv app is wide) must be
+    padded and not stretched, and app icons without their rounding read as a
+    screenshot instead of a logo.
+    """
     from PIL import Image, ImageDraw
 
     source = Image.open(io.BytesIO(raw))
-    # A logo with a transparent background belongs on the dark field, not on
-    # white. Hence compositing rather than a blunt convert.
     if source.mode in ("RGBA", "LA", "P"):
         source = source.convert("RGBA")
         backdrop = Image.new("RGBA", source.size, (16, 16, 20, 255))
         source = Image.alpha_composite(backdrop, source)
     source = source.convert("RGB")
 
-    # Fit non-square logos (the tv app is wide) without stretching them.
     if source.width != source.height:
         side = max(source.size)
         square = Image.new("RGB", (side, side), (16, 16, 20))
         square.paste(source, ((side - source.width) // 2, (side - source.height) // 2))
         source = square
 
-    icon = source.resize((ICON, ICON), Image.LANCZOS)
-
-    # App icons are square with rounded corners; without that rounding it looks
-    # like a screenshot rather than a logo.
-    mask = Image.new("L", (ICON, ICON), 0)
+    icon = source.resize((px, px), Image.LANCZOS)
+    mask = Image.new("L", (px, px), 0)
     ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, ICON - 1, ICON - 1), radius=int(ICON * 0.22), fill=255)
+        (0, 0, px - 1, px - 1), radius=int(px * 0.22), fill=255)
+    return icon, mask
 
+
+def _thumb(raw: bytes, px: int) -> bytes:
+    """A logo at thumbnail size, for the launcher carousel."""
+    from PIL import Image
+
+    icon, mask = _rounded(raw, px)
+    field = Image.new("RGB", (px, px), (16, 16, 20))
+    field.paste(icon, (0, 0), mask)
+    out = io.BytesIO()
+    field.save(out, "JPEG", quality=88, optimize=True)
+    return out.getvalue()
+
+
+def _compose(raw: bytes) -> bytes:
+    """The logo full-screen, with room under it for the title and artist."""
+    from PIL import Image
+
+    icon, mask = _rounded(raw, ICON)
     field = Image.new("RGB", (FIELD, FIELD), (16, 16, 20))
     field.paste(icon, ((FIELD - ICON) // 2, TOP), mask)
 
@@ -93,12 +114,45 @@ def store_own(bundle: str, raw: bytes) -> bytes:
     OWN.mkdir(parents=True, exist_ok=True)
     done = _compose(raw)
     (OWN / f"{bundle}.jpg").write_bytes(done)
-    (CACHE / f"{bundle}.jpg").unlink(missing_ok=True)      # oude vondst vervalt
+    # The upload itself is kept as well, because the composed version is a
+    # full screen with the logo small in the middle of it — make a thumbnail of
+    # *that* and you get a speck of logo in a field of dark. The thumbnail has
+    # to start from the same picture this one did.
+    (OWN / f"{bundle}.src").write_bytes(raw)
+    (CACHE / f"{bundle}.jpg").unlink(missing_ok=True)       # the old find lapses
+    for stale in CACHE.glob(f"{bundle}-*.jpg"):
+        stale.unlink(missing_ok=True)
     return done
 
 
 def own_list() -> list[str]:
     return sorted(p.stem for p in OWN.glob("*.jpg")) if OWN.exists() else []
+
+
+async def thumb(bundle: str, px: int) -> bytes:
+    """A small square logo for the launcher, or empty if there is none.
+
+    Cached per size, because the panel asks for one size and the web interface
+    may ask for another, and fetching from the store twice for the same logo is
+    a request nobody needs to make.
+    """
+    if not bundle or px < 16 or px > 480:
+        return b""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    path = CACHE / f"{bundle}-{px}.jpg"
+    if path.exists():
+        return path.read_bytes()
+
+    own = OWN / f"{bundle}.src"
+    raw = own.read_bytes() if own.exists() else await _fetch(bundle)
+    if not raw:
+        path.write_bytes(b"")            # remember that there is nothing, too
+        return b""
+
+    import asyncio
+    done = await asyncio.to_thread(_thumb, raw, px)
+    path.write_bytes(done)
+    return done
 
 
 async def icon(bundle: str) -> bytes:

@@ -17,14 +17,38 @@ anyone.
 | Hold + turn | step through inputs |
 | Short press | mute |
 | Double press | jump to your favourite input |
-| Hold 1 s | amplifier on or off |
-| Tap the sleeve | browse your record shelf; **BACK** at the bottom leaves without choosing |
+| Hold 1 s | back, one level — the same gesture on every screen. On the volume screen, where there is nowhere to go back to, the amplifier on or off |
+| Tap the sleeve | browse your record shelf; **BACK** at the bottom leaves without choosing. On the Apple TV input, the same tap gives you its apps |
 | Tap the note | listen now |
 | Tap the input name, turn to **Settings** | where to reach it, what it is talking to, the brightness |
 
 While a record plays the sleeve fills the screen, with the volume as an arc
 around the rim in the sleeve's own dominant colour. The screen goes dark when
 the amplifier does and comes back when it returns.
+
+## The Apple TV
+
+The Pi is already paired with it — that is where the artist and title come from
+when something plays over HDMI — and the same connection carries commands. So
+the knob can drive it, within limits chosen on purpose.
+
+What it does is the part the remote on your sofa is bad at: **starting things**.
+Tap the screen while the receiver is on the Apple TV input and you get its apps,
+three at a time, the same carousel as the record shelf. Turn, press, and you are
+in the app — no walking a grid with a direction pad. Choosing that input also
+wakes the Apple TV, and switching everything off puts it back to sleep.
+
+After that the panel goes blind on purpose. Nothing reports back what is focused
+over there, so it stops pretending: turning sends left and right, a press
+selects, a long press goes back, and you look at the television, which does
+know. The moment something starts playing the knob is a volume knob again and
+the screen is the ordinary now-playing — a press pauses instead of muting,
+because you are watching rather than listening.
+
+What it deliberately is not is a second remote. There is no keyboard on a
+480-pixel round screen, no attempt to beat Netflix's own menu, and no Siri
+button. Set which input the Apple TV is on in the web interface, under the panel
+tab.
 
 There is a web interface at the Pi's address — one page, five tabs: what's
 playing (a live copy of the panel's screen), the queue of unrecognised records,

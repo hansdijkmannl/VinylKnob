@@ -155,6 +155,8 @@ dd{margin:0;color:var(--dim)}
   <button class="sec" id="addBtn" onclick="addInput()" style="margin-top:.6rem">Add input</button>
   <label>Favourite (double press)</label>
   <select id="favouriteInput"></select>
+  <label>Apple TV on</label>
+  <select id="appleTvInput"></select>
 </div>
 
 <h2>Controls</h2>
@@ -207,13 +209,18 @@ function renderInputs(){
   renderFav();
 }
 function renderFav(){
-  const cur=parseInt($('favouriteInput').dataset.sel??'-1',10);
-  $('favouriteInput').innerHTML='<option value="-1">none</option>'+inputs.map((b,i)=>
+  /* Two of these now, each remembering its own choice: which input the double
+     press jumps to, and which one the Apple TV hangs off. One shared variable
+     would quietly make them the same answer. */
+  for(const f of ['favouriteInput','appleTvInput']){
+   const cur=parseInt($(f).dataset.sel??'-1',10);
+   $(f).innerHTML='<option value="-1">none</option>'+inputs.map((b,i)=>
     `<option value="${i}"${i===cur?' selected':''}>${esc(b.label||b.code)}</option>`).join('');
+  }
 }
-function setFav(v){$('favouriteInput').dataset.sel=v;renderFav()}
+function setFav(v,f){$(f||'favouriteInput').dataset.sel=v;renderFav()}
 function addInput(){if(inputs.length<MAXI){inputs.push({code:CODES[0],label:CODES[0]});renderInputs()}}
-function delInput(i){inputs.splice(i,1);setFav(-1);renderInputs()}
+function delInput(i){inputs.splice(i,1);setFav(-1);setFav(-1,'appleTvInput');renderInputs()}
 
 async function boot(){
   CODES=await(await fetch('api/inputs')).json();
@@ -230,8 +237,10 @@ async function boot(){
   $('offWithAmp').value=S.offWithAmp?'1':'0';
   inputs=S.inputs.map(b=>({code:b.code,label:b.label}));
   setFav(S.favouriteInput);
+  setFav(S.appleTvInput,'appleTvInput');
   renderInputs();
   $('favouriteInput').onchange=e=>setFav(parseInt(e.target.value,10));
+  $('appleTvInput').onchange=e=>setFav(parseInt(e.target.value,10),'appleTvInput');
   tick();setInterval(tick,1000);
 }
 
@@ -252,7 +261,8 @@ async function tick(){
 }
 
 async function save(){
-  const b={inputs:inputs,favouriteInput:parseInt($('favouriteInput').value,10)};
+  const b={inputs:inputs,favouriteInput:parseInt($('favouriteInput').value,10),
+           appleTvInput:parseInt($('appleTvInput').value,10)};
   for(const k of ['avrHost','brainHost','wifiSsid','wifiPass'])b[k]=$(k).value;
   for(const k of ['avrPort','brightness','dimAfterS','halfDbPerClick','accelFactor','accelWindowMs',
                   'volMaxDb','longPressMs','doublePressMs'])b[k]=parseInt($(k).value,10);

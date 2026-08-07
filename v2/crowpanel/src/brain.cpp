@@ -79,6 +79,37 @@ bool brainLink(uint16_t releaseId) {
   return code == HTTP_CODE_OK;
 }
 
+// One short POST to the Pi. Nothing comes back worth reading: these are all
+// commands, and the thing that shows the result is the television.
+static bool atvPost(const char *path) {
+  if (settings.brainHost[0] == '\0' || WiFi.status() != WL_CONNECTED) return false;
+  char url[160];
+  snprintf(url, sizeof(url), "http://%s:%u%s", settings.brainHost, BRAIN_PORT, path);
+  HTTPClient http;
+  http.setConnectTimeout(CONNECT_TIMEOUT_MS);
+  http.setTimeout(READ_TIMEOUT_MS);
+  if (!http.begin(url)) return false;
+  const int code = http.POST("");
+  http.end();
+  return code == HTTP_CODE_OK;
+}
+
+bool atvKey(const char *name) {
+  char path[64];
+  snprintf(path, sizeof(path), "/appletv/key?name=%s", name);
+  return atvPost(path);
+}
+
+bool atvPower(bool on) {
+  return atvPost(on ? "/appletv/power?on=1" : "/appletv/power?on=0");
+}
+
+bool atvLaunch(const char *bundleId) {
+  char path[128];
+  snprintf(path, sizeof(path), "/appletv/launch?id=%s", bundleId);
+  return atvPost(path);
+}
+
 void brainLoop() {
   if (settings.brainHost[0] == '\0') return;      // no Pi configured
   if (WiFi.status() != WL_CONNECTED) return;
