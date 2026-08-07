@@ -44,3 +44,24 @@ appletv.json
 .vscode/
 .idea/
 *.swp
+
+# --- CAD, and version 1 ----------------------------------------------------
+# Both live in this directory and neither is published. The enclosure went
+# through ten revisions and is still moving; what the shape has to do is in
+# v2/BOM.md, which outlives any one of them. Version 1 is the simple knob this
+# grew out of and is kept for reference, not as something to build.
+#
+# They were in this repository once and were taken back out of its history on
+# 7 August 2026, together with a few reference models — a Pi Zero mesh alone was
+# 24 MB, against 600 kB for the whole of the rest. Ignored rather than deleted
+# so that putting them back is a decision, not an accident.
+3D Print/
+Housing/
+*.stl
+*.step
+*.f3d
+*.3mf
+/src/
+/platformio.ini
+/BOM.md
+/docs/version-1.md
