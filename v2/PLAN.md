@@ -398,6 +398,46 @@ happened or a rule that must keep working — including Hans Zimmer's *Live*,
 which the first fix for the compilation problem broke and which is why replaying
 all 113 historical lookups was worth the trouble.
 
+## Phase 10 — A screen that can tell you where it is ✅
+
+**7 August 2026.** Half an hour off the mains and it came back asking to have
+Wi-Fi set up, on a network it already knew. Nothing was lost — the credentials
+were still in NVS — but falling back to the access point was a one-way door.
+Twenty-five seconds at boot, and if the router was not answering yet the panel
+put up its own network and stayed there for good; `maintainWifi()` returned
+immediately in that mode and never tried again. A router coming back from a
+power cut takes minutes, and this thing is up in three seconds, so it lost that
+race every time.
+
+With credentials stored it now runs AP and station at once. The access point is
+how you fix a wrong password; the station is how it gets itself back without
+you. Proved rather than argued: a build with the boot timeout set to 1 ms, so it
+is *guaranteed* to fall into setup mode, recovered to the LAN in under four
+seconds and logged "Wi-Fi is back". Flashing goes over USB from the Pi, so that
+experiment could not strand anything.
+
+That fix needed somewhere to say "here is the address", and the address turns
+out to be the thing you can never look up at the moment you need it: standing at
+the shelf, just after setup, with no idea what the router handed out. So there
+is a settings screen — a QR to the web interface with the address written under
+it, then the Wi-Fi, the Pi, the receiver, and the brightness. Turn to page,
+press to close; on the brightness page press hands the knob over and press again
+gives it back, and each page says which of the two it is, because there is
+nothing else on this device to tell you.
+
+Three things about where it lives:
+
+- **At the bottom of the input list**, next to Turn Off. That list is already
+  the place for things that are not inputs, and it is where you go when the
+  record is over.
+- **It shows itself** the moment Wi-Fi comes up — after setup, or after an
+  outage — but not on an ordinary boot, where it would be noise, and not when
+  the screen is off, where it would be a light in a dark room.
+- **It is exempt from the screen overrides.** No Wi-Fi and no receiver both
+  force their own full-screen message, and those are precisely the two moments
+  you go looking for an address. A press of the knob on either of them opens it,
+  because on those screens there is nothing to mute and no list to confirm.
+
 ---
 
 ## What carries over from version 1

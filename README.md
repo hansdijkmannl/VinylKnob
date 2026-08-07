@@ -20,6 +20,7 @@ anyone.
 | Hold 1 s | amplifier on or off |
 | Tap the sleeve | browse your record shelf; **BACK** at the bottom leaves without choosing |
 | Tap the note | listen now |
+| Tap the input name, turn to **Settings** | where to reach it, what it is talking to, the brightness |
 
 While a record plays the sleeve fills the screen, with the volume as an arc
 around the rim in the sleeve's own dominant colour. The screen goes dark when
@@ -28,6 +29,15 @@ the amplifier does and comes back when it returns.
 There is a web interface at the Pi's address — one page, five tabs: what's
 playing (a live copy of the panel's screen), the queue of unrecognised records,
 your collection, the panel's settings, and the system.
+
+Getting to it is the awkward part on a device with no keyboard, so the panel
+tells you itself: at the bottom of the input list is **Settings**, and its first
+page is a QR code to the web interface with the address written underneath. Turn
+for the Wi-Fi it is on, the Pi, the receiver, and the brightness; press to
+close. The same page appears by itself the moment Wi-Fi comes up, which is when
+you need it and cannot look it up anywhere else. It is also the one screen that
+stays reachable when there is no receiver or no network — a press of the knob
+gets you there — because those are exactly the moments you want an address.
 
 ## What you need
 

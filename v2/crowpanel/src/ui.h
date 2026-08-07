@@ -18,11 +18,19 @@
 // still the fastest way to debug a gesture.
 // ---------------------------------------------------------------------------
 
+// The settings pages, in the order the knob walks through them. First the
+// address, because that is the one you came for.
+enum SettingsPage : uint8_t {
+  SETTINGS_WEB = 0, SETTINGS_WIFI, SETTINGS_PI, SETTINGS_AVR, SETTINGS_BRIGHT,
+  SETTINGS_PAGES
+};
+
 enum class Screen : uint8_t {
   Volume,      // sleeve as the background, arc around the rim
   Inputs,      // the list of inputs
   Browse,      // browsing the record shelf
   Pairing,     // QR code and address, when something is waiting to be linked
+  Settings,    // where to reach it, what it is connected to, and the brightness
   Off,         // switched off; any touch or turn wakes it
   Setup,       // own access point, no Wi-Fi yet
   NoAvr,       // Wi-Fi yes, receiver unreachable
@@ -85,6 +93,18 @@ struct UiState {
   // network
   char     ip[16]         = "";
   int      rssi           = 0;
+
+  // -- settings, turned through with the knob -------------------------------
+  // Everything a phone would tell you, on the one screen this device has. It
+  // exists because the address is the thing you need at exactly the moment you
+  // cannot look it up: right after Wi-Fi is set up, standing at the shelf with
+  // no idea what the router gave it.
+  uint8_t  settingsPage   = 0;
+  bool     settingsAdjust = false;   // press held the page: turning now changes it
+  uint8_t  brightness     = 100;
+  bool     brainUp        = false;
+  char     brainHost[40]  = "";
+  char     wifiSsid[33]   = "";
 };
 
 void uiBegin();

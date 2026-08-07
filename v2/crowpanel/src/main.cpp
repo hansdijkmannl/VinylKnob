@@ -7,11 +7,14 @@
 // Controls:
 //   turn                    volume; in a list, the position
 //   hold + turn             step through inputs; in the shelf, jump by letter
-//   short press             mute, or confirm in a list
+//   short press             mute, or confirm in a list; on a screen with
+//                           nothing to mute, the settings
 //   double press            straight to your favourite input
 //   hold (1 s)              amplifier on/off
 //   hold (8 s)              clear Wi-Fi, boot into setup mode
-//   tap the input name      input list
+//   tap the input name      input list — and at the bottom of it, the settings:
+//                           a QR to the web interface, the addresses, the
+//                           brightness
 //   tap the sleeve          the record shelf
 // ---------------------------------------------------------------------------
 
@@ -31,7 +34,7 @@
 #include "ui.h"
 #include "web.h"
 
-bool netApMode = false;                // web.cpp leest dit
+bool netApMode = false;                // web.cpp reads this
 // rebootRequested is defined in web.cpp; web.h declares it extern.
 
 static UiState ui;
@@ -116,11 +119,13 @@ static uint32_t pendingAt      = 0;
 // The candidate input, not yet sent.
 static int      pickIndex     = 0;
 
-// Two entries at the bottom of the input list that are not inputs but actions.
-// They belong there because that is when you want them: the record is over, you
-// turn one step further and switch the whole thing off.
-static const char *EXTRA[] = { "Turn Off", "Turn Off + Amp" };
-static const int   EXTRA_N = 2;
+// Three entries at the bottom of the input list that are not inputs but
+// actions. They belong there because that is when you want them: the record is
+// over, you turn one step further and switch the whole thing off — or you go
+// looking for the address, which is the other thing you only ever want while
+// standing in front of it.
+static const char *EXTRA[] = { "Turn Off", "Turn Off + Amp", "Settings" };
+static const int   EXTRA_N = 3;
 
 static int pickCount() { return settings.inputCount + EXTRA_N; }
 
@@ -148,11 +153,13 @@ static void queueCommand(const char *cmd, uint32_t delayMs) {
 static void refreshUi();          // defined further down; declared here
 static void pickAlbum();
 static void forgetTheQuestion();
+static void enterSettings(uint8_t page);
+static void leaveToVolume();
 
 // For web.cpp: the order is that of enum class Screen in ui.h.
 const char *uiScreenName() {
   static const char *NAMES[] = {"volume", "inputs", "browse",
-                                "pairing", "off", "setup", "noavr"};
+                                "pairing", "settings", "off", "setup", "noavr"};
   const uint8_t i = (uint8_t)ui.screen;
   return i < (sizeof(NAMES) / sizeof(NAMES[0])) ? NAMES[i] : "?";
 }
@@ -258,10 +265,19 @@ static void refreshUi() {
   ui.piHot       = brainState.hot;
   ui.listening   = brainState.listening || millis() < ownListenUntil;
   ui.rssi = netApMode ? 0 : WiFi.RSSI();
+  ui.brightness = settings.brightness;
+  ui.brainUp    = brainState.reachable;
+  strlcpy(ui.brainHost, settings.brainHost, sizeof(ui.brainHost));
+  strlcpy(ui.wifiSsid,  settings.wifiSsid,  sizeof(ui.wifiSsid));
   strlcpy(ui.ip, netApMode ? WiFi.softAPIP().toString().c_str()
                            : WiFi.localIP().toString().c_str(), sizeof(ui.ip));
 
+  // The settings screen is exempt from all of this on purpose: no Wi-Fi and no
+  // receiver are precisely the two moments you go looking for an address, and
+  // being thrown back to a screen that says "no receiver" while you are reading
+  // that receiver's address would be its own small joke.
   if (ui.screen == Screen::Off)       { /* stays off until you touch it */ }
+  else if (ui.screen == Screen::Settings) { /* stays until you leave it */ }
   else if (netApMode)                 ui.screen = Screen::Setup;
   else if (!avrState.connected)       ui.screen = Screen::NoAvr;
   else if (ui.screen == Screen::Setup || ui.screen == Screen::NoAvr)
@@ -284,6 +300,56 @@ static void enterInputs() {
   ui.screen = Screen::Inputs;
   idleReturnAt = millis() + IDLE_RETURN_MS;
   refreshUi();
+}
+
+// Where to reach it, what it is talking to, and how bright it is.
+//
+// Reached from the bottom of the input list, and by itself the moment Wi-Fi
+// comes up — because the address is what you need at exactly the moment you
+// cannot look it up. Generous timeout: reading a QR code with a phone takes
+// longer than glancing at a volume.
+static void enterSettings(uint8_t page) {
+  ui.screen = Screen::Settings;
+  ui.settingsPage = page < SETTINGS_PAGES ? page : 0;
+  ui.settingsAdjust = false;
+  idleReturnAt = millis() + IDLE_RETURN_MS * 5;
+  refreshUi();
+}
+
+static void turnSettings(int steps) {
+  idleReturnAt = millis() + IDLE_RETURN_MS * 5;
+  if (ui.settingsAdjust) {
+    // The knob belongs to the brightness now. Ten per cent a click, and never
+    // all the way to nought: a screen you cannot see is a screen you cannot
+    // use to turn it back up.
+    int level = (int)settings.brightness + steps * 10;
+    if (level < 10)  level = 10;
+    if (level > 100) level = 100;
+    settings.brightness = (uint8_t)level;
+    boardBacklight(settings.brightness);
+    refreshUi();
+    return;
+  }
+  const int n = SETTINGS_PAGES;
+  ui.settingsPage = (uint8_t)((((int)ui.settingsPage + steps) % n + n) % n);
+  refreshUi();
+}
+
+static void pressSettings() {
+  if (ui.settingsPage == SETTINGS_BRIGHT && !ui.settingsAdjust) {
+    ui.settingsAdjust = true;               // the knob changes it from here
+    idleReturnAt = millis() + IDLE_RETURN_MS * 5;
+    refreshUi();
+    return;
+  }
+  if (ui.settingsAdjust) {
+    ui.settingsAdjust = false;
+    settingsSave();                          // brightness is worth keeping
+    idleReturnAt = millis() + IDLE_RETURN_MS * 5;
+    refreshUi();
+    return;
+  }
+  leaveToVolume();
 }
 
 static void leaveToVolume() {
@@ -394,7 +460,9 @@ static void scrollInputs(int steps) {
 // twee uitzet-regels uitvoeren.
 static void confirmInput() {
   if (pickIndex >= settings.inputCount) {
-    powerDown(pickIndex == settings.inputCount + 1);   // second entry = with the amp
+    const int extra = pickIndex - settings.inputCount;
+    if (extra == 2) enterSettings(SETTINGS_WEB);
+    else            powerDown(extra == 1);      // second entry = with the amp
     return;
   }
   if (pickIndex >= 0 && pickIndex < settings.inputCount)
@@ -408,7 +476,9 @@ static void handleKnob() {
   if (in.steps != 0 || in.event != KnobEvent::None) screenWake();
 
   if (in.steps != 0) {
-    if (ui.screen == Screen::Browse) {
+    if (ui.screen == Screen::Settings) {
+      turnSettings(in.steps);
+    } else if (ui.screen == Screen::Browse) {
       // On the shelf the knob does something else. Turning while held jumps by
       // letter: with hundreds of albums, one at a time is no way to travel, and
       // this is the same jump index as the letter ring in the web interface.
@@ -441,10 +511,16 @@ static void handleKnob() {
     case KnobEvent::ShortPress:
       // knob.cpp already suppresses the short press if you turned while
       // holding, so only the list needs handling here.
-      if (ui.screen == Screen::Inputs) {          // bevestigen
+      if (ui.screen == Screen::Inputs) {          // confirm
         confirmInput();
+      } else if (ui.screen == Screen::Settings) {
+        pressSettings();
       } else if (ui.screen == Screen::Browse) {
         pickAlbum();
+      } else if (ui.screen == Screen::Setup || ui.screen == Screen::NoAvr) {
+        // Nothing to mute and no list to open, so the press is free — and this
+        // is where the address is, which is what you are standing there for.
+        enterSettings(SETTINGS_WEB);
       } else {
         avrSend(avrState.muted ? "MUOFF" : "MUON");
       }
@@ -508,14 +584,33 @@ static void handleTouch() {
 }
 
 // ---------------------------------------------------------------------------
-// Netwerk
+// Network
 // ---------------------------------------------------------------------------
+//
+// Falling back to the access point must not be a one-way door.
+//
+// It was. Twenty-five seconds at boot, and if the network was not there in that
+// time the panel put up its own access point and stayed there — asking you to
+// set up Wi-Fi it already knew, with a reboot as the only way out. Half an hour
+// off the mains was enough to trigger it: a router coming back from a power cut
+// takes minutes to hand out addresses again, and this is up in three seconds.
+//
+// So with credentials stored it runs both at once. The access point is how you
+// fix a wrong password; the station is how it gets itself back without you.
 static void startAccessPoint() {
+  const bool haveCredentials = settings.wifiSsid[0] != '\0';
   netApMode = true;
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(haveCredentials ? WIFI_AP_STA : WIFI_AP);
   WiFi.softAP(AP_SSID);
-  Serial.printf("Setup access point \"%s\" at %s\n", AP_SSID,
-                WiFi.softAPIP().toString().c_str());
+  if (haveCredentials) {
+    WiFi.setHostname(MDNS_NAME);
+    WiFi.begin(settings.wifiSsid, settings.wifiPass);
+    Serial.printf("Setup access point \"%s\" at %s, still trying \"%s\"\n",
+                  AP_SSID, WiFi.softAPIP().toString().c_str(), settings.wifiSsid);
+  } else {
+    Serial.printf("Setup access point \"%s\" at %s\n", AP_SSID,
+                  WiFi.softAPIP().toString().c_str());
+  }
   refreshUi();
 }
 
@@ -539,13 +634,45 @@ static void connectWifi() {
     return;
   }
   netApMode = false;
-  Serial.printf("Wifi verbonden, IP %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Wi-Fi connected, IP %s\n", WiFi.localIP().toString().c_str());
   refreshUi();
 }
 
 static void maintainWifi() {
   static uint32_t downSince = 0;
-  if (netApMode) return;
+  static uint32_t apRetryAt = 0;
+
+  if (netApMode) {
+    if (settings.wifiSsid[0] == '\0') return;     // nothing to go back to
+    if (WiFi.status() == WL_CONNECTED) {
+      // The network came back. Drop the access point and carry on as though
+      // this had worked at boot — including showing where to reach it, which
+      // is the one thing you want to know the moment it comes online.
+      netApMode = false;
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      WiFi.setSleep(false);
+      Serial.printf("Wi-Fi is back, IP %s\n", WiFi.localIP().toString().c_str());
+      // Show where to reach it, which is the one thing you want the moment it
+      // comes online and cannot look up anywhere else. Unless it is switched
+      // off — coming back from a network outage is no reason to light the room.
+      if (ui.screen == Screen::Off) refreshUi();
+      else                          enterSettings(SETTINGS_WEB);
+      return;
+    }
+    if (millis() >= apRetryAt) {
+      apRetryAt = millis() + WIFI_RETRY_AFTER_MS;
+      // Credentials usually arrive *after* the access point is up — that is the
+      // whole point of it — and a radio in plain AP mode cannot go looking for
+      // a network. Put it in both modes before asking.
+      if (WiFi.getMode() != WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.setHostname(MDNS_NAME);
+      }
+      WiFi.begin(settings.wifiSsid, settings.wifiPass);
+    }
+    return;
+  }
 
   if (WiFi.status() != WL_CONNECTED) {
     const uint32_t now = millis();
@@ -650,7 +777,8 @@ void loop() {
   screenDimLoop();
 
   // Fall back to the volume screen when you stop doing anything
-  if (ui.screen == Screen::Inputs && idleReturnAt && millis() > idleReturnAt) {
+  if ((ui.screen == Screen::Inputs || ui.screen == Screen::Settings) &&
+      idleReturnAt && millis() > idleReturnAt) {
     idleReturnAt = 0;
     leaveToVolume();
   }

@@ -56,7 +56,7 @@ static lv_obj_t *lblShelfLetter, *letterVeil;
 
 // The large typeface from font_shelf_letter.c.
 LV_FONT_DECLARE(font_shelf_letter);
-static lv_obj_t *lblQrIp, *lblQrHost, *qr;
+static lv_obj_t *lblQrIp, *lblQrHost, *lblQrHead, *qr;
 static lv_obj_t *lblMsgHead, *lblMsgText;
 
 // LVGL draws into PSRAM: two full screens of 480x480x2 = 460 kB each, the way
@@ -569,8 +569,8 @@ void uiBegin() {
 
   // -- layer 4: linking ------------------------------------------------------
   lyQr = makeLayer();
-  lv_obj_t *qKop = makeLabel(lyQr, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0, -130);
-  lv_label_set_text(qKop, "UNKNOWN RECORD");
+  lblQrHead = makeLabel(lyQr, &lv_font_montserrat_14, COL_DIM, LV_ALIGN_CENTER, 0, -130);
+  lv_label_set_text(lblQrHead, "UNKNOWN RECORD");
   qr = lv_qrcode_create(lyQr, 168, lv_color_hex(0x101014), lv_color_white());
   lv_obj_align(qr, LV_ALIGN_CENTER, 0, -14);
   lv_obj_set_style_border_width(qr, 6, 0);
@@ -869,6 +869,9 @@ void uiRender(const UiState &s) {
 
     case Screen::Pairing: {
       show(lyQr);
+      lv_label_set_text(lblQrHead, "UNKNOWN RECORD");
+      lv_obj_set_style_text_color(lblQrIp, lv_color_hex(COL_TEXT), 0);
+      lv_label_set_text(lblQrHost, "scan to link it");
       // The QR points at the brain on the Pi, not at this panel: that is where
       // the queue lives in which you hang a record on a release.
       char adres[64];
@@ -879,17 +882,82 @@ void uiRender(const UiState &s) {
       break;
     }
 
+    // Everything a phone would tell you, on the one screen this thing has.
+    //
+    // Turn to page through, press to leave — except on the last page, where
+    // pressing hands the knob to the brightness and pressing again gives it
+    // back. Every page says what the knob does, because there is nothing else
+    // here to tell you.
+    case Screen::Settings: {
+      switch (s.settingsPage) {
+        case SETTINGS_WEB: {
+          show(lyQr);
+          // The web interface lives on the Pi when there is one; before that,
+          // this panel's own page is the only thing to point at — and it is
+          // where you set the receiver's address anyway.
+          const bool viaPi = s.brainHost[0] != '\0';
+          char address[64];
+          snprintf(address, sizeof(address), "http://%s",
+                   viaPi ? s.brainHost : s.ip);
+          lv_label_set_text(lblQrHead, viaPi ? "WEB INTERFACE" : "THIS PANEL");
+          lv_qrcode_update(qr, address, strlen(address));
+          lv_label_set_text(lblQrIp, viaPi ? s.brainHost : s.ip);
+          lv_obj_set_style_text_color(lblQrIp, lv_color_hex(COL_TEXT), 0);
+          // The panel's own address always, even when the QR points at the Pi:
+          // that is the one you need when the Pi is the thing that is broken.
+          lv_label_set_text_fmt(lblQrHost, viaPi ? "panel at %s" : "scan it", s.ip);
+          break;
+        }
+
+        case SETTINGS_WIFI:
+          show(lyMsg);
+          lv_label_set_text(lblMsgHead, "WI-FI");
+          lv_label_set_text_fmt(lblMsgText, "%s\n%s\n%d dBm\n\nturn for more, press to close",
+                                s.wifiSsid[0] ? s.wifiSsid : "not set",
+                                s.ip[0] ? s.ip : "no address", s.rssi);
+          break;
+
+        case SETTINGS_PI:
+          show(lyMsg);
+          lv_label_set_text(lblMsgHead, "THE PI");
+          lv_label_set_text_fmt(lblMsgText, "%s\n%s\n\nturn for more, press to close",
+                                s.brainHost[0] ? s.brainHost : "not found yet",
+                                s.brainUp ? "answering" : "no answer");
+          break;
+
+        case SETTINGS_AVR:
+          show(lyMsg);
+          lv_label_set_text(lblMsgHead, "RECEIVER");
+          lv_label_set_text_fmt(lblMsgText, "%s\n%s\n%s\n\nturn for more, press to close",
+                                settings.avrHost[0] ? settings.avrHost : "no address set",
+                                s.inputLabel[0] ? s.inputLabel : "-",
+                                s.powered ? "on" : "off");
+          break;
+
+        case SETTINGS_BRIGHT:
+          show(lyMsg);
+          lv_label_set_text(lblMsgHead, "BRIGHTNESS");
+          lv_obj_set_style_text_color(lblMsgHead,
+              lv_color_hex(s.settingsAdjust ? COL_ACCENT : COL_ACCENT), 0);
+          lv_label_set_text_fmt(lblMsgText, "%d%%\n\n%s", s.brightness,
+                                s.settingsAdjust ? "turn to change, press to keep"
+                                                 : "press to change it");
+          break;
+      }
+      break;
+    }
+
     case Screen::Setup:
       show(lyMsg);
       lv_label_set_text(lblMsgHead, "No Wi-Fi yet");
-      lv_label_set_text_fmt(lblMsgText, "Connect to %s\nand open %s",
+      lv_label_set_text_fmt(lblMsgText, "Connect to %s\nand open %s\n\npress the knob for the address",
                             AP_SSID, s.ip[0] ? s.ip : "192.168.4.1");
       break;
 
     case Screen::NoAvr:
       show(lyMsg);
       lv_label_set_text(lblMsgHead, "No receiver");
-      lv_label_set_text_fmt(lblMsgText, "%s\nIs Network Control set to \"Always On\"?",
+      lv_label_set_text_fmt(lblMsgText, "%s\nIs Network Control set to \"Always On\"?\n\npress the knob for the address",
                             settings.avrHost[0] ? settings.avrHost : "no address set");
       break;
   }
