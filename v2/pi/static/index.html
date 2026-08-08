@@ -1712,7 +1712,12 @@ on('liFind', 'click', async () => {
     + rows.map(l => `${l.input.padEnd(13, ' ')}${l.db.toFixed(1)} dB`).join('<br>')
     + '</span>';
 
-  if (d.loudest) {
+  if (d.silent) {
+    setText('liInfo', 'The receiver handed over nothing at all, on any input. In '
+                    + 'standby it does not serve these streams — Network Control keeps '
+                    + 'telnet alive, not the audio. Switch it on, put a side on, and '
+                    + 'try again.');
+  } else if (d.loudest) {
     $('lineInput').value = d.loudest;
     setText('liInfo', `That is ${d.loudest} — the only one with music on it. `
                     + 'Press Save to keep it.');

@@ -8,7 +8,67 @@ in [PLAN.md](PLAN.md) and [BOM.md](BOM.md).
 
 ---
 
-## Step 0 — Nothing else may hold the amplifier
+## Step −1 — Find out whether your receiver can do it, before you order
+
+Half of this is a volume knob and works on any Denon or Marantz that speaks telnet
+on port 23, which is most of them from the last decade. The other half — knowing
+which record is on — needs the receiver to hand its **analog inputs over HTTP**,
+and that is a narrower feature. There is no published list of which models have
+it, so ask yours. It costs nothing and you do not own anything yet.
+
+**Switch the receiver on** — in standby it does not serve these streams at all;
+Network Control keeps telnet alive, not the audio server — and put a record on.
+Then, from any machine on the same network:
+
+```bash
+curl -s --max-time 3 -o /tmp/probe "http://192.168.1.60:8015/analoginput/analog/analog/0/phono"; wc -c < /tmp/probe
+```
+
+With your receiver's own address in place of `192.168.1.60`. Nothing is changed by
+this; it reads three seconds of audio and throws it away.
+
+| What comes back | What it means |
+|---|---|
+| a few hundred thousand bytes | it works. Order the parts |
+| `0` | either the receiver is in standby, or it does not do this. Try again with it switched on before concluding anything |
+| a connection error | nothing is listening on 8015 — this model does not serve its inputs |
+
+If your turntable is not on `PHONO`, the path is the stream's own name and not the
+front panel's: `mediaplayer` for MPLAY, `cable_sat` for SAT/CBL, `aux_single` for
+AUX1, `tvaudio` for TV. Try `phono` first anyway; it is right on most.
+
+**A receiver that fails this is still worth building for.** You get the knob, the
+volume, the input list, the shelf to browse, the sleeves for anything an Apple TV
+plays, and hand-linking records from the queue. What you do not get is a record
+naming itself, which is admittedly the best trick.
+
+---
+
+## Step 0 — What else you need, and what to check when the boxes arrive
+
+Nothing on the [parts list](BOM.md) is unusual, but four things around it are
+easy to be caught without:
+
+| | |
+|---|---|
+| a computer with **PlatformIO** | for flashing the panel once. `pip install platformio` in a virtualenv is enough; you never need the IDE |
+| a **microSD reader** and **Raspberry Pi Imager** | for the Pi's card |
+| an **SSH key** | the Imager will put your public key on the card, which is much better than a password |
+| a **Discogs account** | free, and the shelf comes from it. Settings › Developers for a personal access token |
+
+**The parcels rarely arrive together, and that is fine.** With only the panel you
+can do steps 1 to 3 and end up with a working volume knob and input selector on
+the shelf, which is worth having on its own. The Pi adds everything about records
+later, and the panel does not change when it appears.
+
+**When you unpack the panel**, check the cable is in the box: plain USB-A at one
+end, a 4-pin JST MX1.25 at the other. The CrowPanel has no USB-C and that plug is
+awkward to source separately, so if it is missing, say so before you go looking for
+one.
+
+---
+
+## Step 1 — Nothing else may hold the amplifier
 
 The receiver accepts **one telnet session at a time**, and the panel needs it. If
 something else has it, the panel reports "No receiver" — which is the most
@@ -23,7 +83,7 @@ And in the receiver's own menu, **Network → Network Control → Always On**. W
 it the receiver drops its network when it goes into standby, and the panel can
 never wake it — which looks exactly like a broken cable.
 
-## Step 1 — Flash the panel
+## Step 2 — Flash the panel
 
 **1a. Find the cable.** The panel has no USB-C. Power and data share the
 `USB-5V-IN` connector: a **4-pin JST MX1.25** (`GND · D+ · D− · VCC`). Elecrow
@@ -76,7 +136,7 @@ with everything else healthy is covered in
 
 ---
 
-## Step 2 — Feel the knob
+## Step 3 — Feel the knob
 
 One minute, and it answers the question the whole design rests on: **does that
 built-in encoder have detents?**
@@ -90,7 +150,7 @@ the whole approach.
 
 ---
 
-## Step 3 — Configure the panel
+## Step 4 — Configure the panel
 
 The panel has no keyboard, so this goes through a web page.
 
@@ -115,12 +175,12 @@ leaving zero needs a restart.
 Short press is mute, long press is on/off, tapping the input name opens the
 input list.
 
-If it does nothing, go back through step 0. Nine times out of ten something else
+If it does nothing, go back through step 1. Nine times out of ten something else
 is still holding that telnet session.
 
 ---
 
-## Step 4 — The SD card
+## Step 5 — The SD card
 
 Raspberry Pi Imager, **Raspberry Pi OS Lite (64-bit)** — no desktop; it only
 costs memory and this machine never gets a screen.
@@ -145,7 +205,7 @@ ssh vinylknob.local
 
 ---
 
-## Step 5 — Set up the Pi
+## Step 6 — Set up the Pi
 
 From your computer:
 
@@ -171,7 +231,7 @@ like; it is idempotent.
 
 ---
 
-## Step 6 — See whether the Pi runs
+## Step 7 — See whether the Pi runs
 
 ```bash
 ssh vinylknob.local 'journalctl -u vinylknob-brain -u vinylknob-listen -f'
@@ -207,7 +267,7 @@ people will not want it and Shazam plus your own database do not need it.
 
 ---
 
-## Step 7 — Tell it which input the turntable is on
+## Step 8 — Tell it which input the turntable is on
 
 There is no microphone to plug in. A Denon or Marantz receiver digitises its
 analog inputs and serves each one over HTTP — the machinery behind sharing an
@@ -246,7 +306,7 @@ and there is no published list of which models are, so this is how you find out.
 `v2/pi/line.sh` does the same thing over SSH and prints more detail; it is the
 place to go when the page says something you do not believe.
 
-## Step 7b — Pair the Apple TV
+## Step 8b — Pair the Apple TV
 
 Only if you have one. Records come off the line feed and get recognised;
 anything over HDMI does not need recognising, because the Apple TV knows what it
@@ -266,7 +326,7 @@ here. Apple TV+, Music and most others do not.
 
 ---
 
-## Step 8 — Move the panel onto the Pi
+## Step 9 — Move the panel onto the Pi
 
 Until now the panel hung off your computer. Move the USB cable to a USB-A port
 on the Pi. Everything keeps working: the panel talks to the receiver over Wi-Fi,
@@ -287,7 +347,7 @@ to let the needle settle, eight of recording, and a moment to ask.
 
 | Symptom | Usually |
 |---|---|
-| panel says "No receiver" | something else still holds the telnet session (step 0) |
+| panel says "No receiver" | something else still holds the telnet session (step 1) |
 | no serial port appears | BOOT not held long enough, or the wrong cable |
 | nothing happens after uploading | press RESET; the chip is still in the bootloader |
 | black screen, monitor spews `ESP-ROM` | boot loop — see the appendix |

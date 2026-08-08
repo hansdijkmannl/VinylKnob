@@ -81,6 +81,14 @@ And a **Denon or Marantz receiver with network control**. Any model speaking the
 telnet protocol on port 23 should do; in the receiver's menu set *Network →
 Network Control* to **Always On**, or the port disappears in standby.
 
+**Check your receiver before you order.** The volume half works on almost any of
+them; knowing which record is on needs the receiver to serve its analog inputs
+over HTTP, which is a narrower feature with no published model list. Switch the
+receiver on, then ask it — one command, no hardware, in
+[step −1 of the build guide](v2/BUILD.md). A receiver that fails it is still worth
+building for: you get the knob, the volume, the sources, the shelf and the sleeves.
+What you lose is a record naming itself.
+
 ## Two sources
 
 **Records** come off the line feed and are recognised. **Everything over HDMI**

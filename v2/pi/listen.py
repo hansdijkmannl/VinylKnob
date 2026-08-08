@@ -1315,7 +1315,15 @@ async def api_line_measure(_request):
     ears.pause_until = 0.0
 
     heard = [l for l in levels if l["db"] is not None]
-    best = max(heard, key=lambda l: l["db"]) if heard else None
+    # A receiver in standby does not serve these streams at all — Network Control
+    # keeps telnet alive, not the audio server — so every input hands over nothing
+    # rather than handing over silence. Those are two different problems and
+    # deserve two different sentences.
+    if not heard:
+        return web.json_response({"supported": True, "levels": levels,
+                                  "loudest": None, "silent": True,
+                                  "bar": LINE_FOUND_DB})
+    best = max(heard, key=lambda l: l["db"])
     found = bool(best and best["db"] >= LINE_FOUND_DB)
     return web.json_response({
         "supported": True,

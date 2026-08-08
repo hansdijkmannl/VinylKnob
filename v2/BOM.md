@@ -7,6 +7,12 @@ brain. The reasoning behind that split is in [PLAN.md](PLAN.md).
 Prices are indicative (2026, EU). The CrowPanel comes from Elecrow directly, or
 via Amazon or Tindie; the rest from any of the usual suppliers.
 
+> **Before you order.** Whether the recognition half works at all depends on your
+> receiver serving its analog inputs over HTTP, and there is no list of which
+> models do. It is one command with the receiver switched on and costs nothing —
+> [step −1 of the build guide](BUILD.md). Everything else on this list works
+> either way.
+
 ## What to buy
 
 | # | Qty | Part | What to look for | ~Price |
