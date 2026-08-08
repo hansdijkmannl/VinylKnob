@@ -385,6 +385,26 @@ class Ears:
             self.retry_at = None
             print("[listen] amplifier off, cleared the screen", flush=True)
 
+    def wants_retry(self, now: float) -> bool:
+        """Should we ask again about something nobody could name?
+
+        A failed lookup does not mean the record stopped: one stretch of a side
+        happened not to match, and somewhere further in may well work. So it asks
+        again after a minute — but only while it is still true that nobody knows
+        what this is.
+
+        That last clause was missing and it showed. A pending retry from an
+        earlier miss survived the answer that followed it, so a record you had
+        just identified — or just linked by hand, having been asked which of two
+        pressings it was — got looked up again a minute later, failed, and landed
+        in the queue as unknown while its own sleeve was on the screen.
+        """
+        if self.release_id is not None:
+            return False                 # something can name it; nothing to ask
+        if self.retry_at is None or now < self.retry_at:
+            return False
+        return self.loud_since is not None      # and there is still sound
+
     def forget(self) -> None:
         """Nothing is playing any more: empty the screen.
 
@@ -483,8 +503,7 @@ class Ears:
             # A failed lookup: it is still playing, so somewhere further into
             # the record may well work. Waiting for silence would mean seeing
             # nothing for a whole side.
-            retry = (allowed and self.retry_at is not None and now >= self.retry_at
-                       and self.loud_since is not None)
+            retry = allowed and self.wants_retry(now)
             if retry:
                 self.retry_at = None
 
@@ -583,6 +602,12 @@ class Ears:
 
         if body.get("matched"):
             self.misses = 0
+            # And the retry that was still standing from an earlier miss is
+            # answered with it. Leaving it there meant a record you had just
+            # identified — or just linked by hand — was looked up again a minute
+            # later, failed, and landed in the queue as unknown while its own
+            # sleeve was on the screen.
+            self.retry_at = None
             # The link stays open as long as this listen has not landed on one
             # of your records. With several candidates you still have to point.
             # With none at all — the track was recognised but the album it names
@@ -888,6 +913,12 @@ async def api_link(request):
         return web.json_response({"ok": False, "error": f"{e!r}"}, status=502)
 
     ears.release_id = rel_id
+    # You have said what this is, which settles it more firmly than any service
+    # could. So nothing is owed to the queue any more: no retry, no misses, and
+    # this counts as playing whatever the level was doing a moment ago.
+    ears.retry_at = None
+    ears.misses = 0
+    ears.playing = True
     ears.cover_url = None
     ears.artist = rel["artist"]
     ears.title = rel["title"]

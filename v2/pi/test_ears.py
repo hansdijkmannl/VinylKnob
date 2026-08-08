@@ -75,6 +75,31 @@ def main() -> int:
     check(ears.amplifier_on is True,
           "switching back on opens the gate for the next side")
 
+    # -- asking again about something nobody could name -----------------------
+    ears = playing_ears()
+    ears.release_id, ears.retry_at, ears.loud_since = None, 100.0, 50.0
+    check(ears.wants_retry(200.0) is True,
+          "nobody knows what this is and the minute is up, so it asks again")
+    check(ears.wants_retry(50.0) is False,
+          "but not before the minute is up")
+
+    ears.loud_since = None
+    check(ears.wants_retry(200.0) is False,
+          "and not once it has gone quiet — that is a new side, not a retry")
+
+    # This is the one that was wrong, and it is what put a linked record in the
+    # queue as unknown while its own sleeve was on the screen.
+    ears = playing_ears()
+    ears.release_id, ears.retry_at, ears.loud_since = 259, 100.0, 50.0
+    check(ears.wants_retry(200.0) is False,
+          "a record that is already identified is never looked up again, even "
+          "with a retry left standing from before it was")
+
+    ears.release_id = None
+    check(ears.wants_retry(200.0) is True,
+          "and the same state without a record does ask, so it is the record "
+          "that settles it and not something else")
+
     # -- the bare title, which is what a live record needs --------------------
     from store import _bare, _normalise
     cases = [
