@@ -18,7 +18,7 @@
 <style>
 :root{
   --bg:#101014; --card:#1c1c22; --line:#3a3a42; --dim:#8b8b96;
-  --fg:#f2f2f4; --acc:#e8a33d; --warn:#c2451f; --on:#4a9d5f;
+  --fg:#f2f2f4; --acc:#f0b34a; --warn:#c2451f; --on:#4a9d5f;
   color-scheme:dark;
 }
 @media(prefers-color-scheme:light){:root{
@@ -27,9 +27,18 @@
   color-scheme:light;
 }}
 *{box-sizing:border-box}
+/* Two faces, and the split is deliberate. Prose gets a serif, the way a hi-fi
+   magazine or a manual from 1979 would set it — this is a page you read sitting
+   down. Everything that is a measurement stays in the system sans with tabular
+   figures, because a number that shifts sideways as it changes is a number you
+   cannot watch. */
 body{margin:0;background:var(--bg);color:var(--fg);
- font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+ font:16.5px/1.6 Iowan Old Style,"Palatino Linotype",Palatino,Georgia,
+      "Times New Roman",serif;
  -webkit-text-size-adjust:100%}
+.mono,output,.pill,#kVol,#nowLevel,dd,td{font-family:-apple-system,
+ BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+ font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
 main{max-width:44rem;margin:0 auto;padding:0 1rem 4rem}
 
 /* ---- header and tabs ----------------------------------------------------
@@ -52,13 +61,18 @@ nav button b{font-weight:700;font-size:.8em;opacity:.8}
 
 /* ---- bouwstenen ---------------------------------------------------------- */
 section[hidden]{display:none}
-h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;
- color:var(--dim);margin:1.75rem 0 .5rem;font-weight:600}
+h2{font-size:.8125rem;text-transform:uppercase;letter-spacing:.14em;
+ color:var(--acc);margin:2rem 0 .55rem;font-weight:600;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+ display:flex;align-items:center;gap:.7rem}
+/* A rule running out from the heading to the edge, which is what a spec sheet
+   does and what stops a page of cards reading as a list of boxes. */
+h2::after{content:"";flex:1;height:1px;background:var(--line)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:.75rem;
  padding:1rem;margin-bottom:.75rem}
 .card>:first-child{margin-top:0}
 .card>:last-child{margin-bottom:0}
-.hint{font-size:.8125rem;color:var(--dim);margin:.5rem 0 0}
+.hint{font-size:.9375rem;line-height:1.55;color:var(--dim);margin:.55rem 0 0}
 .err{color:var(--warn)}
 .ok{color:var(--on)}
 label{display:block;margin:.75rem 0 .2rem;font-size:.8125rem;color:var(--dim)}
@@ -230,12 +244,12 @@ button.danger{background:var(--warn);color:#fff}
 </defs></svg>
 
 <header>
-  <h1>VinylKnob</h1>
+  <h1 title="No directional cables were harmed in the making of this device.">VinylKnob</h1>
   <nav id="tabs">
-    <button data-t="now" class="on">Now</button>
+    <button data-t="now" class="on">Spinning</button>
     <button data-t="queue">Queue <b id="nQueue"></b></button>
-    <button data-t="coll">Collection <b id="nColl"></b></button>
-    <button data-t="panel">Panel</button>
+    <button data-t="coll">Shelf <b id="nColl"></b></button>
+    <button data-t="panel">The knob</button>
     <button data-t="sys">System</button>
   </nav>
 </header>
@@ -319,7 +333,7 @@ button.danger{background:var(--warn);color:#fff}
 
 <!-- ==================== QUEUE ==================== -->
 <section id="t-queue" hidden>
-  <h2>Waiting to be linked</h2>
+  <h2>Awaiting a verdict</h2>
   <!-- The bar stays at the bottom while anything is ticked. With dozens of
        rows you would otherwise have lost sight of the discard button by the
        time you reach the end of the list. -->
@@ -330,13 +344,13 @@ button.danger{background:var(--warn);color:#fff}
     <button class="mini danger" id="selDiscard">Discard</button>
   </div>
   <div class="card" id="queue"><p class="hint">Loading…</p></div>
-  <h2>Recently recognised</h2>
+  <h2>The last few sides</h2>
   <div class="card" id="known"><p class="hint">Loading…</p></div>
 </section>
 
 <!-- ==================== COLLECTION ==================== -->
 <section id="t-coll" hidden>
-  <h2>Discogs</h2>
+  <h2>Where the shelf comes from</h2>
   <div class="card">
     <div class="cols">
       <div><label for="dUser">Username</label><input id="dUser" autocomplete="off"></div>
@@ -348,11 +362,11 @@ button.danger{background:var(--warn);color:#fff}
       <button class="sec" id="dSync">Sync collection</button>
     </div>
     <p class="hint" id="dInfo"></p>
-    <p class="hint">Personal access token: discogs.com &rsaquo; Settings &rsaquo; Developers.
+    <p class="hint">Personal access token: discogs.com &rsaquo; Settings &rsaquo; Developers. It fetches what is on each record as well as the sleeve, which is how a service naming a greatest-hits gets overruled by the pressing you actually own.
     The collection also syncs by itself once a day.</p>
   </div>
 
-  <h2>Your shelf</h2>
+  <h2>The shelf</h2>
   <!--
     Browsing the shelf the way a round knob wants it: sleeves in a row, and the
     jump index as a ring of letters along the inner rim. A straight bar of
@@ -399,7 +413,7 @@ button.danger{background:var(--warn);color:#fff}
     </div>
   </div>
 
-  <h2>Display</h2>
+  <h2>The glass</h2>
   <div class="card">
     <div class="cols">
       <div style="flex:2 1 11rem"><label for="brightness">Brightness</label>
@@ -424,14 +438,14 @@ button.danger{background:var(--warn);color:#fff}
     17% more per redraw — measured, not guessed. Zero is the fast path and changes
     nothing; going from zero to any other value needs a restart, and there is a
     button for that below.</p>
-    <p class="hint">The main zone going off is the signal — so switching off with the remote
+    <p class="hint">The main zone going dark is the signal — so switching off with the remote
     works, and so does the Apple TV turning the receiver off over HDMI. Touching the glass or
     turning the knob wakes it again, and so does switching the amplifier back on.</p>
-    <p class="hint">Brightness applies while you drag, so you can see what you are setting.
+    <p class="hint">Brightness follows your finger, because setting a brightness you cannot see is a trick nobody has managed. The fine angle is in tenths of a degree, for a panel that came out of its mount not quite level and a bracket that is not coming off again.
     Still press save, or it reverts on the next restart.</p>
   </div>
 
-  <h2>Volume</h2>
+  <h2>Gain</h2>
   <div class="card">
     <div class="cols">
       <div><label for="halfDbPerClick">Step per click</label>
@@ -462,17 +476,18 @@ button.danger{background:var(--warn);color:#fff}
       <option value="2">2&times; finer</option>
       <option value="1">4&times; finer (smooth)</option>
     </select>
-    <p class="hint">Half a dB per click is finely adjustable; at 2 or 3 you reach the right
-    level quicker. The ceiling is an emergency brake — 0 dB is wide open. The
-    receiver counts in half decibels and takes any of them, so what it lands on is
-    about what you can stand to look at; a click always moves, and in the
-    direction you turned.</p>
+    <p class="hint">Half a decibel a click is for the last hair of gain; two or three gets you
+    there before the intro is over. The ceiling is a hand on your shoulder — 0 dB
+    is wide open, and a receiver at 0 dB with a stylus in the run-out groove is a
+    story you only tell once. The amplifier counts in half decibels and will take
+    any of them, so which ones it lands on is purely about what you can stand to
+    look at: some people cannot leave a −40.5 alone, and we do not judge. A click
+    always moves, and in the direction you turned.</p>
   </div>
 
-  <h2>Inputs</h2>
+  <h2>Sources</h2>
   <div class="card">
-    <p class="hint" style="margin:0 0 .7rem">The list you step through by holding the knob
-    and turning. The order below is the direction of rotation.</p>
+    <p class="hint" style="margin:0 0 .7rem">The sources you walk through by holding the knob and turning. The order below is the direction of rotation, so put the turntable where your thumb lands.</p>
     <div id="ilist"></div>
     <button class="sec mini" id="addInput" style="margin-top:.5rem">Add input</button>
     <label for="favouriteInput">Favourite (double press)</label>
@@ -484,7 +499,7 @@ button.danger{background:var(--warn);color:#fff}
       selected opens the app launcher instead of the record shelf.</p>
   </div>
 
-  <h2>Controls</h2>
+  <h2>Gestures</h2>
   <div class="card">
     <div class="cols">
       <div><label for="longPressMs">Hold for on/off (ms)</label>
@@ -512,7 +527,7 @@ button.danger{background:var(--warn);color:#fff}
 
 <!-- ==================== SYSTEM ==================== -->
 <section id="t-sys" hidden>
-  <h2>Receiver</h2>
+  <h2>The amplifier</h2>
   <div class="card">
     <div class="cols">
       <div style="flex:3 1 12rem"><label for="avrHost">IP or hostname</label>
@@ -524,15 +539,15 @@ button.danger{background:var(--warn);color:#fff}
     &ldquo;Always On&rdquo;, or port 23 disappears in standby.</p>
   </div>
 
-  <h2>Brain</h2>
+  <h2>The brain</h2>
   <div class="card">
     <label for="brainHost">IP of the Pi</label>
     <input id="brainHost" placeholder="192.168.1.175">
-    <p class="hint">The Pi that listens along and recognises records. Leave it empty and
+    <p class="hint">The machine that listens in and knows your shelf. Leave it empty and
     the display shows volume and input only.</p>
   </div>
 
-  <h2>Wi-Fi</h2>
+  <h2>The network</h2>
   <div class="card">
     <div class="cols">
       <div><label for="wifiSsid">Network (SSID)</label><input id="wifiSsid" autocomplete="off"></div>
@@ -548,7 +563,7 @@ button.danger{background:var(--warn);color:#fff}
   </div>
   <p class="msg" id="sMsg"></p>
 
-  <h2>Apple TV</h2>
+  <h2>The other source</h2>
   <div class="card">
     <p class="hint" id="atvSt" style="margin:0">…</p>
     <div id="atvChoose" hidden>
@@ -570,7 +585,7 @@ button.danger{background:var(--warn);color:#fff}
     Music do not.</p>
   </div>
 
-  <h2>Raspberry Pi</h2>
+  <h2>The machine it runs on</h2>
   <div class="card">
     <dl>
       <dt>temperature</dt><dd id="sTemp">–</dd>
@@ -579,24 +594,33 @@ button.danger{background:var(--warn);color:#fff}
       <dt>listening on</dt><dd id="sMic">–</dd>
       <dt>panel polls</dt><dd id="sPoll">–</dd>
     </dl>
-    <p class="hint">The fan steps up at 50, 60, 67.5 and 75 °C; throttling only starts at 80.
+    <p class="hint">The fan steps up at 50, 60, 67.5 and 75 °C; throttling only starts at 80. Warmth is not a fault here, it is a small computer doing arithmetic on music.
     The panel shows a warning symbol from 75 °C.</p>
   </div>
 
-  <h2>Recognition</h2>
+  <h2>The ears</h2>
   <div class="card">
     <dl>
-      <dt>own fingerprints</dt><dd id="sHash">–</dd>
-      <dt>records recognisable offline</dt><dd id="sRel">–</dd>
-      <dt>service lookups</dt><dd id="sLook">–</dd>
-      <dt>plays logged</dt><dd id="sPlays">–</dd>
+      <dt>fingerprints of its own</dt><dd id="sHash">–</dd>
+      <dt>records it knows by ear</dt><dd id="sRel">–</dd>
+      <dt>times it had to ask someone</dt><dd id="sLook">–</dd>
+      <dt>sides in the ledger</dt><dd id="sPlays">–</dd>
     </dl>
-    <p class="hint">The own database grows with every listen: each pass captures a different
-    stretch of the side, so coverage builds up the more you play a record.</p>
+    <p class="hint">This is the part that matters. Every play hands over another
+    stretch of the side, so the more a record gets used the less anybody outside
+    the house is asked about it — and a record it knows itself is named in under a
+    second, offline, for ever. It stops at about three and a half minutes per
+    record, which is not tidiness: without a ceiling one favourite grows into a
+    third of the database and starts answering for everything else.</p>
   </div>
 
-  <h2>AudD</h2>
+  <h2>A second opinion</h2>
   <div class="card">
+    <p class="hint" style="margin-top:0">Optional, paid, and most people will not
+    have it. Shazam and the fingerprints downstairs carry this between them; AudD
+    is a second pair of ears on the same recording, for whoever would rather not
+    lean on an unofficial client and has the budget for the principle. A key that
+    has run out is left alone for a day rather than asked about every record.</p>
     <label for="aToken">Token</label>
     <input id="aToken" type="password" placeholder="unchanged" autocomplete="off">
     <div class="row" style="margin-top:.75rem">
@@ -606,10 +630,9 @@ button.danger{background:var(--warn);color:#fff}
     <p class="hint" id="aInfo"></p>
   </div>
 
-  <h2>Scrobbling</h2>
+  <h2>For the record</h2>
   <div class="card">
-    <p class="hint" style="margin-top:0">Vinyl is the hole in every listening
-      history: streaming logs itself, a record leaves no trace. With a
+    <p class="hint" style="margin-top:0">Vinyl is the hole in every listening history: streaming counts itself, a record leaves nothing behind but the memory of getting up. With a
       <a href="https://listenbrainz.org/settings/" target="_blank"
          rel="noreferrer">ListenBrainz token</a> every recognised record is
       logged with its artist, track, album and the side it was on. Nothing is
@@ -1002,14 +1025,14 @@ async function loadQueue() {
   onScreen = q.plays.map(p => p.id);
   $('queue').innerHTML = q.plays.length
     ? q.plays.map(queueRow).join('')
-    : '<p class="hint" style="margin:0">Nothing to link. Everything was recognised.</p>';
+    : '<p class="hint" style="margin:0">Nothing awaiting a verdict. Either your pressings are famous or Shazam is having a good day.</p>';
   refreshSelection();
 
   const settled = k.plays.filter(p => p.status !== 'unknown' &&
                                       p.status !== 'choose' && p.status !== 'discarded');
   $('known').innerHTML = settled.length
     ? settled.map(knownRow).join('')
-    : '<p class="hint" style="margin:0">Nothing recognised yet.</p>';
+    : '<p class="hint" style="margin:0">Nothing yet. Put something on and give the needle a moment to settle.</p>';
   refreshCounts();
 }
 
@@ -1066,7 +1089,7 @@ function knownRow(p) {
 function showHits(playId, releases, where) {
   $('hits-' + playId).innerHTML = releases.length
     ? `<p class="hint" style="margin:0 0 .3rem">Found ${where}:</p>` + hitList(playId, releases)
-    : `<p class="hint" style="margin:0">Nothing found ${where}.</p>`;
+    : `<p class="hint" style="margin:0">Nothing ${where}. Which happens.</p>`;
 }
 
 // One handler for the whole queue instead of inline onclick attributes. The
@@ -1445,7 +1468,7 @@ on('sSave', 'click', async () => {
 });
 
 on('kTest', 'click', async () => {
-  if (!inputs.length) { panelMessage('No inputs configured.', false); return; }
+  if (!inputs.length) { panelMessage('No sources configured, so there is nothing to switch to.', false); return; }
   const c = inputs[0].code;
   const r = await json('panel/api/command?cmd=SI' + encodeURIComponent(c), {method: 'POST'});
   panelMessage(r.ok ? 'SI' + c + ' sent.' : 'No connection to the receiver.', r.ok);
@@ -1521,7 +1544,7 @@ async function atvScan() {
   const d = await json('appletv/scan');
   $('atvList').innerHTML = d.devices
     .map(a => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.address)}</option>`).join('');
-  setText('atvSt', d.devices.length ? 'Choose a device and pair.' : 'No Apple TV found.');
+  setText('atvSt', d.devices.length ? 'Pick a box and introduce yourselves.' : 'No Apple TV found.');
 }
 
 on('atvScan', 'click', atvScan);
@@ -1553,7 +1576,7 @@ on('atvForget', 'click', async () => {
 
 on('aSave', 'click', async () => {
   const t = $('aToken').value.trim();
-  if (!t) { setText('aInfo', 'Enter a token first.'); return; }
+  if (!t) { setText('aInfo', 'A token first, then the button.'); return; }
   await post('api/settings', {auddToken: t});
   $('aToken').value = '';
   loadSettings();
@@ -1567,7 +1590,7 @@ on('aClear', 'click', async () => {
 
 on('lbSave', 'click', async () => {
   const v = $('lbToken').value.trim();
-  if (!v) { setText('lbInfo', 'Paste a token first.'); return; }
+  if (!v) { setText('lbInfo', 'A token first, then the button.'); return; }
   await post('api/settings', {scrobbleToken: v});
   $('lbToken').value = '';
   setText('lbInfo', 'Saved. Press Check to see whose account it is.');

@@ -68,6 +68,8 @@ dd{margin:0;color:var(--dim)}
 #msg{margin-top:.8rem;font-size:.85rem;min-height:1.2em}
 </style></head><body><main>
 <h1>VinylKnob</h1>
+<p class="hint" style="margin:-.6rem 0 1rem">The panel's own page &mdash; the one
+that still answers when the Pi does not.</p>
 
 <div class="card st">
   <span class="vol" id="vol">--</span>
@@ -78,7 +80,7 @@ dd{margin:0;color:var(--dim)}
   <span class="pill" id="pRssi">wifi</span>
 </div>
 
-<h2>Receiver</h2>
+<h2>The amplifier</h2>
 <div class="card">
   <div class="row">
     <div style="flex:3"><label>IP or hostname</label><input id="avrHost" placeholder="192.168.1.60"></div>
@@ -88,7 +90,7 @@ dd{margin:0;color:var(--dim)}
   &ldquo;Always On&rdquo;, or port 23 disappears in standby.</p>
 </div>
 
-<h2>Display</h2>
+<h2>The glass</h2>
 <div class="card">
   <div class="row">
     <div style="flex:2"><label>Brightness</label>
@@ -110,7 +112,7 @@ dd{margin:0;color:var(--dim)}
   save, or it reverts on the next restart.</p>
 </div>
 
-<h2>Brain</h2>
+<h2>The brain</h2>
 <div class="card">
   <div class="row">
     <div style="flex:3"><label>IP of the Pi</label><input id="brainHost" placeholder="192.168.1.175"></div>
@@ -119,7 +121,7 @@ dd{margin:0;color:var(--dim)}
   none; the display then shows volume and input only.</p>
 </div>
 
-<h2>Volume</h2>
+<h2>Gain</h2>
 <div class="card">
   <div class="row">
     <div><label>Step per click</label>
@@ -146,15 +148,16 @@ dd{margin:0;color:var(--dim)}
       <option value="2">2&times; finer</option>
       <option value="1">4&times; finer (smooth)</option></select></div>
   </div>
-  <p class="hint">Half a dB per click is finely adjustable; at 2 or 3 you reach
-  the right level quicker. The ceiling is an emergency brake &mdash; 0 dB is
-  wide open. The receiver counts in half decibels and takes any of them, so what
-  it lands on is about what you can stand to look at; a click always moves, and
-  in the direction you turned. With an encoder that has <b>no</b> detents, set
-  the resolution finer, or a smoothly turning knob still feels notchy.</p>
+  <p class="hint">Half a decibel a click is for the last hair of gain; two or
+  three gets you there before the intro is over. The ceiling is a hand on your
+  shoulder &mdash; 0 dB is wide open. The amplifier counts in half decibels and
+  takes any of them, so which ones it lands on is about what you can stand to
+  look at; a click always moves, and in the direction you turned. With an encoder
+  that has <b>no</b> detents, set the resolution finer, or a smoothly turning
+  knob still feels notchy.</p>
 </div>
 
-<h2>Inputs</h2>
+<h2>Sources</h2>
 <div class="card">
   <p class="hint" style="margin:0 0 .7rem">The list you step through by holding the knob and turning. The order below is
   the direction of rotation.</p>
@@ -166,7 +169,7 @@ dd{margin:0;color:var(--dim)}
   <select id="appleTvInput"></select>
 </div>
 
-<h2>Controls</h2>
+<h2>Gestures</h2>
 <div class="card">
   <div class="row">
     <div><label>Hold for on/off (ms)</label><input id="longPressMs" type="number" min="400" max="3000" step="50"></div>
@@ -184,7 +187,7 @@ dd{margin:0;color:var(--dim)}
   </dl>
 </div>
 
-<h2>Wi-Fi</h2>
+<h2>The network</h2>
 <div class="card">
   <div class="row">
     <div><label>Network (SSID)</label><input id="wifiSsid"></div>
