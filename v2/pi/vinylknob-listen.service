@@ -29,10 +29,13 @@ Environment=BRAIN_URL=http://127.0.0.1:8790
 # panel, which already has it for telnet; set AVR_HOST only if this service runs
 # somewhere the panel cannot be reached.
 #
-# LINE_INPUT is the protocol name in lower case. ./line.sh lists what your
-# receiver offers and which of them actually carry signal.
+# LINE_INPUT is an override and should normally stay commented out. Which input
+# your turntable is on is a question about your rack, so it is set on the page —
+# System, "Where it listens" — which asks the receiver what it offers and can
+# measure every one of them to find the loud one. Set it here only for a unit
+# that does not answer that.
 #Environment=AVR_HOST=192.168.1.60
-Environment=LINE_INPUT=phono
+#Environment=LINE_INPUT=phono
 
 # The threshold follows the signal, but these numbers decide when a lookup
 # happens. Triggering too eagerly: raise TRIGGER_DB. Missing the start of a

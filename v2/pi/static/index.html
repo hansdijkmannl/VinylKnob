@@ -598,6 +598,28 @@ button.danger{background:var(--warn);color:#fff}
     The panel shows a warning symbol from 75 °C.</p>
   </div>
 
+  <h2>Where it listens</h2>
+  <div class="card">
+    <p class="hint" style="margin-top:0">A Denon or Marantz receiver digitises its
+    analog inputs and serves each one over HTTP — the machinery behind sharing an
+    input with HEOS speakers. That is what this listens on instead of a
+    microphone, and it is why there is no microphone. Which input your turntable
+    is on differs per rack, and the names the stream uses are not the ones on the
+    front panel: <span class="mono">PHONO</span> is
+    <span class="mono">phono</span>, but <span class="mono">MPLAY</span> is
+    <span class="mono">mediaplayer</span> and <span class="mono">SAT/CBL</span> is
+    <span class="mono">cable_sat</span>. So the list below comes from your
+    receiver rather than from a table in here.</p>
+    <label for="lineInput">The turntable is on</label>
+    <select id="lineInput"></select>
+    <div class="row" style="margin-top:.75rem">
+      <button id="liSave">Save</button>
+      <button class="sec" id="liFind">Find it for me</button>
+    </div>
+    <p class="hint" id="liInfo"></p>
+    <p class="hint" id="liLevels" style="display:none"></p>
+  </div>
+
   <h2>The ears</h2>
   <div class="card">
     <dl>
@@ -668,8 +690,8 @@ const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
                                 .replace(/"/g, '&quot;');
 const setText = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
 
-async function json(url, opties) {
-  const r = await fetch(url, opties);
+async function json(url, options) {
+  const r = await fetch(url, options);
   return r.json();
 }
 async function post(url, body) {
@@ -1509,7 +1531,9 @@ for (const id of Object.keys(SLIDERS)) {
 // ===========================================================================
 // SYSTEM — Apple TV, the Pi itself, and what the device has learned
 // ===========================================================================
-TABS.sys = {every: 5000, open() { atvScan(); loadSettings(); loadPanel(); }, tick: systemTick};
+TABS.sys = {every: 5000,
+            open() { atvScan(); loadSettings(); loadPanel(); loadLineInputs(); },
+            tick: systemTick};
 
 async function systemTick() {
   try {
@@ -1586,6 +1610,86 @@ on('aClear', 'click', async () => {
   await post('api/settings', {auddToken: null});
   $('aToken').value = '';
   loadSettings();
+});
+
+// -- which input the turntable is on ----------------------------------------
+// The list comes from the receiver, the answer comes from a measurement, and the
+// telnet name is worked out from the stream name so the two settings that both
+// mean "the turntable is here" cannot drift apart.
+const LINE_TO_CODE = {
+  phono: 'PHONO', cd: 'CD', tuner: 'TUNER', dvd: 'DVD', bluray: 'BD',
+  tvaudio: 'TV', cable_sat: 'SAT/CBL', mediaplayer: 'MPLAY', game: 'GAME',
+  aux_single: 'AUX1', aux2: 'AUX2', aux8k: '8K',
+};
+
+async function loadLineInputs() {
+  let d;
+  try { d = await json('line/inputs'); } catch (e) { return; }
+  const sel = $('lineInput');
+  if (!d.supported) {
+    sel.innerHTML = '<option>nothing on offer</option>';
+    sel.disabled = $('liFind').disabled = $('liSave').disabled = true;
+    setText('liInfo', d.host
+      ? `${d.host} does not hand its inputs over, so this one cannot recognise records `
+        + 'by listening. Everything else — the volume, the sources, the shelf — works as it '
+        + 'does anywhere. HEOS speakers and receivers from before the HEOS generation are '
+        + 'simply not built for it.'
+      : 'No receiver address set yet, so there is nothing to ask.');
+    return;
+  }
+  sel.disabled = $('liFind').disabled = $('liSave').disabled = false;
+  sel.innerHTML = d.inputs.map(i =>
+    `<option value="${esc(i)}"${i === d.chosen ? ' selected' : ''}>${esc(i)}</option>`).join('');
+  lineNote(d.chosen);
+}
+
+// Say which front-panel input that is, and whether the knob agrees. The two
+// settings live in different places and speak different words; this is where a
+// mismatch becomes visible instead of becoming a fortnight of nothing being
+// recognised.
+function lineNote(chosen) {
+  const code = LINE_TO_CODE[chosen];
+  const fav = (inputs[favourite] || {}).code;
+  let note = code ? `That is ${code} on the front panel. ` : '';
+  if (code && fav && code !== fav)
+    note += `The knob has ${fav} as its turntable input, which does not match — `
+          + 'one of the two is wrong and nothing else will tell you which.';
+  else if (code && fav) note += 'The knob agrees.';
+  setText('liInfo', note || 'Saved choices take effect on the next side.');
+}
+
+on('lineInput', 'change', e => lineNote(e.target.value));
+
+on('liSave', 'click', async () => {
+  await post('api/settings', {lineInput: $('lineInput').value});
+  setText('liInfo', 'Saved. It takes effect on the next side.');
+});
+
+on('liFind', 'click', async () => {
+  setText('liInfo', 'Put a record on and leave it playing. Reading every input takes '
+                  + 'half a minute, and nothing is recognised while it does.');
+  $('liFind').disabled = true;
+  let d;
+  try { d = await json('line/measure', {method: 'POST'}); }
+  catch (e) { setText('liInfo', 'The receiver did not answer.'); $('liFind').disabled = false; return; }
+  $('liFind').disabled = false;
+
+  const rows = d.levels.filter(l => l.db !== null).sort((a, b) => b.db - a.db);
+  $('liLevels').style.display = '';
+  $('liLevels').innerHTML = '<span class="mono">'
+    + rows.map(l => `${l.input.padEnd(13, ' ')}${l.db.toFixed(1)} dB`).join('<br>')
+    + '</span>';
+
+  if (d.loudest) {
+    $('lineInput').value = d.loudest;
+    setText('liInfo', `That is ${d.loudest} — the only one with music on it. `
+                    + 'Press Save to keep it.');
+  } else {
+    setText('liInfo', `Nothing above ${d.bar} dB, which is what a record sounds like. `
+                    + 'Either nothing is playing, or the volume is down: this listens to '
+                    + 'the input itself, but a receiver that is off hands over silence. '
+                    + 'Put a side on and try again.');
+  }
 });
 
 on('lbSave', 'click', async () => {

@@ -81,6 +81,11 @@ DEFAULTS = {
     "discogs_token": "",
     "discogs_user": "",
     "audd_token": "",
+    # Which of the receiver's analog inputs the turntable is on, as the stream
+    # path names it — "phono" on most, but the names differ per unit and are not
+    # the same words the telnet protocol uses. Empty means the ears fall back to
+    # phono. See v2/pi/line.sh for where the list comes from.
+    "line_input": "phono",
     # Empty means no scrobbling at all; see scrobble.py on why that is the
     # default and not an option.
     "listenbrainz_token": "",

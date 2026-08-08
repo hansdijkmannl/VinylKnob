@@ -66,7 +66,11 @@ PORT        = int(os.environ.get("LISTEN_PORT", "8791"))
 # lower case — phono, cd, tuner, dvd, game, mediaplayer, bluray, tvaudio. Run
 # ./line.sh to see what your receiver offers and which ones carry signal.
 AVR_HOST    = os.environ.get("AVR_HOST", "")
-LINE_INPUT  = os.environ.get("LINE_INPUT", "phono")
+# LINE_INPUT here is an override and nothing more. Which input the turntable is
+# on is a question about *your* rack, so it belongs where the rest of that lives:
+# in the brain's database, set from the page, discovered from the receiver. This
+# is the escape hatch for a unit that does not answer the discovery.
+LINE_INPUT  = os.environ.get("LINE_INPUT", "")
 LINE_PORT   = int(os.environ.get("LINE_PORT", "8015"))
 RATE        = int(os.environ.get("LINE_RATE", "44100"))
 
@@ -308,6 +312,13 @@ class Ears:
         # When the track we are hearing runs out, on the audio clock, and what
         # comes after it. Both empty when nobody could say.
         self.track_ends: float | None = None
+        self._line_input = ""            # what the brain last said; see line_input()
+        self._line_until = 0.0
+        # Until when someone else needs the receiver's stream. It hands it to one
+        # client at a time, so measuring the inputs means genuinely letting go —
+        # line.sh does it by stopping the whole service, which is fine for a
+        # script and no good for a button on a page.
+        self.pause_until = 0.0
         self.next_no = ""
         self.next_title = ""
         self.cover_url: str | None = None       # artwork from the service, second choice
@@ -351,8 +362,9 @@ class Ears:
         host = await avr_host()
         if not host:
             return None
+        which = await line_input()
         return await LineStream(
-            f"http://{host}:{LINE_PORT}/analoginput/analog/analog/0/{LINE_INPUT}"
+            f"http://{host}:{LINE_PORT}/analoginput/analog/analog/0/{which}"
         ).open()
 
     async def run(self) -> None:
@@ -360,6 +372,9 @@ class Ears:
         while True:
             source = None
             try:
+                if time.monotonic() < self.pause_until:
+                    await asyncio.sleep(0.5)
+                    continue
                 source = await self.open_source()
                 if source is None:
                     if not waiting:
@@ -471,6 +486,12 @@ class Ears:
 
     async def audio_loop(self, source) -> None:
         while True:
+            # Someone wants the stream. Come out of here so run() closes it, and
+            # the receiver has it free to hand to them.
+            if time.monotonic() < self.pause_until:
+                print("[listen] standing aside while the inputs are measured",
+                      flush=True)
+                return
             block = await source.stdout.readexactly(BYTES_PER_BLOCK)
             self.clock += BLOCK_S
             mon = np.frombuffer(block, dtype="<i2").astype(np.float32) / 32768.0
@@ -1047,6 +1068,29 @@ def panel_host() -> str:
 _avr_host_seen = ""
 
 
+async def line_input() -> str:
+    """Which of the receiver's inputs the turntable is on, as the stream names it.
+
+    The override wins if it is set; otherwise the brain's answer, cached for a
+    minute so changing it on the page takes effect on the next side rather than
+    needing a restart. "phono" is the fallback because it is right on nearly every
+    receiver — but only nearly, which is the whole reason this is a setting.
+    """
+    if LINE_INPUT:
+        return LINE_INPUT
+    if ears._line_input and time.monotonic() < ears._line_until:
+        return ears._line_input
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=5)) as s:
+            async with s.get(f"{BRAIN}/api/settings") as r:
+                body = await r.json()
+        ears._line_input = (body.get("lineInput") or "phono").strip() or "phono"
+    except Exception:                                       # noqa: BLE001
+        ears._line_input = ears._line_input or "phono"
+    ears._line_until = time.monotonic() + 60
+    return ears._line_input
+
+
 async def avr_host() -> str:
     """The receiver's address, asked of the panel rather than configured.
 
@@ -1156,6 +1200,135 @@ async def atv_forget(_request):
     return web.json_response({"ok": True})
 
 
+# -- which input is the turntable -------------------------------------------
+# The receiver knows. Its UPnP directory lists every analog input it will serve,
+# with the stream path for each — and those paths are not the words the telnet
+# protocol uses, so there is no deriving one from the other: PHONO is phono but
+# MPLAY is mediaplayer and SAT/CBL is cable_sat. Ask the device.
+#
+# And a list of names does not answer the question anyway. Nobody knows whether
+# their turntable is on aux_single or aux8k; they know it is the loud one while a
+# record is playing. So the second half of this measures.
+_UPNP = ("http://{host}:60006/upnp/control/ams_dvc/ContentDirectory")
+_BROWSE = (
+    '<?xml version="1.0"?><s:Envelope'
+    ' xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
+    ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
+    '<u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">'
+    "<ObjectID>inputs/</ObjectID><BrowseFlag>BrowseDirectChildren</BrowseFlag>"
+    "<Filter>*</Filter><StartingIndex>0</StartingIndex>"
+    "<RequestedCount>50</RequestedCount><SortCriteria></SortCriteria>"
+    "</u:Browse></s:Body></s:Envelope>")
+
+
+async def line_choices(host: str) -> list[str]:
+    """Every analog input this receiver will hand over, as stream paths."""
+    if not host:
+        return []
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=8)) as s:
+            async with s.post(
+                    _UPNP.format(host=host), data=_BROWSE.encode(),
+                    headers={"Content-Type": 'text/xml; charset="utf-8"',
+                             "SOAPACTION": '"urn:schemas-upnp-org:service:'
+                                           'ContentDirectory:1#Browse"'}) as r:
+                body = await r.text()
+    except Exception:                                       # noqa: BLE001
+        return []
+    body = body.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+    marker = "/analoginput/analog/analog/0/"
+    out = []
+    for piece in body.split(marker)[1:]:
+        name = piece.split("<")[0].split('"')[0].strip()
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+# What counts as "there is music on this one".
+#
+# Not a guess: this line runs -33 to -48 dBFS with a record on and -80 to -92
+# idle, both measured over an evening and written into the unit file. So there is
+# thirty decibels of daylight between the two and this sits in the middle of it.
+#
+# It matters because the first version had no bar at all and simply named the
+# loudest input. Run with nothing playing, that was cable_sat at -57 — some bleed
+# from a box that is switched off — and it would have said so with total
+# confidence. The honest answer with nothing on is "put a record on".
+LINE_FOUND_DB = -55.0
+
+
+async def line_level(host: str, which: str, seconds: float = 2.0) -> float | None:
+    """How loud one input is, in dBFS, or None if it hands over nothing.
+
+    The receiver serves one client at a time and in normal use that client is the
+    ears, so whoever calls this has to have stepped aside first — see line.sh,
+    which learnt that the hard way by measuring scraps.
+    """
+    want = int(RATE * seconds) * 4                        # 16-bit stereo
+    url = f"http://{host}:{LINE_PORT}/analoginput/analog/analog/0/{which}"
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=seconds + 4)) as s:
+            async with s.get(url) as r:
+                if r.status != 200:
+                    return None
+                raw = await r.content.readexactly(want)
+    except Exception:                                       # noqa: BLE001
+        return None
+    a = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    rms = float(np.sqrt((a * a).mean()) + 1e-12)
+    return round(20 * np.log10(rms), 1)
+
+
+async def api_line_inputs(_request):
+    """What the receiver offers, and which one we are listening to."""
+    host = await avr_host()
+    found = await line_choices(host)
+    return web.json_response({
+        "host": host,
+        "inputs": found,
+        "chosen": await line_input(),
+        # The one thing a page cannot work out for itself: this receiver has no
+        # such feature, so recognition is never going to work on it however long
+        # you wait. HEOS speakers and older units are simply not built for it.
+        "supported": bool(found),
+    })
+
+
+async def api_line_measure(_request):
+    """Read every input for a moment and say how loud each was.
+
+    The answer to "which one is my turntable" while a record is playing: it is the
+    one that is not silence. Stops listening for the duration, because the
+    receiver hands its stream to one client at a time.
+    """
+    host = await avr_host()
+    found = await line_choices(host)
+    if not found:
+        return web.json_response({"supported": False, "levels": []})
+
+    ears.pause_until = time.monotonic() + len(found) * 4 + 6
+    await asyncio.sleep(0.6)                    # let the current read let go
+    levels = []
+    for name in found:
+        levels.append({"input": name, "db": await line_level(host, name)})
+    ears.pause_until = 0.0
+
+    heard = [l for l in levels if l["db"] is not None]
+    best = max(heard, key=lambda l: l["db"]) if heard else None
+    found = bool(best and best["db"] >= LINE_FOUND_DB)
+    return web.json_response({
+        "supported": True,
+        "levels": levels,
+        # Only a find if something on there is actually loud enough to be music.
+        # Naming the least quiet input on a silent rack is worse than saying
+        # nothing, because it looks like an answer.
+        "loudest": best["input"] if found else None,
+        "quietest": min(heard, key=lambda l: l["db"])["db"] if heard else None,
+        "bar": LINE_FOUND_DB,
+    })
+
+
 async def atv_power(request):
     on = request.query.get("on", "1") not in ("0", "false", "no")
     return web.json_response(await atv.set_power(on))
@@ -1197,7 +1370,7 @@ async def api_status(_request):
         "releaseId": ears.release_id,
         "coverUrl": ears.cover_url,
         "source": ears.source_url,
-        "sourceInput": LINE_INPUT,
+        "sourceInput": ears._line_input or LINE_INPUT or "phono",
         "listeningAllowed": ((ears.panel_wants or time.monotonic() > ears.panel_until)
                                 and ears.amplifier_on),
         "amplifierOn": ears.amplifier_on,
@@ -1263,6 +1436,8 @@ def main() -> None:
     app.router.add_post("/appletv/pin", atv_pin)
     app.router.add_post("/appletv/forget", atv_forget)
     app.router.add_post("/appletv/power", atv_power)
+    app.router.add_get("/line/inputs", api_line_inputs)
+    app.router.add_post("/line/measure", api_line_measure)
 
     # The two forwarding routes. They come last because they end in a wildcard
     # that would otherwise swallow the fixed routes above.
@@ -1282,7 +1457,8 @@ def main() -> None:
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", PORT).start()
         where = AVR_HOST or "the receiver the panel knows"
-        print(f"[ears] line input {LINE_INPUT} on {where}, brain at {BRAIN}, "
+        which = LINE_INPUT or "whatever the brain says"
+        print(f"[ears] line input {which} on {where}, brain at {BRAIN}, "
               f"panel {PANEL or 'auto'}, port {PORT}", flush=True)
 
         # Port 80 is a bonus: if it fails (no permission) the rest keeps

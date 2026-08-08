@@ -172,6 +172,15 @@ The design decisions, and why they went the way they did, are in
 
 Records are identified three ways, cheapest first:
 
+0. **Which input to listen to** is the one thing to set, and the page does it for
+   you: System → *Where it listens* asks your receiver what it serves and can
+   read every input for a moment to find the one with music on it. The names are
+   the stream's, not the front panel's — `PHONO` is `phono`, but `MPLAY` is
+   `mediaplayer` and `SAT/CBL` is `cable_sat` — which is why the list comes from
+   the device and not from a table here. If a receiver offers nothing at all, the
+   page says so plainly: recognition cannot work on that model, and everything
+   else still does.
+
 1. **Your own fingerprint database.** Costs nothing, needs no network, and grows
    every time you play something. This is the one that matters.
 2. **Shazam**, via [shazamio](https://github.com/shazamio/ShazamIO). In practice
@@ -271,10 +280,14 @@ all that into a session — a lot of ceremony for an appliance with a knob.
   under Settings → Apps → Safari → Advanced, and takes a per-site exception. A
   self-signed certificate would satisfy the scheme and then fail on the
   certificate instead, which is not an improvement, so it stays as it is.
-- **Tested against one receiver**, an SR7015. The protocol is shared across the
-  Denon and Marantz range, and the code reads the volume ceiling from the device
-  instead of hardcoding it, but nobody has confirmed another model yet. If you
-  try one, please say so.
+- **Tested against one receiver**, an SR7015. The volume side of it is the
+  Denon/Marantz telnet protocol, shared across the range, and the code reads the
+  volume ceiling from the device rather than hardcoding it. The listening side
+  needs the receiver to serve its analog inputs over HTTP, which is the
+  HEOS-generation feature — and there is no published list of which models have
+  it, so the honest answer is that your receiver will tell you in three seconds:
+  open System → *Where it listens*. If the list is empty, it cannot. If you try a
+  model, please say which and what it said.
 - **Browsing the shelf shows albums; it cannot play them.** This is a knob for a
   turntable. Picking an album puts its sleeve on the screen, and then you get up.
 - **Scrobbles under-report.** A side is identified once or twice, not track by

@@ -562,6 +562,7 @@ async def api_get_settings(_request):
     return web.json_response({
         "discogsUser": store.get("discogs_user"),
         "discogsTokenSet": bool(store.get("discogs_token")),
+        "lineInput": store.get("line_input") or "phono",
         "auddTokenSet": bool(store.get("audd_token")),
         "auddSpent": recognise.audd_spent(),
         "scrobbleTokenSet": bool(store.get("listenbrainz_token")),
@@ -578,6 +579,15 @@ async def api_set_settings(request):
     body = await request.json()
     if "discogsUser" in body:
         store.set("discogs_user", body["discogsUser"].strip())
+
+    # Which of the receiver's inputs the turntable is on. A stream path and
+    # nothing else: it goes straight into a URL, and a receiver will hand you any
+    # name you ask for — including one that is not an input at all.
+    if body.get("lineInput") is not None:
+        want = str(body.get("lineInput") or "").strip().lower()
+        if want and all(c.isalnum() or c in "_-" for c in want):
+            store.set("line_input", want)
+
     # An empty key field means "leave it", not "clear it" — otherwise the web
     # interface would wipe your token every time you changed something else.
     # Clearing is explicit: send null, which is what the remove button does.
