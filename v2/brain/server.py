@@ -98,6 +98,25 @@ def track_seen(release_id, title: str) -> dict | None:
             "position": row["position"]}
 
 
+def what_follows(release_id, seen: dict | None) -> dict | None:
+    """The track after this one on the same side, if there is one.
+
+    Nothing after the last track of a side, which is the answer you want there:
+    what follows is you getting up.
+    """
+    if not release_id or not seen:
+        return None
+    side = store.side_of(release_id, seen.get("title") or "")
+    for i, row in enumerate(side):
+        if row["position"] == seen.get("position"):
+            if i + 1 < len(side):
+                nxt = side[i + 1]
+                return {"printed": nxt["printed"], "title": nxt["title"],
+                        "secs": nxt["secs"], "position": nxt["position"]}
+            return None
+    return None
+
+
 def row_to_release(row) -> dict:
     return {
         "id": row["id"],
@@ -166,6 +185,10 @@ async def api_listen(request):
                     "playId": play_id, "matched": True, "local": found,
                     "release": row_to_release(row),
                     "track": here,
+                    # Our own fingerprints know which track but not how far in,
+                    # so no countdown from this path — see the note in local.py.
+                    "offset": None,
+                    "next": what_follows(row["id"], here),
                 })
 
     results = await recognise.recognise(audio, store.get("audd_token"))
@@ -221,6 +244,10 @@ async def api_listen(request):
         "results": results, "playId": play_id, "matched": True,
         "release": row_to_release(match) if match else None,
         "track": seen,
+        # Where in the song the clip was, so the ears can work out when it ends,
+        # and what comes after it on the side.
+        "offset": hit.get("offset"),
+        "next": what_follows(match["id"] if match else None, seen),
         # The records this track is on, when there is more than one. Empty
         # otherwise, so nothing downstream has to care about the common case.
         "choices": [row_to_release(r) for r in choices] if len(choices) > 1 else [],

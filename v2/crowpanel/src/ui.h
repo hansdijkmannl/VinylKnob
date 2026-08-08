@@ -95,6 +95,9 @@ struct UiState {
   // moment it changes you want to know; a minute later you are looking at the
   // record, not at this.
   char     nowTrack[56]   = "";
+  // What is coming, in the last twenty seconds of this one. The Pi decides
+  // when that is; here it is either a line to show or it is not.
+  char     nextUp[56]     = "";
   bool     justLinked     = false;   // just linked; confirm briefly
 
   // network

@@ -34,6 +34,9 @@ struct BrainState {
   // Where on the record we are, as the sleeve prints it: "A4". Empty when the
   // service named a track that is on none of your tracklists.
   char trackNo[8]  = "";
+  // What is on after this one, in the last twenty seconds of it. Empty the
+  // rest of the time, so the panel has nothing to decide.
+  char nextUp[56]  = "";
   char app[24]     = "";      // "YouTube", when the Apple TV is the source
   bool hot       = false;      // Pi on its top fan step, or throttling
   uint8_t linkable = 0;         // records waiting to be linked

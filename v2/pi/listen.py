@@ -87,6 +87,19 @@ RETRY_S    = float(os.environ.get("RETRY_SECONDS", "60"))    # after a failed lo
 # and is the difference between leaning on a service and not.
 LEARN_S = float(os.environ.get("LEARN_SECONDS", "30"))
 
+# How long before the end of a track its successor is named.
+#
+# Only possible because Shazam says how far into the song the clip was, and
+# Discogs how long the song is; a duration on its own tells you nothing about
+# where you are in it. Measuring the gaps between tracks was tried first and
+# does not work: four minutes of one record gave fourteen dips deep enough to
+# look like a gap, where at most one boundary could have passed.
+#
+# It is a printed duration and a service's idea of the offset, so this is
+# accurate to a second or two — fine for "the next one is coming", useless as a
+# clock, which is why nothing here shows a countdown.
+ANNOUNCE_S = float(os.environ.get("ANNOUNCE_SECONDS", "20"))
+
 # How many times in a row we retry when nothing is recognised.
 #
 # Without a limit this runs for as long as there is any sound, and that is
@@ -292,6 +305,11 @@ class Ears:
         # same place as a number, which is what the fingerprints are tagged with.
         self.track_no = ""
         self.track_pos = -1
+        # When the track we are hearing runs out, on the audio clock, and what
+        # comes after it. Both empty when nobody could say.
+        self.track_ends: float | None = None
+        self.next_no = ""
+        self.next_title = ""
         self.cover_url: str | None = None       # artwork from the service, second choice
         self.artist = ""                      # separate fields, for the panel
         self.title = ""
@@ -385,6 +403,19 @@ class Ears:
             self.retry_at = None
             print("[listen] amplifier off, cleared the screen", flush=True)
 
+    def coming_up(self) -> str:
+        """The next track, but only in the last stretch of this one.
+
+        Empty the rest of the time, so the panel has nothing to decide: there is
+        either a line to show or there is not.
+        """
+        if self.track_ends is None or not self.next_title:
+            return ""
+        left = self.track_ends - self.clock
+        if left < 0 or left > ANNOUNCE_S:
+            return ""
+        return f"{self.next_no} {self.next_title}".strip()
+
     def wants_retry(self, now: float) -> bool:
         """Should we ask again about something nobody could name?
 
@@ -423,6 +454,8 @@ class Ears:
         self.choices = []
         self.track_no = ""
         self.track_pos = -1
+        self.track_ends = None
+        self.next_no = self.next_title = ""
         self.learn_at = 0.0
         self.learned = 0
 
@@ -638,11 +671,26 @@ class Ears:
             # can name itself the next time we hear it.
             pos = seen.get("position")
             self.track_pos = -1 if pos is None else int(pos)
+
+            # When this one runs out, if both halves of the sum are known: how
+            # far in the clip was, and how long the track is. The clip was taken
+            # CLIP_S ago in audio time, so that is where the counting starts.
+            self.track_ends = None
+            self.next_no = self.next_title = ""
+            offset, secs = body.get("offset"), seen.get("secs") or 0
+            if offset is not None and secs > 0:
+                left = secs - float(offset)
+                if 0 < left < 20 * 60:            # a sane remainder, not a typo
+                    self.track_ends = self.clock - CLIP_S + left
+            nxt = body.get("next") or {}
+            self.next_no, self.next_title = nxt.get("printed") or "", nxt.get("title") or ""
             if self.choices:
                 self.cover_url = None
                 self.album = ""
                 self.track_no = ""        # not settled, so not a position either
                 self.track_pos = -1
+                self.track_ends = None
+                self.next_no = self.next_title = ""
             else:
                 self.cover_url = hit.get("cover") or None
                 self.album = (rel["title"] if rel else "") or hit.get("album") or ""
@@ -789,6 +837,7 @@ async def api_now(request):
         "onShelf": ears.release_id is not None,  # found in your own collection
         "playing": ears.playing,
         "trackNo": ears.track_no,
+        "nextUp": ears.coming_up(),
         "listening": ears.listening,
         # Is there an open lookup that came up empty? Then you can point at an
         # album on the panel and hang it on that.

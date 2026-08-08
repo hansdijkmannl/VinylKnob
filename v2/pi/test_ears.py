@@ -100,6 +100,33 @@ def main() -> int:
           "and the same state without a record does ask, so it is the record "
           "that settles it and not something else")
 
+    # -- naming what is coming, and only near the end -------------------------
+    ears = playing_ears()
+    ears.clock = 100.0
+    ears.next_no, ears.next_title = "A5", "South Of The Border"
+    ears.track_ends = 100.0 + 60           # a minute of this one left
+    check(ears.coming_up() == "",
+          "a minute out it says nothing — that is not news yet, it is noise")
+
+    ears.track_ends = 100.0 + 10           # ten seconds left
+    check(ears.coming_up() == "A5 South Of The Border",
+          "inside the last twenty seconds it names what is coming")
+
+    ears.track_ends = 100.0 - 5            # the sum has run out
+    check(ears.coming_up() == "",
+          "and stops once the track should already be over, rather than leaving "
+          "a stale line up on a printed duration that was a second or two out")
+
+    ears.track_ends, ears.next_title = 100.0 + 10, ""
+    check(ears.coming_up() == "",
+          "the last track of a side has nothing after it, so nothing is said")
+
+    ears.next_title, ears.track_ends = "Something", None
+    check(ears.coming_up() == "",
+          "and with no idea when this one ends — a service that gave no offset, "
+          "or a record with no printed duration — it stays quiet rather than "
+          "guessing")
+
     # -- the bare title, which is what a live record needs --------------------
     from store import _bare, _normalise
     cases = [

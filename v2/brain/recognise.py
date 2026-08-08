@@ -35,6 +35,16 @@ def _simplify_shazam(result) -> dict:
         return blank("Shazam")
 
     images = track.get("images") or {}
+    # How far into the song this clip was, in seconds, and how far off the
+    # turntable's speed is. Both come out of the match itself and were being
+    # thrown away with the rest of the raw answer.
+    #
+    # The offset is what makes a countdown possible at all. A duration tells you
+    # how long a song is and nothing about where you are in it, so on its own it
+    # cannot say when this one ends. Measured on a real clip: 170.58 seconds in,
+    # with the speed 0.07 per cent out — which over a four-minute side is a sixth
+    # of a second and not worth correcting for.
+    match = ((result or {}).get("matches") or [{}])[0]
     out = {
         "engine": "Shazam",
         "matched": True,
@@ -44,6 +54,8 @@ def _simplify_shazam(result) -> dict:
         "album": None,
         "released": None,
         "label": None,
+        "offset": match.get("offset"),
+        "skew": match.get("timeskew"),
     }
     for section in track.get("sections") or []:
         for item in section.get("metadata") or []:

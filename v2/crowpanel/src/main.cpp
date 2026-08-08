@@ -309,6 +309,7 @@ static void refreshUi() {
   ui.shelfNarrowed = shelfNarrowed();
   ui.choiceCount   = userPicked ? 0 : brainState.choiceCount;
   strlcpy(ui.nowTrack, millis() < trackUntil ? shownTrack : "", sizeof(ui.nowTrack));
+  strlcpy(ui.nextUp, brainState.nextUp, sizeof(ui.nextUp));
   ui.justLinked    = millis() < linkedUntil;
   ui.haveArtwork   = brainState.haveArtwork;
   ui.artworkIsLogo = brainState.artworkIsLogo;

@@ -190,7 +190,16 @@ still spinning, and every link teaches the local database one more side.
 
 The screen says where on the record you are, briefly, each time the track
 changes: **A4 · Angels**, as the sleeve prints it rather than "track eight of
-eleven". Briefly on purpose — between two tracks on one side nothing else on the
+eleven". And twenty seconds before a track runs out it names what is coming —
+**NEXT B2 Come Into My World** — so you know whether to get up.
+
+That last one needs two things at once, and only works when both are there.
+Shazam says how far into the song the clip was, which is what a duration cannot
+tell you; Discogs says how long the song is. On this shelf 310 of 549 records
+have printed durations, so it is quiet on the rest rather than guessing.
+Measuring the silence between tracks was tried first and does not work: four
+minutes of one record gave fourteen dips deep enough to look like a gap, where at
+most one boundary could have passed. Briefly on purpose — between two tracks on one side nothing else on the
 screen moves, so that is the moment the information is worth having, and a minute
 later you are looking at the record and not at this.
 

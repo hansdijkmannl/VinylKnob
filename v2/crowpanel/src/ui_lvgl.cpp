@@ -378,7 +378,7 @@ void uiBegin() {
   // Where the title came from, when there is no sleeve. With YouTube it stays
   // text — that app supplies no image — and then "YouTube" above the video title
   // is more informative than an empty space.
-  lblSource    = makeLabel(lyNow, &lv_font_montserrat_14, COL_ACCENT,    LV_ALIGN_CENTER,  0, -60);
+  lblSource    = makeLabel(lyNow, &lv_font_montserrat_20, COL_TEXT,      LV_ALIGN_CENTER,  0, -64);
   lblMute    = makeLabel(lyNow, &lv_font_montserrat_20, COL_WARN, LV_ALIGN_CENTER, 0, -100);
   lv_label_set_text(lblMute, "MUTE");
   lv_obj_add_flag(lblMute, LV_OBJ_FLAG_HIDDEN);
@@ -752,9 +752,22 @@ void uiRender(const UiState &s) {
       // moves, so without it the picture is identical while the music is not.
       // It uses the source line because that line is empty for a record — an
       // app name is for the Apple TV — and it goes away by itself.
-      if (s.nowTrack[0] && !s.turning) {
+      // What is coming, in the last stretch of what is on. It wins the line
+      // over the track that is nearly over: by then you know what you are
+      // hearing, and what you do not know is whether to get up.
+      if (s.nextUp[0] && !s.turning) {
+        char line[64];
+        snprintf(line, sizeof(line), "NEXT  %s", s.nextUp);
+        lv_label_set_text(lblSource, line);
+        lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_ACCENT), 0);
+        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+      } else if (s.nowTrack[0] && !s.turning) {
+        // White rather than the sleeve's own colour. The accent is picked from
+        // the artwork and lands wherever that record happens to be dark or
+        // muddy; this line has to be read in a second from across a room, and
+        // white on the scrim always is.
         lv_label_set_text(lblSource, s.nowTrack);
-        lv_obj_set_style_text_color(lblSource, lv_color_hex(artworkAccent()), 0);
+        lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_TEXT), 0);
         lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
       }
 
