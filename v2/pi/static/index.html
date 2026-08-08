@@ -360,10 +360,17 @@ button.danger{background:var(--warn);color:#fff}
     <div class="row" style="margin-top:1rem">
       <button id="dSave">Save</button>
       <button class="sec" id="dSync">Sync collection</button>
+      <button class="sec" id="dTracks">Fetch tracklists</button>
     </div>
     <p class="hint" id="dInfo"></p>
-    <p class="hint">Personal access token: discogs.com &rsaquo; Settings &rsaquo; Developers. It fetches what is on each record as well as the sleeve, which is how a service naming a greatest-hits gets overruled by the pressing you actually own.
-    The collection also syncs by itself once a day.</p>
+    <p class="hint">Personal access token: discogs.com &rsaquo; Settings &rsaquo;
+    Developers. The collection gives you the sleeves; the tracklists are a second
+    pass, one request per record, and they are what lets a pressing you own
+    overrule a service naming some greatest-hits. Everything that knows a record
+    has sides comes from them — being asked which of three pressings is on, the
+    <span class="mono">A4 · Angels</span> on the panel, the next track named
+    before this one ends. Press it once after the first sync and leave it; both
+    keep themselves topped up once a day after that.</p>
   </div>
 
   <h2>The shelf</h2>
@@ -1333,6 +1340,31 @@ on('dSave', 'click', async () => {
   $('dToken').value = '';
   setText('dInfo', 'Saved.');
   loadSettings();
+});
+
+// One press, however many passes it takes. The endpoint stops after forty-five
+// seconds and says how much is left, because the proxy in front of it hangs up at
+// sixty — so a shelf of several hundred needs calling again, and asking that of
+// somebody who just wants their tracklists is asking the wrong thing.
+on('dTracks', 'click', async () => {
+  const b = $('dTracks');
+  b.disabled = true;
+  for (let pass = 1; pass <= 40; pass++) {
+    let d;
+    try { d = await json('api/discogs/tracks', {method: 'POST'}); }
+    catch (e) { setText('dInfo', 'The brain stopped answering.'); break; }
+    if (d.error) { setText('dInfo', d.error); break; }
+    setText('dInfo', d.remaining
+      ? `${d.withTracks} of ${d.total} records have their tracklist — ${d.remaining} to go.`
+      : `All ${d.total} records have their tracklist.`);
+    if (!d.remaining) break;
+    if (d.failed && d.failed.length) {
+      setText('dInfo', `Stopped at ${d.withTracks} of ${d.total}: ${d.failed[0].error}`);
+      break;
+    }
+  }
+  b.disabled = false;
+  refreshCounts();
 });
 
 on('dSync', 'click', async () => {

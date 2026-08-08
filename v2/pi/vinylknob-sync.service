@@ -1,5 +1,5 @@
 [Unit]
-Description=VinylKnob - update the Discogs collection
+Description=VinylKnob - update the Discogs collection and the tracklists
 After=vinylknob-brain.service
 Requires=vinylknob-brain.service
 
@@ -10,3 +10,17 @@ User=__USER__
 # pause between them, because Discogs allows 60 requests per minute and we stay
 # under that.
 ExecStart=/usr/bin/curl -fsS --max-time 300 -X POST http://127.0.0.1:8790/api/discogs/sync
+
+# And the tracklists, which the collection listing does not carry: one request per
+# release, so this is the pass that finds out what is actually on each record.
+# Everything that knows a record has sides hangs off it — being asked which of
+# three pressings is on, the "A4 · Angels" on the panel, naming the next track
+# before this one ends. Without this line it was never fetched for anything bought
+# after the first setup, and none of that would work on those records with nothing
+# to say why.
+#
+# Bounded by its own clock and picks up where it stopped, so several calls finish a
+# large shelf over several nights and a finished one costs a single question.
+ExecStart=/usr/bin/curl -fsS --max-time 300 -X POST http://127.0.0.1:8790/api/discogs/tracks
+ExecStart=/usr/bin/curl -fsS --max-time 300 -X POST http://127.0.0.1:8790/api/discogs/tracks
+ExecStart=/usr/bin/curl -fsS --max-time 300 -X POST http://127.0.0.1:8790/api/discogs/tracks

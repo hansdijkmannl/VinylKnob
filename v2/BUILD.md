@@ -8,28 +8,20 @@ in [PLAN.md](PLAN.md) and [BOM.md](BOM.md).
 
 ---
 
-## Step 0 — Let go of the amplifier
+## Step 0 — Nothing else may hold the amplifier
 
-The receiver accepts **one telnet session at a time**. If anything else is
-connected, the panel cannot get in — and it will simply report "No receiver",
-which is the most confusing way this can fail.
+The receiver accepts **one telnet session at a time**, and the panel needs it. If
+something else has it, the panel reports "No receiver" — which is the most
+confusing way this can fail, because everything else looks fine.
 
-If you have been running the brain on a laptop, check:
+The usual culprits are Home Assistant with a Denon integration, a Denon or Marantz
+app left open on a phone, or a second controller of any kind. Turn those off before
+you start; you can decide later whether to give one of them a Zone 2 session
+instead.
 
-```bash
-curl -s http://127.0.0.1:8790/api/avr/state
-```
-
-If that says `"connected": true`, disconnect first:
-
-```bash
-curl -X POST http://127.0.0.1:8790/api/avr/disconnect
-```
-
-From here on the **panel** owns that connection. The web interface keeps working
-for recognition and Discogs; just do not press "connect" there again.
-
----
+And in the receiver's own menu, **Network → Network Control → Always On**. Without
+it the receiver drops its network when it goes into standby, and the panel can
+never wake it — which looks exactly like a broken cable.
 
 ## Step 1 — Flash the panel
 
@@ -179,40 +171,82 @@ like; it is idempotent.
 
 ---
 
-## Step 6 — Check the line feed
-
-There is no microphone to plug in. The receiver digitises its own analog inputs
-and serves each one over HTTP; the Pi listens to the turntable input. Put a
-record on and run:
+## Step 6 — See whether the Pi runs
 
 ```bash
-ssh vinylknob.local vinylknob/v2/pi/line.sh
+ssh vinylknob.local 'journalctl -u vinylknob-brain -u vinylknob-listen -f'
 ```
 
-It asks the receiver which inputs it offers and measures three seconds of each,
-so the one with your turntable on it stands out from the rest:
+| | |
+|---|---|
+| web interface | <http://vinylknob.local> |
+| raw levels | <http://vinylknob.local/status> |
+| listen right now | `curl -X POST http://vinylknob.local/listen` |
 
-```
-  phono           3.1s  peak 0.0740   -36.6 dBFS  <- signal
-  cd              3.1s  peak 0.0001   -92.5 dBFS
-  tuner           3.1s  peak 0.0001   -92.5 dBFS
-```
+In the web interface, **Shelf** tab, enter your Discogs token and sync the
+collection — the database does not travel with `rsync`. Then press **Fetch
+tracklists** and leave it: that is a request per release, so several hundred
+records take a few passes at Discogs' rate limit. Everything that knows a record
+has sides comes from it — being asked which of three pressings is on, the
+`A4 · Angels` on the panel, the next track named before this one ends — so a shelf
+without it works but says less. After the first time the nightly task keeps it
+topped up on its own.
 
-Put the name of that one in `LINE_INPUT` in `vinylknob-listen.service`. The
-default is `phono`, which is right on most receivers.
+To keep fingerprints you built up elsewhere, copy `v2/brain/data/brain.db` across
+separately and restart the service.
 
-The script pauses the ears while it runs, because the receiver serves **one**
-client at a time and the ears normally hold that connection — without stepping
-aside every reading is a scrap of somebody else's stream and everything looks
-dead.
+**Optional, and off unless you ask:** a
+[ListenBrainz](https://listenbrainz.org/settings/) token under System → *For the
+record* logs every recognised side to your listening history, which is the hole
+vinyl leaves in everyone's. AudD, the paid second opinion, is next to it; most
+people will not want it and Shazam plus your own database do not need it.
 
-Nothing above -60 dBFS with a record playing means either the receiver is not on
-the turntable, or that input arrives over HDMI. Only the analog inputs get
-digitised.
+**Tuning without guessing:** put a record on and watch `/status` to see where
+`levelDb` goes relative to `thresholdDb`. The adjustments live in
+`vinylknob-listen.service`.
 
 ---
 
-## Step 6b — Pair the Apple TV
+## Step 7 — Tell it which input the turntable is on
+
+There is no microphone to plug in. A Denon or Marantz receiver digitises its
+analog inputs and serves each one over HTTP — the machinery behind sharing an
+input with HEOS speakers — and this listens to the turntable one.
+
+This is done on the page, not in a file. Put a record on, open the web interface
+, and go to **System → Where it listens**.
+
+The list comes from your receiver rather than from a table in here, because the
+names are the stream's and not the front panel's: `PHONO` is `phono`, but `MPLAY`
+is `mediaplayer`, `SAT/CBL` is `cable_sat` and `AUX1` is `aux_single`. So
+**Find it for me** is usually the quicker route — it reads every input for two
+seconds and shows what it heard:
+
+```
+  phono         -36.6 dB
+  cd            -92.5 dB
+  tuner         -92.5 dB
+```
+
+It only names a winner if something is above -55 dB, which is what a record
+sounds like on this line; music runs -33 to -48 and an idle input -80 to -92. With
+nothing playing it says so rather than confidently naming the least quiet input,
+which is what an earlier version did.
+
+Under the list it says which front-panel input that is and whether the knob agrees
+— the two settings live in different places and this is where a mismatch becomes
+visible instead of becoming a fortnight of nothing being recognised.
+
+**If the list is empty**, this receiver does not hand its inputs over. Recognition
+by listening cannot work on it, and everything else — the volume, the sources, the
+shelf, the sleeves for anything the Apple TV plays — works as it does anywhere.
+HEOS speakers and receivers from before the HEOS generation are not built for it,
+and there is no published list of which models are, so this is how you find out.
+
+`v2/pi/line.sh` does the same thing over SSH and prints more detail; it is the
+place to go when the page says something you do not believe.
+
+## Step 7b — Pair the Apple TV
 
 Only if you have one. Records come off the line feed and get recognised;
 anything over HDMI does not need recognising, because the Apple TV knows what it
@@ -232,39 +266,20 @@ here. Apple TV+, Music and most others do not.
 
 ---
 
-## Step 7 — See whether the Pi runs
-
-```bash
-ssh vinylknob.local 'journalctl -u vinylknob-brain -u vinylknob-listen -f'
-```
-
-| | |
-|---|---|
-| web interface | <http://vinylknob.local> |
-| raw levels | <http://vinylknob.local/status> |
-| listen right now | `curl -X POST http://vinylknob.local/listen` |
-
-In the web interface, enter your Discogs token and sync the collection — the
-database does not travel with `rsync`. To keep fingerprints you built up
-elsewhere, copy `v2/brain/data/brain.db` across separately and restart the
-service.
-
-**Tuning without guessing:** put a record on and watch `/status` to see where
-`niveauDb` goes relative to `drempelDb`. The adjustments live in
-`vinylknob-listen.service`.
-
----
-
 ## Step 8 — Move the panel onto the Pi
 
 Until now the panel hung off your computer. Move the USB cable to a USB-A port
 on the Pi. Everything keeps working: the panel talks to the receiver over Wi-Fi,
 the Pi talks to Shazam and Discogs over Wi-Fi.
 
-Now they find each other. The panel polls the Pi every four seconds for what is
-playing, and the Pi learns the panel's address from those same requests — there
-is nothing to configure. Set `brainHost` in the panel's settings to the Pi's
-address and the sleeve appears.
+Now they find each other, in one direction. Set `brainHost` in the panel's
+settings — System → The brain — to the Pi's address; that is the one thing to
+type. The other direction is automatic: the panel polls the Pi every four seconds
+for what is playing, and the Pi learns the panel's address from those same
+requests, which is also how it finds the receiver without being told twice.
+
+Then put a record on. The sleeve should appear within fifteen seconds or so: four
+to let the needle settle, eight of recording, and a moment to ask.
 
 ---
 
@@ -281,6 +296,11 @@ address and the sleeve appears.
 | `vinylknob.local` not found | avahi not up yet; try the IP from your router |
 | one input does nothing, others work | that source is set to `DEL` in the receiver |
 | the QR scans but the phone refuses to open it | Safari's **HTTPS-Only** blocks any `http://` address. Settings -> Apps -> Safari -> Advanced, or add an exception for this one |
+| the volume works but no record is ever recognised | System &rsaquo; *Where it listens*: is the right input chosen, and does the knob's favourite agree? |
+| the list of inputs there is empty | this receiver does not serve its analog inputs, so recognition by listening cannot work on it |
+| a record is recognised as the previous one | one record has far more fingerprints than the rest. Capped now, but a database from before that may need the offender trimmed |
+| no `A4`, and no next track either | no tracklists yet — Shelf &rsaquo; *Fetch tracklists*. The next-track line also needs printed durations, which Discogs has for a bit over half a shelf |
+| AudD says the limit was reached | the free trial is a few hundred lookups. It is left alone for a day at a time after that; Shazam and your own database carry on |
 
 ---
 

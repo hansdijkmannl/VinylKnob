@@ -89,7 +89,7 @@ does not need recognising: an Apple TV knows exactly what it is playing, and
 no waiting — artist, title, album and artwork arrive the moment the track
 changes.
 
-Pairing is on the Apple TV tab of the web interface: scan, pick the device,
+Pairing is under System &rsaquo; *The other source*: scan, pick the device,
 type the PIN that appears on the television. It wants one for each of two
 protocols. The credentials land in `v2/brain/data/appletv.json` and survive a
 restart.

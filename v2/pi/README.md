@@ -56,8 +56,14 @@ offers, then measures three seconds of each so the turntable one stands out:
   cd              3.1s  peak 0.0001   -92.5 dBFS
 ```
 
-Put that name in `LINE_INPUT` in `vinylknob-listen.service`; `phono` is the
-default and right on most receivers.
+Then pick it in the web interface, System &rsaquo; *Where it listens* — which can
+also find it for you, since it asks the receiver what it offers and reads every
+input for a moment. `phono` is the fallback and right on most receivers, but only
+most: the stream names are not the front panel's, so `MPLAY` is `mediaplayer` and
+`SAT/CBL` is `cable_sat`.
+
+`LINE_INPUT` in the unit file still overrides everything, for a receiver that will
+not answer the discovery.
 
 The script pauses the ears while it runs. The receiver serves one client at a
 time and the ears normally hold that connection, so without stepping aside every
@@ -75,8 +81,8 @@ journalctl -u vinylknob-brain -u vinylknob-listen -f
 | raw levels as JSON | <http://vinylknob.local/status> |
 | listen right now | `curl -X POST http://vinylknob.local/listen` |
 
-`/status` gives you `niveauDb`, `ruisvloerDb` and `drempelDb` — level, noise
-floor and threshold. That is how you tune without guessing: put a record on,
+`/status` gives you `levelDb`, `floorDb` and `thresholdDb` — level, noise floor
+and threshold. That is how you tune without guessing: put a record on,
 watch where the level goes, compare it with the threshold.
 
 ### 5. Your Discogs token and collection
