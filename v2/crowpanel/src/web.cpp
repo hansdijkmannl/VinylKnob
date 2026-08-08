@@ -136,6 +136,11 @@ dd{margin:0;color:var(--dim)}
     <div><label>Volume ceiling</label>
       <div class="sl"><input id="volMaxDb" type="range" min="-40" max="0">
       <output id="oMax"></output></div></div>
+    <div><label>Volume lands on</label>
+      <select id="volumeLattice"><option value="0">any half decibel</option>
+      <option value="1">whole decibels</option>
+      <option value="2">even decibels</option>
+      <option value="3">odd decibels</option></select></div>
     <div><label>Encoder resolution</label>
       <select id="encDivider"><option value="4">1 step per detent (coarse)</option>
       <option value="2">2&times; finer</option>
@@ -143,8 +148,10 @@ dd{margin:0;color:var(--dim)}
   </div>
   <p class="hint">Half a dB per click is finely adjustable; at 2 or 3 you reach
   the right level quicker. The ceiling is an emergency brake &mdash; 0 dB is
-  wide open. With an encoder that has <b>no</b> detents, set the resolution
-  finer, or a smoothly turning knob still feels notchy.</p>
+  wide open. The receiver counts in half decibels and takes any of them, so what
+  it lands on is about what you can stand to look at; a click always moves, and
+  in the direction you turned. With an encoder that has <b>no</b> detents, set
+  the resolution finer, or a smoothly turning knob still feels notchy.</p>
 </div>
 
 <h2>Inputs</h2>
@@ -157,13 +164,6 @@ dd{margin:0;color:var(--dim)}
   <select id="favouriteInput"></select>
   <label>Apple TV on</label>
   <select id="appleTvInput"></select>
-  <label>Volume lands on</label>
-  <select id="volumeLattice">
-   <option value="0">any half decibel</option>
-   <option value="1">whole decibels</option>
-   <option value="2">even decibels</option>
-   <option value="3">odd decibels</option>
-  </select>
 </div>
 
 <h2>Controls</h2>
