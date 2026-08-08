@@ -454,6 +454,22 @@ class Store:
                         (TRACKS_V, release_id))
         self.db.commit()
 
+    def track_at(self, release_id: int, position) -> dict | None:
+        """The entry at a place in the running order, or None if there is none.
+
+        The other way round from track_on(): that one starts with a name a
+        service gave, this one with a number our own fingerprints remembered.
+        """
+        if release_id is None or position is None or position < 0:
+            return None
+        row = self.db.execute(
+            "SELECT * FROM tracks WHERE release_id = ? AND position = ?",
+            (release_id, position)).fetchone()
+        if row is None:
+            return None
+        return {"printed": row["printed"], "title": row["title"],
+                "secs": row["secs"], "position": row["position"]}
+
     def track_on(self, release_id: int, title: str) -> dict | None:
         """The one entry on this record that a service's answer names.
 

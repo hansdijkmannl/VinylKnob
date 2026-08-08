@@ -94,7 +94,8 @@ def track_seen(release_id, title: str) -> dict | None:
     row = store.track_on(release_id, title)
     if row is None:
         return None
-    return {"printed": row["printed"], "title": row["title"], "secs": row["secs"]}
+    return {"printed": row["printed"], "title": row["title"], "secs": row["secs"],
+            "position": row["position"]}
 
 
 def row_to_release(row) -> dict:
@@ -149,11 +150,14 @@ async def api_listen(request):
                     "recognised", engine="local", artist=row["artist"],
                     title=row["title"], album=row["title"],
                     release_id=row["id"], raw={"local": found})
-                # Our own fingerprints know the record but not which track, so
-                # the album stands in for it. Better a listen of the record than
-                # no listen at all.
-                asyncio.create_task(scrobbled(row_to_release(row), None,
-                                              row["artist"], row["title"]))
+                # Our own fingerprints can name the track too now, when the
+                # clip they matched was enrolled while a service was telling us
+                # what it was. Otherwise the album stands in for it, which is
+                # still better than no listen at all.
+                here = store.track_at(row["id"], found.get("trackPos"))
+                asyncio.create_task(scrobbled(row_to_release(row), here,
+                                              row["artist"],
+                                              (here or {}).get("title") or row["title"]))
                 return web.json_response({
                     "results": [{"engine": "local", "matched": True,
                                  "artist": row["artist"], "title": row["title"],
@@ -161,10 +165,7 @@ async def api_listen(request):
                                  "cover": f"/api/cover/{row['id']}"}],
                     "playId": play_id, "matched": True, "local": found,
                     "release": row_to_release(row),
-                    # Recognised from our own fingerprints, so there is no track
-                    # name in the answer — the offset says where on the side we
-                    # are, and the tracklist can say which track that is.
-                    "track": None,
+                    "track": here,
                 })
 
     results = await recognise.recognise(audio, store.get("audd_token"))
@@ -198,13 +199,17 @@ async def api_listen(request):
         release_id=match["id"] if match else None,
         raw={"results": results})
 
+    seen = track_seen(match["id"] if match else None, hit.get("title") or "")
+
     # Remember it for next time. Each listen captures a different stretch of
     # the side, so coverage grows on its own the more you play a record —
     # without importing anything up front.
     if match is not None and samples is not None:
-        local.remember(store.db, match["id"], samples)
+        # The service just said which track this stretch is. Storing that with
+        # the fingerprints is what lets our own recognition name it later.
+        local.remember(store.db, match["id"], samples,
+                       seen["position"] if seen else -1)
 
-    seen = track_seen(match["id"] if match else None, hit.get("title") or "")
     # Only once it is settled. With several records still to choose between, the
     # album is not known and sending a guess to something that keeps a permanent
     # history is worse than sending nothing.
@@ -240,6 +245,13 @@ async def api_enrol(request):
         release_id = int(request.query.get("release", ""))
     except ValueError:
         return web.json_response({"ok": False, "error": "no release"}, status=400)
+    # Which track is on, if the ears know. They do when a service named it, and
+    # that is exactly the case worth capturing: it turns this clip into one that
+    # can name itself next time.
+    try:
+        track_pos = int(request.query.get("track", "-1"))
+    except ValueError:
+        track_pos = -1
     if store.release(release_id) is None:
         return web.json_response({"ok": False, "error": "no such release"}, status=404)
 
@@ -248,7 +260,7 @@ async def api_enrol(request):
     if samples is None:
         return web.json_response({"ok": False, "error": "unreadable audio"}, status=400)
 
-    hashes = local.remember(store.db, release_id, samples)
+    hashes = local.remember(store.db, release_id, samples, track_pos)
     return web.json_response({"ok": True, "hashes": hashes})
 
 

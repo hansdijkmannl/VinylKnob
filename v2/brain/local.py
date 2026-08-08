@@ -28,7 +28,10 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS prints (
     hash       INTEGER NOT NULL,
     offset     INTEGER NOT NULL,
-    release_id INTEGER NOT NULL REFERENCES releases(id) ON DELETE CASCADE
+    release_id INTEGER NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
+    -- Which track this clip came off, as a place in the running order; -1 when
+    -- nobody knew. See remember().
+    track_pos  INTEGER NOT NULL DEFAULT -1
 );
 CREATE INDEX IF NOT EXISTS idx_prints_hash ON prints(hash);
 """
@@ -63,16 +66,35 @@ def decode_wav(data: bytes) -> np.ndarray | None:
 
 def ensure_schema(db) -> None:
     db.executescript(SCHEMA)
+    # Fingerprints from before there was a track to tag them with. They keep
+    # working — they recognise the record perfectly well — they just cannot say
+    # which song, and there is no way to work that out after the fact.
+    cols = {r[1] for r in db.execute("PRAGMA table_info(prints)")}
+    if "track_pos" not in cols:
+        db.execute("ALTER TABLE prints ADD COLUMN track_pos INTEGER NOT NULL DEFAULT -1")
     db.commit()
 
 
-def remember(db, release_id: int, samples: np.ndarray) -> int:
-    """Record a clip against a release. Returns the number of hashes stored."""
-    rows = [(h, t, release_id) for h, t in fingerprint(samples)
+def remember(db, release_id: int, samples: np.ndarray, track_pos: int = -1) -> int:
+    """Record a clip against a release. Returns the number of hashes stored.
+
+    `track_pos` is which track the clip came off, as a place in the running
+    order, and it is the difference between knowing the record and knowing the
+    song. A service that says "A4" is telling us that about *this stretch of
+    audio*; storing it with the fingerprints means the next time we recognise
+    that stretch ourselves we can say A4 too, with nobody asked.
+
+    Left at -1 when nobody knew — a hand-made link, or a clip from a record
+    whose tracklist has no positions. Those hashes still work for recognising
+    the record; they simply cannot name the track.
+    """
+    rows = [(h, t, release_id, track_pos) for h, t in fingerprint(samples)
             if mix(h) % KEEP_ONE_IN == 0]
     if not rows:
         return 0
-    db.executemany("INSERT INTO prints (hash, offset, release_id) VALUES (?, ?, ?)", rows)
+    db.executemany(
+        "INSERT INTO prints (hash, offset, release_id, track_pos) VALUES (?, ?, ?, ?)",
+        rows)
     db.commit()
     if _index["loaded"]:
         _index["buffer"].extend(rows)
@@ -120,7 +142,7 @@ _BUFFER_MAX = 200_000
 _DELTA_BIAS = 1 << 20
 _DELTA_SPAN = 1 << 21
 
-_index: dict = {"hash": None, "offset": None, "release": None,
+_index: dict = {"hash": None, "offset": None, "release": None, "track": None,
                 "buffer": [], "loaded": False}
 
 
@@ -141,8 +163,9 @@ def _load(db) -> None:
     hashes = np.empty(total, dtype=np.int64)
     offsets = np.empty(total, dtype=np.int32)
     releases = np.empty(total, dtype=np.int32)
+    tracks = np.empty(total, dtype=np.int32)
 
-    cursor = db.execute("SELECT hash, offset, release_id FROM prints")
+    cursor = db.execute("SELECT hash, offset, release_id, track_pos FROM prints")
     at = 0
     while at < total:
         rows = cursor.fetchmany(_CHUNK)
@@ -153,15 +176,18 @@ def _load(db) -> None:
         hashes[at:at + n] = block[:, 0]
         offsets[at:at + n] = block[:, 1]
         releases[at:at + n] = block[:, 2]
+        tracks[at:at + n] = block[:, 3]
         at += n
         del block
     if at < total:                       # rows vanished under us; use what came
-        hashes, offsets, releases = hashes[:at], offsets[:at], releases[:at]
+        hashes, offsets = hashes[:at], offsets[:at]
+        releases, tracks = releases[:at], tracks[:at]
 
     order = np.argsort(hashes, kind="stable")
     _index["hash"] = hashes[order]
     _index["offset"] = offsets[order]
     _index["release"] = releases[order]
+    _index["track"] = tracks[order]
     _index["buffer"] = []
     _index["loaded"] = True
 
@@ -174,8 +200,10 @@ def _fold_in() -> None:
     h = np.concatenate([_index["hash"], extra[:, 0]])
     o = np.concatenate([_index["offset"], extra[:, 1].astype(np.int32)])
     r = np.concatenate([_index["release"], extra[:, 2].astype(np.int32)])
+    k = np.concatenate([_index["track"], extra[:, 3].astype(np.int32)])
     order = np.argsort(h, kind="stable")
-    _index["hash"], _index["offset"], _index["release"] = h[order], o[order], r[order]
+    _index["hash"], _index["offset"] = h[order], o[order]
+    _index["release"], _index["track"] = r[order], k[order]
     _index["buffer"] = []
 
 
@@ -220,6 +248,7 @@ def identify(db, samples: np.ndarray) -> dict | None:
     total = int(counts.sum())
 
     keys = np.empty(0, dtype=np.int64)
+    hit_track = np.empty(0, dtype=np.int32)
     if total:
         # The ragged ranges [left, right) flattened into one array of row
         # numbers, without building any of them as lists.
@@ -230,6 +259,7 @@ def identify(db, samples: np.ndarray) -> dict | None:
 
         delta = offsets[rows].astype(np.int64) - np.repeat(q_time, counts)
         keys = releases[rows].astype(np.int64) * _DELTA_SPAN + (delta + _DELTA_BIAS)
+        hit_track = _index["track"][rows]
 
     # And whatever has been learnt since the arrays were last sorted. Thousands
     # against millions, so a plain scan is the cheaper thing here.
@@ -237,11 +267,13 @@ def identify(db, samples: np.ndarray) -> dict | None:
         want = {}
         for h, s in query:
             want.setdefault(h, []).append(s)
-        extra = [rel * _DELTA_SPAN + (off - s + _DELTA_BIAS)
-                 for h, off, rel in _index["buffer"] if h in want
+        pairs = [(rel * _DELTA_SPAN + (off - s + _DELTA_BIAS), pos)
+                 for h, off, rel, pos in _index["buffer"] if h in want
                  for s in want[h]]
-        if extra:
-            keys = np.concatenate([keys, np.array(extra, dtype=np.int64)])
+        if pairs:
+            keys = np.concatenate([keys, np.array([k for k, _ in pairs], dtype=np.int64)])
+            hit_track = np.concatenate(
+                [hit_track, np.array([p for _, p in pairs], dtype=np.int32)])
 
     if len(keys) == 0:
         return None
@@ -276,6 +308,34 @@ def identify(db, samples: np.ndarray) -> dict | None:
 
     if score < MIN_SCORE or margin < MIN_MARGIN:
         return None
+
+    # Which track, if the hits that won say so clearly enough.
+    #
+    # They are the stretches of audio that lined up at one and the same offset,
+    # so whatever they were enrolled as is what this is. But a majority and not
+    # merely the commonest: two clips off one record share a few hundred hashes,
+    # and taking the most frequent tag among only the tagged hits let five
+    # strays outvote a thousand untagged ones and name the wrong track. Half of
+    # everything that won, or we say nothing.
+    # Over the whole window and not just its middle. The score is the sum of
+    # three neighbouring offsets, so when two of them tie the winner reported is
+    # whichever came first — and that can be the neighbour of the one holding
+    # the hits. Reading the track out of that single bucket found eight stray
+    # tagged hashes and confidently named the wrong song, while three thousand
+    # untagged ones sat one offset away.
+    won = release_id * _DELTA_SPAN + (delta + _DELTA_BIAS)
+    window = np.array([won - 1, won, won + 1], dtype=np.int64)
+    mine = (hit_track[np.isin(keys, window)] if len(hit_track) == len(keys)
+            else np.empty(0, np.int32))
+    track_pos = None
+    known = mine[mine >= 0]
+    if len(known):
+        counts = np.bincount(known)
+        best = int(counts.argmax())
+        if counts[best] * 2 > len(mine):
+            track_pos = best
+
     return {"releaseId": release_id, "score": score,
             "margin": None if margin == float("inf") else round(margin, 1),
-            "offsetSeconds": round(delta * SECONDS_PER_FRAME, 1)}
+            "offsetSeconds": round(delta * SECONDS_PER_FRAME, 1),
+            "trackPos": track_pos}

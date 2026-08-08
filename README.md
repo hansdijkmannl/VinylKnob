@@ -194,6 +194,12 @@ eleven". Briefly on purpose — between two tracks on one side nothing else on t
 screen moves, so that is the moment the information is worth having, and a minute
 later you are looking at the record and not at this.
 
+When a service says which track it is, that goes into the fingerprints along
+with the audio. So the next time your own database recognises that stretch it
+can say **A4 · Angels** too, with nobody asked — the one thing the local path
+could not do before. Clips enrolled before this, or from a hand-made link, still
+recognise the record perfectly well; they simply cannot name the song.
+
 Every play also teaches it more of the side. A record that has been identified
 is sampled again every half minute and those stretches join its fingerprints, so
 one play covers a whole side where it used to take dozens. That is what keeps
@@ -274,6 +280,7 @@ a throwaway database); the page test needs nothing but node.
 
 ```bash
 .venv/bin/python v2/brain/test_match.py     # a service's answer against your shelf
+.venv/bin/python v2/brain/test_local.py     # recognising your own records, and naming the track
 .venv/bin/python v2/brain/test_scrobble.py  # exactly what would leave the house
 .venv/bin/python v2/pi/test_ears.py         # what the ears do with no sound
 node v2/pi/static/test_page.mjs             # does the web interface hold together

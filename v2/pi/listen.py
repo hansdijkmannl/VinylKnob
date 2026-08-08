@@ -288,8 +288,10 @@ class Ears:
         self.force = asyncio.Event()
         self.last = "nothing heard yet"
         self.release_id: int | None = None     # artwork from your own shelf
-        # Where on the record we are, as the sleeve prints it: "A4".
+        # Where on the record we are, as the sleeve prints it: "A4", and the
+        # same place as a number, which is what the fingerprints are tagged with.
         self.track_no = ""
+        self.track_pos = -1
         self.cover_url: str | None = None       # artwork from the service, second choice
         self.artist = ""                      # separate fields, for the panel
         self.title = ""
@@ -400,6 +402,7 @@ class Ears:
         self.open_play_id = None
         self.choices = []
         self.track_no = ""
+        self.track_pos = -1
         self.learn_at = 0.0
         self.learned = 0
 
@@ -538,7 +541,8 @@ class Ears:
             return
         try:
             async with ClientSession(timeout=ClientTimeout(total=30)) as s:
-                async with s.post(f"{BRAIN}/api/enrol?release={release_id}",
+                async with s.post(f"{BRAIN}/api/enrol?release={release_id}"
+                                  f"&track={self.track_pos}",
                                   data=wav,
                                   headers={"Content-Type": "audio/wav"}) as r:
                     body = await r.json()
@@ -596,10 +600,16 @@ class Ears:
             # instead and let the panel say it is asking.
             seen = body.get("track") or {}
             self.track_no = seen.get("printed") or ""
+            # The place in the running order goes with it, because that is what
+            # the learner hands over: a clip enrolled while we knew the track
+            # can name itself the next time we hear it.
+            pos = seen.get("position")
+            self.track_pos = -1 if pos is None else int(pos)
             if self.choices:
                 self.cover_url = None
                 self.album = ""
                 self.track_no = ""        # not settled, so not a position either
+                self.track_pos = -1
             else:
                 self.cover_url = hit.get("cover") or None
                 self.album = (rel["title"] if rel else "") or hit.get("album") or ""
