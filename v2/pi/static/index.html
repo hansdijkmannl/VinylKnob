@@ -399,18 +399,6 @@ button.danger{background:var(--warn);color:#fff}
     </div>
   </div>
 
-  <h2>Receiver</h2>
-  <div class="card">
-    <div class="cols">
-      <div style="flex:3 1 12rem"><label for="avrHost">IP or hostname</label>
-        <input id="avrHost" placeholder="192.168.1.121"></div>
-      <div style="flex:1 1 5rem"><label for="avrPort">Port</label>
-        <input id="avrPort" type="number"></div>
-    </div>
-    <p class="hint">In the receiver menu set <b>Network &rsaquo; Network Control</b> to
-    &ldquo;Always On&rdquo;, or port 23 disappears in standby.</p>
-  </div>
-
   <h2>Display</h2>
   <div class="card">
     <div class="cols">
@@ -441,14 +429,6 @@ button.danger{background:var(--warn);color:#fff}
     turning the knob wakes it again, and so does switching the amplifier back on.</p>
     <p class="hint">Brightness applies while you drag, so you can see what you are setting.
     Still press save, or it reverts on the next restart.</p>
-  </div>
-
-  <h2>Brain</h2>
-  <div class="card">
-    <label for="brainHost">IP of the Pi</label>
-    <input id="brainHost" placeholder="192.168.1.175">
-    <p class="hint">The Pi that listens along and recognises records. Leave it empty and
-    the display shows volume and input only.</p>
   </div>
 
   <h2>Volume</h2>
@@ -522,6 +502,36 @@ button.danger{background:var(--warn);color:#fff}
     </dl>
   </div>
 
+  <div class="row" style="margin-top:1rem">
+    <button id="kSave">Save</button>
+    <button class="sec" id="kTest">Test first input</button>
+    <button class="sec" id="kReboot">Restart panel</button>
+  </div>
+  <p class="msg" id="kMsg"></p>
+</section>
+
+<!-- ==================== SYSTEM ==================== -->
+<section id="t-sys" hidden>
+  <h2>Receiver</h2>
+  <div class="card">
+    <div class="cols">
+      <div style="flex:3 1 12rem"><label for="avrHost">IP or hostname</label>
+        <input id="avrHost" placeholder="192.168.1.121"></div>
+      <div style="flex:1 1 5rem"><label for="avrPort">Port</label>
+        <input id="avrPort" type="number"></div>
+    </div>
+    <p class="hint">In the receiver menu set <b>Network &rsaquo; Network Control</b> to
+    &ldquo;Always On&rdquo;, or port 23 disappears in standby.</p>
+  </div>
+
+  <h2>Brain</h2>
+  <div class="card">
+    <label for="brainHost">IP of the Pi</label>
+    <input id="brainHost" placeholder="192.168.1.175">
+    <p class="hint">The Pi that listens along and recognises records. Leave it empty and
+    the display shows volume and input only.</p>
+  </div>
+
   <h2>Wi-Fi</h2>
   <div class="card">
     <div class="cols">
@@ -534,15 +544,10 @@ button.danger{background:var(--warn);color:#fff}
   </div>
 
   <div class="row" style="margin-top:1rem">
-    <button id="kSave">Save</button>
-    <button class="sec" id="kTest">Test first input</button>
-    <button class="sec" id="kReboot">Restart panel</button>
+    <button id="sSave">Save</button>
   </div>
-  <p class="msg" id="kMsg"></p>
-</section>
+  <p class="msg" id="sMsg"></p>
 
-<!-- ==================== SYSTEM ==================== -->
-<section id="t-sys" hidden>
   <h2>Apple TV</h2>
   <div class="card">
     <p class="hint" id="atvSt" style="margin:0">…</p>
@@ -1300,8 +1305,14 @@ on('dSync', 'click', async () => {
 // ===========================================================================
 let CODES = [], MAX_INPUTS = 8, inputs = [], favourite = -1, appleTv = -1;
 
-const P_TEXT = ['avrHost', 'brainHost', 'wifiSsid'];
-const P_NUMBER = ['avrPort', 'brightness', 'dimAfterS', 'halfDbPerClick', 'accelFactor',
+// Which tab owns which field. Both save to the same place — the panel accepts a
+// partial body and leaves out what it is not told about — so each tab sends the
+// fields it actually shows. Sending a field that is on another tab means reading
+// an element that is not there.
+const S_TEXT = ['avrHost', 'brainHost', 'wifiSsid'];
+const S_NUMBER = ['avrPort'];
+const P_TEXT = [];
+const P_NUMBER = ['brightness', 'dimAfterS', 'halfDbPerClick', 'accelFactor',
                  'accelWindowMs', 'volMaxDb', 'longPressMs', 'doublePressMs'];
 
 TABS.panel = {every: 2000, open: loadPanel, tick: panelState};
@@ -1312,12 +1323,16 @@ async function loadPanel() {
     CODES = await json('panel/api/inputs');
     S = await json('panel/api/settings');
   } catch (e) {
-    setText('kMsg', 'Panel not reachable.');
-    $('kMsg').className = 'msg err';
+    // Both messages, because these fields live on two tabs now and you can only
+    // see one of them at a time.
+    for (const id of ['kMsg', 'sMsg']) {
+      setText(id, 'Panel not reachable.');
+      $(id).className = 'msg err';
+    }
     return;
   }
   MAX_INPUTS = S.maxInputs || 8;
-  for (const k of P_TEXT.concat(P_NUMBER)) if ($(k)) $(k).value = S[k];
+  for (const k of P_TEXT.concat(P_NUMBER, S_TEXT, S_NUMBER)) if ($(k)) $(k).value = S[k];
   $('encDivider').value = String(S.encDivider || 4);
   $('rotated').value = S.rotated ? '1' : '0';
   $('screenAngle').value = ((S.screenAngle || 0) / 10).toFixed(1);
@@ -1406,12 +1421,27 @@ on('kSave', 'click', async () => {
              screenAngle: Math.round(parseFloat($('screenAngle').value || '0') * 10),
              offWithAmp: $('offWithAmp').value === '1'};
   for (const k of P_TEXT) b[k] = $(k).value;
-  b.wifiPass = $('wifiPass').value;
   for (const k of P_NUMBER) b[k] = parseInt($(k).value, 10);
   const r = await post('panel/api/settings', b);
   if (!r.ok) { panelMessage('Error: ' + r.error, false); return; }
+  panelMessage('Saved.', true);
+});
+
+// The addresses and the network, which live on the system tab now: the receiver
+// it talks to, the Pi it asks, and the Wi-Fi all three need. Its own Save,
+// because a control you can change on one tab and only save on another is worse
+// than leaving it where it was.
+on('sSave', 'click', async () => {
+  const b = {};
+  for (const k of S_TEXT) b[k] = $(k).value;
+  for (const k of S_NUMBER) b[k] = parseInt($(k).value, 10);
+  b.wifiPass = $('wifiPass').value;      // empty means "leave it", not "clear it"
+  const r = await post('panel/api/settings', b);
+  const msg = $('sMsg');
+  if (!r.ok) { msg.textContent = 'Error: ' + r.error; msg.className = 'msg err'; return; }
   $('wifiPass').value = '';
-  panelMessage(r.wifiChanged ? 'Saved. Restart needed for the new Wi-Fi.' : 'Saved.', true);
+  msg.textContent = r.wifiChanged ? 'Saved. The panel restarts for the new Wi-Fi.' : 'Saved.';
+  msg.className = 'msg ok';
 });
 
 on('kTest', 'click', async () => {
@@ -1456,7 +1486,7 @@ for (const id of Object.keys(SLIDERS)) {
 // ===========================================================================
 // SYSTEM — Apple TV, the Pi itself, and what the device has learned
 // ===========================================================================
-TABS.sys = {every: 5000, open() { atvScan(); loadSettings(); }, tick: systemTick};
+TABS.sys = {every: 5000, open() { atvScan(); loadSettings(); loadPanel(); }, tick: systemTick};
 
 async function systemTick() {
   try {
