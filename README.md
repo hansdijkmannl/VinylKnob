@@ -174,8 +174,12 @@ Records are identified three ways, cheapest first:
 
 1. **Your own fingerprint database.** Costs nothing, needs no network, and grows
    every time you play something. This is the one that matters.
-2. **Shazam**, via [shazamio](https://github.com/shazamio/ShazamIO).
-3. **AudD**, if you supply a key. Optional and paid.
+2. **Shazam**, via [shazamio](https://github.com/shazamio/ShazamIO). In practice
+   this does most of the work.
+3. **AudD**, if you supply a key. Optional, paid, and most people will not have
+   it — the free trial is a few hundred lookups and then it is done. A key that
+   has run out is skipped for a day rather than asked on every record, because
+   AudD takes the upload before it tells you no.
 
 > **Read this before you run it.** `shazamio` is an unofficial client. A handful
 > of lookups an evening is one thing; a hundred installations doing it
@@ -184,6 +188,11 @@ Records are identified three ways, cheapest first:
 > turntable input, gives up after three failed attempts, and stays quiet while
 > the amplifier is off — but if you intend to run this at any scale, use AudD
 > with your own key, or lean on the local database and link the rest by hand.
+>
+> The local database is the honest answer and it is the one this is built around.
+> Every play teaches it more of the side, so the more you use the thing the less
+> it asks anyone: on this shelf, 47 records of 549 are recognised without a
+> service after a fortnight, and that number only goes up.
 
 Linking by hand is not a chore here. It happens on the knob, while the record is
 still spinning, and every link teaches the local database one more side.

@@ -111,10 +111,35 @@ def _simplify_audd(payload) -> dict:
     }
 
 
+# A token whose quota has run out, and when to believe in it again.
+#
+# AudD answers a spent trial with an ordinary error and takes the upload first, so
+# without this every lookup ships a megabyte and a half to be told no — and the
+# error lands in the listen's record as though something had gone wrong with the
+# record rather than with the account. A day, because quotas do reset and a
+# permanent "never again" would need you to notice and clear it by hand.
+_audd_spent_until = 0.0
+_AUDD_BACKOFF_S = 24 * 60 * 60
+
+# What a spent account sounds like, as opposed to a network hiccup.
+_AUDD_SPENT = ("limit was reached", "limit reached", "authorization failed",
+               "no api_token", "wrong api_token")
+
+
+def audd_spent() -> bool:
+    """Is the key being skipped because it has run out? For the web interface."""
+    return time.time() < _audd_spent_until
+
+
 async def recognise_audd(audio: bytes, token: str) -> dict:
+    global _audd_spent_until
     if not token:
         out = blank("AudD")
         out["error"] = "no key set"
+        return out
+    if audd_spent():
+        out = blank("AudD")
+        out["error"] = "limit reached — not asking again today"
         return out
 
     started = time.time()
@@ -129,7 +154,13 @@ async def recognise_audd(audio: bytes, token: str) -> dict:
                 payload = await response.json(content_type=None)
         if payload.get("status") == "error":
             out = blank("AudD")
-            out["error"] = str((payload.get("error") or {}).get("error_message"))
+            message = str((payload.get("error") or {}).get("error_message"))
+            out["error"] = message
+            # A spent trial is not a failed recognition; asking again is asking
+            # the same question of the same empty account.
+            if any(s in message.lower() for s in _AUDD_SPENT):
+                _audd_spent_until = time.time() + _AUDD_BACKOFF_S
+                print(f"[audd] {message} — leaving it alone for a day", flush=True)
         else:
             out = _simplify_audd(payload)
     except Exception as exc:                          # noqa: BLE001

@@ -1607,9 +1607,11 @@ async function loadSettings() {
   setText('sLook', s.lookups || 0);
   const c = s.counts || {};
   setText('sPlays', Object.entries(c).map(([k, v]) => `${v} ${k}`).join(' · ') || '–');
-  setText('aInfo', s.auddTokenSet
-    ? 'Token set — AudD joins in on every recording.'
-    : 'No token — only Shazam takes part.');
+  setText('aInfo', !s.auddTokenSet
+    ? 'No token — Shazam and your own database do the work, which is the usual case.'
+    : s.auddSpent
+      ? 'Token set, but the key has run out — it is being left alone for a day.'
+      : 'Token set — AudD joins in on every recording.');
   setText('lbInfo', s.scrobbleTokenSet
     ? (s.scrobbleUser ? `Listens go to ${s.scrobbleUser}.` : 'Token set.')
     : 'No token — nothing is sent anywhere.');

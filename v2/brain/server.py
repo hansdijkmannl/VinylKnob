@@ -563,6 +563,7 @@ async def api_get_settings(_request):
         "discogsUser": store.get("discogs_user"),
         "discogsTokenSet": bool(store.get("discogs_token")),
         "auddTokenSet": bool(store.get("audd_token")),
+        "auddSpent": recognise.audd_spent(),
         "scrobbleTokenSet": bool(store.get("listenbrainz_token")),
         "scrobbleUser": store.get("listenbrainz_user"),
         "collectionCount": store.release_count(),
