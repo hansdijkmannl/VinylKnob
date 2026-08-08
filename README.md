@@ -210,6 +210,23 @@ and you point at the one that is on. If you were not standing there, the same
 question is waiting in the queue the next morning, with the candidates already
 laid out and one press each.
 
+## Scrobbling
+
+Vinyl is the hole in every listening history. Streaming services log themselves;
+a record leaves no trace, so a shelf you actually play is invisible in your own
+statistics. Paste a [ListenBrainz](https://listenbrainz.org/settings/) token into
+the system tab and every recognised record is logged — artist, track, album, the
+side it was on, and a link back to your own Discogs copy.
+
+Nothing is sent while that field is empty, and that is the default. It is the
+first thing here that structurally leaves the house apart from the recognition
+lookups themselves, so it deserves a conscious yes.
+
+ListenBrainz rather than Last.fm for one reason: friction. ListenBrainz wants one
+token, pasted in. Last.fm's scrobble API wants an API key you register as a
+developer, a secret, a signature over every call and a browser handshake to turn
+all that into a session — a lot of ceremony for an appliance with a knob.
+
 ## Known rough edges
 
 - **There is no enclosure here yet.** It went through nine revisions and is
@@ -232,6 +249,12 @@ laid out and one press each.
   try one, please say so.
 - **Browsing the shelf shows albums; it cannot play them.** This is a knob for a
   turntable. Picking an album puts its sleeve on the screen, and then you get up.
+- **Scrobbles under-report.** A side is identified once or twice, not track by
+  track, so a twenty-minute side logs the tracks it was actually asked about
+  rather than all six. Every listen sent is one that really happened, which is
+  the trade made on purpose: the durations are known and a timeline could be
+  guessed from them, but a guessed listen in a permanent history is worse than a
+  missing one.
 
 ## Repository layout
 
@@ -250,9 +273,10 @@ change. The two Python ones need the virtualenv the installer makes (they build
 a throwaway database); the page test needs nothing but node.
 
 ```bash
-.venv/bin/python v2/brain/test_match.py   # a service's answer against your shelf
-.venv/bin/python v2/pi/test_ears.py       # what the ears do with no sound
-node v2/pi/static/test_page.mjs           # does the web interface hold together
+.venv/bin/python v2/brain/test_match.py     # a service's answer against your shelf
+.venv/bin/python v2/brain/test_scrobble.py  # exactly what would leave the house
+.venv/bin/python v2/pi/test_ears.py         # what the ears do with no sound
+node v2/pi/static/test_page.mjs             # does the web interface hold together
 ```
 
 ## Licence

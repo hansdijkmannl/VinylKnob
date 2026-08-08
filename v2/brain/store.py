@@ -81,6 +81,9 @@ DEFAULTS = {
     "discogs_token": "",
     "discogs_user": "",
     "audd_token": "",
+    # Empty means no scrobbling at all; see scrobble.py on why that is the
+    # default and not an option.
+    "listenbrainz_token": "",
     "collection_synced_at": "",
     "lookup_count": "0",
 

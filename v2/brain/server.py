@@ -31,12 +31,55 @@ import avr
 import discogs
 import local
 import recognise
+import scrobble
 from store import CLIPS, COVERS, KNOWN_INPUTS, Store
 
 HERE = pathlib.Path(__file__).parent
 PORT = 8790
 
 store = Store()
+
+
+# The last thing sent, so a retried lookup that lands on the same track again
+# does not become a second listen. In memory on purpose: after a restart the
+# worst case is one duplicate, and a table for that would outlive its usefulness.
+_last_sent: tuple[str, str, float] = ("", "", 0.0)
+
+
+async def scrobbled(release, seen: dict | None, artist: str, title: str) -> None:
+    """Tell the listening service, if there is one and there is anything to tell.
+
+    Deliberately after the answer has gone back to the ears. A service that is
+    slow or down must not hold up the sleeve appearing on the panel, so nothing
+    here is awaited by the thing that recognised.
+    """
+    global _last_sent
+    token = store.get("listenbrainz_token")
+    if not token:
+        return
+
+    track = (seen or {}).get("title") or title
+    if not (artist and track):
+        return
+
+    key_artist, key_track, when = _last_sent
+    now = time.time()
+    if (key_artist, key_track) == (artist, track) and now - when < scrobble.SAME_TRACK_S:
+        return
+    _last_sent = (artist, track, now)
+
+    body = scrobble.payload(
+        artist=artist, track=track,
+        album=(release or {}).get("title") or "",
+        printed=(seen or {}).get("printed") or "",
+        discogs_id=(release or {}).get("discogsId") or "",
+        at=int(now))
+    result = await scrobble.send(token, body)
+    where = f" {(seen or {}).get('printed', '')}".rstrip()
+    if result.get("ok"):
+        print(f"[scrobble] {artist} — {track}{where}", flush=True)
+    else:
+        print(f"[scrobble] failed: {result.get('error')}", flush=True)
 
 
 def track_seen(release_id, title: str) -> dict | None:
@@ -106,6 +149,11 @@ async def api_listen(request):
                     "recognised", engine="local", artist=row["artist"],
                     title=row["title"], album=row["title"],
                     release_id=row["id"], raw={"local": found})
+                # Our own fingerprints know the record but not which track, so
+                # the album stands in for it. Better a listen of the record than
+                # no listen at all.
+                asyncio.create_task(scrobbled(row_to_release(row), None,
+                                              row["artist"], row["title"]))
                 return web.json_response({
                     "results": [{"engine": "local", "matched": True,
                                  "artist": row["artist"], "title": row["title"],
@@ -156,11 +204,18 @@ async def api_listen(request):
     if match is not None and samples is not None:
         local.remember(store.db, match["id"], samples)
 
+    seen = track_seen(match["id"] if match else None, hit.get("title") or "")
+    # Only once it is settled. With several records still to choose between, the
+    # album is not known and sending a guess to something that keeps a permanent
+    # history is worse than sending nothing.
+    if match is not None:
+        asyncio.create_task(scrobbled(row_to_release(match), seen,
+                                      artist, hit.get("title") or ""))
+
     return web.json_response({
         "results": results, "playId": play_id, "matched": True,
         "release": row_to_release(match) if match else None,
-        "track": track_seen(match["id"] if match else None,
-                            hit.get("title") or ""),
+        "track": seen,
         # The records this track is on, when there is more than one. Empty
         # otherwise, so nothing downstream has to care about the common case.
         "choices": [row_to_release(r) for r in choices] if len(choices) > 1 else [],
@@ -195,6 +250,11 @@ async def api_enrol(request):
 
     hashes = local.remember(store.db, release_id, samples)
     return web.json_response({"ok": True, "hashes": hashes})
+
+
+async def api_scrobble_check(_request):
+    """Is the token good? Asks the service and says whose account it is."""
+    return web.json_response(await scrobble.validate(store.get("listenbrainz_token")))
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +518,8 @@ async def api_get_settings(_request):
         "discogsUser": store.get("discogs_user"),
         "discogsTokenSet": bool(store.get("discogs_token")),
         "auddTokenSet": bool(store.get("audd_token")),
+        "scrobbleTokenSet": bool(store.get("listenbrainz_token")),
+        "scrobbleUser": store.get("listenbrainz_user"),
         "collectionCount": store.release_count(),
         "lookups": int(store.get("lookup_count", "0") or 0),
         "localHashes": local.count(store.db)[0],
@@ -473,7 +535,8 @@ async def api_set_settings(request):
     # An empty key field means "leave it", not "clear it" — otherwise the web
     # interface would wipe your token every time you changed something else.
     # Clearing is explicit: send null, which is what the remove button does.
-    for field, key in (("discogsToken", "discogs_token"), ("auddToken", "audd_token")):
+    for field, key in (("discogsToken", "discogs_token"), ("auddToken", "audd_token"),
+                       ("scrobbleToken", "listenbrainz_token")):
         if field in body and body[field] is None:
             store.set(key, "")
             continue
@@ -627,6 +690,7 @@ def main():
     app.router.add_get("/", index)
     app.router.add_post("/api/listen", api_listen)
     app.router.add_post("/api/enrol", api_enrol)
+    app.router.add_get("/api/scrobble/check", api_scrobble_check)
     app.router.add_get("/api/plays", api_plays)
     app.router.add_post("/api/plays/{id}/link", api_link)
     app.router.add_post("/api/plays/{id}/unlink", api_unlink)

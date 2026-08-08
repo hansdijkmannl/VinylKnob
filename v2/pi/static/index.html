@@ -590,6 +590,24 @@ button.danger{background:var(--warn);color:#fff}
     </div>
     <p class="hint" id="aInfo"></p>
   </div>
+
+  <h2>Scrobbling</h2>
+  <div class="card">
+    <p class="hint" style="margin-top:0">Vinyl is the hole in every listening
+      history: streaming logs itself, a record leaves no trace. With a
+      <a href="https://listenbrainz.org/settings/" target="_blank"
+         rel="noreferrer">ListenBrainz token</a> every recognised record is
+      logged with its artist, track, album and the side it was on. Nothing is
+      sent while this is empty.</p>
+    <label for="lbToken">ListenBrainz token</label>
+    <input id="lbToken" type="password" placeholder="unchanged" autocomplete="off">
+    <div class="row" style="margin-top:.75rem">
+      <button id="lbSave">Save</button>
+      <button class="sec" id="lbCheck">Check</button>
+      <button class="sec" id="lbClear">Remove</button>
+    </div>
+    <p class="hint" id="lbInfo"></p>
+  </div>
 </section>
 
 </main>
@@ -1505,6 +1523,32 @@ on('aClear', 'click', async () => {
   loadSettings();
 });
 
+on('lbSave', 'click', async () => {
+  const v = $('lbToken').value.trim();
+  if (!v) { setText('lbInfo', 'Paste a token first.'); return; }
+  await post('api/settings', {scrobbleToken: v});
+  $('lbToken').value = '';
+  setText('lbInfo', 'Saved. Press Check to see whose account it is.');
+  loadSettings();
+});
+
+on('lbCheck', 'click', async () => {
+  setText('lbInfo', 'Asking ListenBrainz…');
+  try {
+    const d = await json('api/scrobble/check');
+    setText('lbInfo', d.ok ? `Good — listens go to ${d.user}.` : `Not accepted: ${d.error}`);
+  } catch (e) {
+    setText('lbInfo', 'Could not reach the brain.');
+  }
+});
+
+on('lbClear', 'click', async () => {
+  await post('api/settings', {scrobbleToken: null});
+  $('lbToken').value = '';
+  setText('lbInfo', 'Removed. Nothing is sent anywhere.');
+  loadSettings();
+});
+
 // ---------------------------------------------------------------------------
 // Shared: /api/settings feeds both the Discogs block and the tab counters.
 // ---------------------------------------------------------------------------
@@ -1524,6 +1568,9 @@ async function loadSettings() {
   setText('aInfo', s.auddTokenSet
     ? 'Token set — AudD joins in on every recording.'
     : 'No token — only Shazam takes part.');
+  setText('lbInfo', s.scrobbleTokenSet
+    ? (s.scrobbleUser ? `Listens go to ${s.scrobbleUser}.` : 'Token set.')
+    : 'No token — nothing is sent anywhere.');
 
   refreshCounts(s);
 }
