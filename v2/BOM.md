@@ -87,8 +87,9 @@ the shelf all work exactly as before; only recognition needs it.
 The panel runs off the Pi, which is tidier than two separate adapters — but it
 depends on which supply you choose.
 
-A Pi 5 limits its USB ports to **600 mA in total** by default. That is too
-little for the CrowPanel, which wants 5 V at 1 A. The limit rises automatically
+A Pi 5 limits its USB ports to **600 mA in total** by default. The CrowPanel is
+specified at 5 V and 1 A, and measured asks for 500 mA (see below) — either way
+that is the whole budget for one device. The limit rises automatically
 to **1.6 A** once the Pi has negotiated 5 V at 5 A over USB-PD — in practice,
 Raspberry Pi's own 27 W adapter.
 
@@ -105,9 +106,42 @@ USB connection: D− and D+ run through R43/R44 straight to `GPIO19/USB_D−` an
 `GPIO20/USB_D+` on the ESP32-S3, with no CH340 or CP2102 in between. It is the
 chip's own native USB, which is what makes `flash-via-pi.sh` possible.
 
+Which the running machine confirms, so this is not read off a schematic and hoped
+for. `lsusb` on the Pi:
+
+```
+Bus 003 Device 002: ID 303a:1001 Espressif USB JTAG/serial debug unit
+  max 500mA · 12 Mbps
+```
+
+Espressif's own vendor id, the S3's native peripheral, no bridge chip anywhere,
+and the port appears as `/dev/ttyACM0`. Note the **500 mA**: that is the panel's
+own request, and the un-negotiated budget is 600 mA for every port together. It
+fits, but with nothing to spare — plug anything else into the Pi and the official
+adapter stops being a recommendation.
+
 If you cannot get the official adapter, `usb_max_current_enable=1` in
 `config.txt` raises the limit anyway — but then your supply really does have to
 deliver 1.6 A, or it will collapse under load.
+
+---
+
+## One that is known to work
+
+Written down because "it should work" and "it does work" are different claims, and
+this is the second one:
+
+| | |
+|---|---|
+| Raspberry Pi 5, **1 GB** | Raspberry Pi OS Lite 64-bit |
+| **32 GB** microSD | A1, high-endurance |
+| **Elecrow CrowPanel 2.1"** ESP32 Rotary Display | ESP32-S3R8 |
+| one **USB-A to JST MX1.25** cable | the one in the panel's box, into `USB-5V-IN` |
+| **Marantz SR7015** | Network Control on Always On, turntable on `PHONO` |
+
+Nothing else: no microphone, no separate supply for the panel, no hub, no level
+shifters, no soldering. If you build a different combination that works, say which
+— particularly the receiver, since that is the part with no published list.
 
 ---
 

@@ -71,9 +71,10 @@ Around €150. The full list with the reasoning behind each part is in
 | microSD card | 32 GB, A1, high-endurance |
 | Power supply | the official 27 W USB-C one for a Pi 5, not a generic charger |
 
-The cable from the Pi to the panel comes with the panel. Plain USB-A at the Pi
-end, and it carries power and data both — see [How it listens](#how-it-listens)
-for the other end of that.
+The cable from the Pi to the panel comes with the panel: plain USB-A at the Pi end,
+a 4-pin JST MX1.25 into `USB-5V-IN` at the other, since the panel has no USB socket
+of its own. One cable, power and data both — the Pi sees it as the ESP32-S3's native
+USB and can flash it from there.
 
 No microphone. See [How it listens](#how-it-listens).
 

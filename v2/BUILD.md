@@ -62,9 +62,15 @@ the shelf, which is worth having on its own. The Pi adds everything about record
 later, and the panel does not change when it appears.
 
 **When you unpack the panel**, check the cable is in the box: plain USB-A at one
-end, a 4-pin JST MX1.25 at the other. The CrowPanel has no USB-C and that plug is
-awkward to source separately, so if it is missing, say so before you go looking for
-one.
+end, a small white **4-pin JST MX1.25** at the other, which goes into the connector
+marked `USB-5V-IN` on the board. The CrowPanel has no USB socket of its own and that
+plug is awkward to source separately, so if it is missing, take it up with the
+seller rather than going shopping.
+
+That one cable is the whole connection. Power and data both: the Pi sees the panel
+as `303a:1001 Espressif USB JTAG/serial debug unit` drawing 500 mA, which is the
+S3's own native USB with no bridge chip in between — and is why the panel can be
+flashed from the Pi later without touching it.
 
 ---
 
