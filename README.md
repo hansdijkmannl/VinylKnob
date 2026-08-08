@@ -14,7 +14,7 @@ anyone.
 | Gesture | Effect |
 |---|---|
 | Wake it | the input list: record or Apple TV is the question at that moment, not how loud |
-| Turn | volume; turning faster takes bigger steps |
+| Turn | volume; turning faster takes bigger steps. You can pick which numbers it lands on — any half decibel, whole ones, or only the even or odd ones |
 | Hold + turn | step through inputs |
 | Short press | mute |
 | Double press | jump to your favourite input |
@@ -292,6 +292,7 @@ change. The two Python ones need the virtualenv the installer makes (they build
 a throwaway database); the page test needs nothing but node.
 
 ```bash
+v2/crowpanel/test/run.sh                    # which numbers the volume lands on
 .venv/bin/python v2/brain/test_match.py     # a service's answer against your shelf
 .venv/bin/python v2/brain/test_local.py     # recognising your own records, and naming the track
 .venv/bin/python v2/brain/test_scrobble.py  # exactly what would leave the house

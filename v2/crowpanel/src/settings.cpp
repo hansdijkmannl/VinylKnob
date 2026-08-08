@@ -23,6 +23,41 @@ static void keyFor(char *buf, size_t n, const char *prefix, int i) {
   snprintf(buf, n, "%s%d", prefix, i);   // "code0", "label0", ...
 }
 
+// Which numbers the volume may land on.
+//
+// The receiver counts in half decibels and takes any of them, so this is purely
+// about what you want to see: -41.0 rather than -40.5, or only the even ones. It
+// snaps in the direction you are turning, so a step never doubles back — going
+// up from -41 with even numbers only gives -40, not -42.
+//
+// The awkward case is starting off the lattice, which happens the moment you
+// change the setting or when something else touched the volume. Turning up from
+// -40.5 with whole numbers goes to -40, not -39: the nearest allowed value in
+// that direction, one step and no jump.
+int16_t volumeSnap(int16_t halfSteps, int direction, uint8_t lattice) {
+  if (lattice == VOL_ANY || direction == 0) return halfSteps;
+
+  // The lattice as a spacing and an offset, in half steps. Even and odd decibels
+  // are four half steps apart; the offset is where the pattern starts. Volumes
+  // are negative, so "even" means an even number of decibels below zero.
+  const int16_t spacing = (lattice == VOL_WHOLE) ? 2 : 4;
+  const int16_t offset  = (lattice == VOL_ODD) ? 2 : 0;
+
+  // Floor towards minus infinity so the pattern is the same above and below
+  // zero, which C division on its own does not give.
+  const int16_t shifted = halfSteps - offset;
+  const int16_t below = (int16_t)((shifted >= 0 ? shifted / spacing
+                                                : (shifted - spacing + 1) / spacing)
+                                  * spacing + offset);
+
+  // Strictly past where you are, in the direction you turned. Going up that is
+  // always the next one along; going down it is `below` itself, unless you were
+  // standing on it, in which case one further. Sharing a single adjustment
+  // between the two directions is what made a click land back where it started.
+  if (direction > 0) return (int16_t)(below + spacing);
+  return below == halfSteps ? (int16_t)(below - spacing) : below;
+}
+
 void settingsLoad() {
   // Factory defaults first, then overwrite with whatever is in NVS.
   memset(&settings, 0, sizeof(settings));
@@ -34,6 +69,7 @@ void settingsLoad() {
   settings.volMaxDb       = DEF_VOL_MAX_DB;
   settings.longPressMs    = DEF_LONG_PRESS_MS;
   settings.doublePressMs  = DEF_DOUBLE_PRESS_MS;
+  settings.volumeLattice  = VOL_ANY;
   settings.favouriteInput = DEF_FAVOURITE_INPUT;
   settings.appleTvInput   = -1;
   settings.inputCount     = DEFAULT_INPUT_COUNT;
@@ -61,6 +97,7 @@ void settingsLoad() {
   settings.doublePressMs  = prefs.getUShort("dblms",    settings.doublePressMs);
   settings.favouriteInput = prefs.getChar  ("fav",      settings.favouriteInput);
   settings.appleTvInput   = prefs.getChar  ("atvin",    settings.appleTvInput);
+  settings.volumeLattice  = prefs.getUChar ("vollat",   settings.volumeLattice);
 
   const uint8_t stored = prefs.getUChar("ninputs", 255);
   if (stored != 255) {
@@ -104,6 +141,7 @@ void settingsSave() {
   prefs.putUShort("dblms",    settings.doublePressMs);
   prefs.putChar  ("fav",      settings.favouriteInput);
   prefs.putChar  ("atvin",    settings.appleTvInput);
+  prefs.putUChar ("vollat",   settings.volumeLattice);
 
   prefs.putUChar("ninputs", settings.inputCount);
   for (int i = 0; i < settings.inputCount; i++) {
@@ -154,6 +192,7 @@ void settingsToJson(String &out) {
   doc["doublePressMs"]  = settings.doublePressMs;
   doc["favouriteInput"] = settings.favouriteInput;
   doc["appleTvInput"]   = settings.appleTvInput;
+  doc["volumeLattice"]  = settings.volumeLattice;
   doc["maxInputs"]      = MAX_INPUTS;
 
   JsonArray arr = doc["inputs"].to<JsonArray>();
@@ -248,6 +287,10 @@ bool settingsFromJson(const String &body, String &err, bool &wifiChanged) {
   if (!doc["favouriteInput"].isNull()) {
     const int v = (int)doc["favouriteInput"];
     settings.favouriteInput = (v >= 0 && v < settings.inputCount) ? (int8_t)v : -1;
+  }
+  if (!doc["volumeLattice"].isNull()) {
+    const int v = (int)doc["volumeLattice"];
+    settings.volumeLattice = (v >= 0 && v < VOL_LATTICES) ? (uint8_t)v : VOL_ANY;
   }
   if (!doc["appleTvInput"].isNull()) {
     const int v = (int)doc["appleTvInput"];

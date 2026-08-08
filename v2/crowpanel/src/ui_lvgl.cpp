@@ -379,6 +379,17 @@ void uiBegin() {
   // text — that app supplies no image — and then "YouTube" above the video title
   // is more informative than an empty space.
   lblSource    = makeLabel(lyNow, &lv_font_montserrat_20, COL_TEXT,      LV_ALIGN_CENTER,  0, -64);
+  // Its own dark backing, for the same reason the listen button has one: this
+  // line lies on a sleeve, and a sleeve can be any colour it likes, so without
+  // it the track was legible on a dark cover and gone on a pale one.
+  //
+  // Styled onto the label rather than given a plate of its own — one object
+  // fewer, and nothing that can be shown while the other is hidden.
+  lv_obj_set_style_bg_color(lblSource, lv_color_hex(COL_BACKGROUND), 0);
+  lv_obj_set_style_bg_opa(lblSource, LV_OPA_70, 0);
+  lv_obj_set_style_radius(lblSource, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_pad_hor(lblSource, 18, 0);
+  lv_obj_set_style_pad_ver(lblSource, 7, 0);
   lblMute    = makeLabel(lyNow, &lv_font_montserrat_20, COL_WARN, LV_ALIGN_CENTER, 0, -100);
   lv_label_set_text(lblMute, "MUTE");
   lv_obj_add_flag(lblMute, LV_OBJ_FLAG_HIDDEN);
@@ -622,6 +633,19 @@ void uiBegin() {
 }
 
 // ---------------------------------------------------------------------------
+// One way to show or hide the source line, because five separate branches decide
+// to put something on it.
+//
+// It is two lines and it still managed to hang the panel: replacing every
+// clear_flag on this label with a call to this function replaced the two inside
+// the function as well, so it called itself for ever. The screen never came up
+// and said nothing about why — a stack overflow this early has nowhere to print
+// to. Worth remembering before the next tidy sweep with a global replace.
+static void showSource(bool on) {
+  if (on) lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+  else    lv_obj_add_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void show(lv_obj_t *which) {
   lv_obj_t *alle[] = {lyNow, lyInputs, lyBrowse, lyQr, lyMsg, lySet};
   for (lv_obj_t *o : alle) {
@@ -709,13 +733,13 @@ void uiRender(const UiState &s) {
         lv_label_set_text_fmt(lblSource, "ON %d OF YOURS - TAP TO PICK",
                               (int)s.choiceCount);
         lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_ACCENT), 0);
-        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+        showSource(true);
       } else if (showText && s.sourceApp[0] && !s.artworkIsLogo) {
         lv_label_set_text(lblSource, s.sourceApp);
-        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+        showSource(true);
         lv_obj_set_style_text_color(lblSource, lv_color_hex(artworkAccent()), 0);
       } else {
-        lv_obj_add_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+        showSource(false);
       }
 
       // The plate behind the text only when there is text or a dB reading.
@@ -760,7 +784,7 @@ void uiRender(const UiState &s) {
         snprintf(line, sizeof(line), "NEXT  %s", s.nextUp);
         lv_label_set_text(lblSource, line);
         lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_ACCENT), 0);
-        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+        showSource(true);
       } else if (s.nowTrack[0] && !s.turning) {
         // White rather than the sleeve's own colour. The accent is picked from
         // the artwork and lands wherever that record happens to be dark or
@@ -768,7 +792,7 @@ void uiRender(const UiState &s) {
         // white on the scrim always is.
         lv_label_set_text(lblSource, s.nowTrack);
         lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_TEXT), 0);
-        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+        showSource(true);
       }
 
       // Just linked: confirm it briefly. You have recorded something the device
@@ -777,7 +801,7 @@ void uiRender(const UiState &s) {
       if (s.justLinked) {
         lv_label_set_text(lblSource, "LINKED");
         lv_obj_set_style_text_color(lblSource, lv_color_hex(COL_ACCENT), 0);
-        lv_obj_clear_flag(lblSource, LV_OBJ_FLAG_HIDDEN);
+        showSource(true);
       }
 
       if (s.piHot) lv_obj_clear_flag(lblHot, LV_OBJ_FLAG_HIDDEN);

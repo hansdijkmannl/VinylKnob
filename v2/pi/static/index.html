@@ -489,6 +489,16 @@ button.danger{background:var(--warn);color:#fff}
     <select id="favouriteInput"></select>
     <label for="appleTvInput">The Apple TV is on</label>
     <select id="appleTvInput"></select>
+    <label for="volumeLattice">Volume lands on</label>
+    <select id="volumeLattice">
+      <option value="0">any half decibel</option>
+      <option value="1">whole decibels</option>
+      <option value="2">even decibels</option>
+      <option value="3">odd decibels</option>
+    </select>
+    <p class="hint">The receiver counts in half decibels and will take any of
+      them. This is about which of them you can stand to look at — a click always
+      moves, and in the direction you turned.</p>
     <p class="hint">Choosing that input also wakes the Apple TV, switching
       everything off puts it back to sleep, and tapping the screen while it is
       selected opens the app launcher instead of the record shelf.</p>
@@ -1315,6 +1325,7 @@ async function loadPanel() {
   inputs = (S.inputs || []).map(b => ({code: b.code, label: b.label}));
   favourite = S.favouriteInput;
   appleTv   = S.appleTvInput;
+  $('volumeLattice').value = String(S.volumeLattice ?? 0);
   drawInputs();
   sliderLabels();
 }
@@ -1389,6 +1400,7 @@ function panelMessage(text, ok) {
 on('kSave', 'click', async () => {
   const b = {inputs: inputs, favouriteInput: parseInt($('favouriteInput').value, 10),
              appleTvInput: parseInt($('appleTvInput').value, 10),
+             volumeLattice: parseInt($('volumeLattice').value, 10),
              encDivider: parseInt($('encDivider').value, 10),
              rotated: $('rotated').value === '1',
              screenAngle: Math.round(parseFloat($('screenAngle').value || '0') * 10),

@@ -19,6 +19,10 @@ struct Settings {
   char     brainHost[48];
 
   uint8_t  halfDbPerClick;       // 1 = 0.5 dB per click
+
+  // Which numbers the volume is allowed to land on. Some people cannot leave a
+  // -40.5 alone, and a few want it even or odd. See VolumeLattice.
+  uint8_t  volumeLattice;
   uint8_t  accelFactor;          // multiplier when turning fast
   uint16_t accelWindowMs;        // what "fast" means
   uint8_t  encDivider;           // quadrature transitions per step (1, 2 or 4)
@@ -51,6 +55,20 @@ struct Settings {
   uint8_t  inputCount;           // 0 .. MAX_INPUTS
   InputDef inputs[MAX_INPUTS];   // the list you step through by holding and turning
 };
+
+// What the volume may settle on. The receiver counts in half decibels and will
+// take any of them; this is entirely about what you can stand to look at.
+enum VolumeLattice : uint8_t {
+  VOL_ANY = 0,    // every half step the receiver offers: -40.5, -41.0, -41.5
+  VOL_WHOLE,      // whole decibels only: -40, -41, -42
+  VOL_EVEN,       // -40, -42, -44
+  VOL_ODD,        // -41, -43, -45
+  VOL_LATTICES
+};
+
+// Snap a volume in half steps to the nearest allowed one in the given
+// direction. Exposed for the panel and for its test.
+int16_t volumeSnap(int16_t halfSteps, int direction, uint8_t lattice);
 
 extern Settings settings;
 

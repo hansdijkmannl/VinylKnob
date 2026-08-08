@@ -511,7 +511,13 @@ static void changeVolume(int steps) {
   if (!avrState.haveVolume) return;
 
   const int size = settings.halfDbPerClick * (fast ? settings.accelFactor : 1);
-  avrSetVolumeHalf(avrPendingVolumeHalf() + steps * size);
+  int target = avrPendingVolumeHalf() + steps * size;
+  // And then onto whichever numbers you can stand to look at. Snapping the
+  // target rather than the step, so a click always moves and never lands back
+  // where it started — see volumeSnap().
+  if (settings.volumeLattice != VOL_ANY && steps != 0)
+    target = volumeSnap((int16_t)target, steps > 0 ? 1 : -1, settings.volumeLattice);
+  avrSetVolumeHalf(target);
 
   if (avrState.muted) {                       // turning cancels mute
     avrSend("MUOFF");

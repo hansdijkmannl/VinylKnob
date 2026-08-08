@@ -157,6 +157,13 @@ dd{margin:0;color:var(--dim)}
   <select id="favouriteInput"></select>
   <label>Apple TV on</label>
   <select id="appleTvInput"></select>
+  <label>Volume lands on</label>
+  <select id="volumeLattice">
+   <option value="0">any half decibel</option>
+   <option value="1">whole decibels</option>
+   <option value="2">even decibels</option>
+   <option value="3">odd decibels</option>
+  </select>
 </div>
 
 <h2>Controls</h2>
@@ -238,6 +245,7 @@ async function boot(){
   inputs=S.inputs.map(b=>({code:b.code,label:b.label}));
   setFav(S.favouriteInput);
   setFav(S.appleTvInput,'appleTvInput');
+  $('volumeLattice').value=String(S.volumeLattice??0);
   renderInputs();
   $('favouriteInput').onchange=e=>setFav(parseInt(e.target.value,10));
   $('appleTvInput').onchange=e=>setFav(parseInt(e.target.value,10),'appleTvInput');
@@ -262,7 +270,8 @@ async function tick(){
 
 async function save(){
   const b={inputs:inputs,favouriteInput:parseInt($('favouriteInput').value,10),
-           appleTvInput:parseInt($('appleTvInput').value,10)};
+           appleTvInput:parseInt($('appleTvInput').value,10),
+           volumeLattice:parseInt($('volumeLattice').value,10)};
   for(const k of ['avrHost','brainHost','wifiSsid','wifiPass'])b[k]=$(k).value;
   for(const k of ['avrPort','brightness','dimAfterS','halfDbPerClick','accelFactor','accelWindowMs',
                   'volMaxDb','longPressMs','doublePressMs'])b[k]=parseInt($(k).value,10);
