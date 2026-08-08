@@ -33,7 +33,9 @@ mechanical precision part in it, and no microphone — see
 
 The enclosure is printed yourself: a plinth for the panel to stand on, with the
 Pi inside. No files here yet — the shape is still changing too fast to publish.
-What it has to do is below, under [Ballast and feet](#ballast-and-feet).
+What it has to do is below, under [Ballast and feet](#ballast-and-feet) — and how
+to get power into it without losing the USB current the panel needs is under
+[Power](#power), because the obvious way costs you exactly that.
 
 > **The cable comes with the panel** and is not something to source. It is
 > plain USB-A at the Pi end; at the panel end it is a 4-pin JST MX1.25 into
@@ -123,6 +125,35 @@ adapter stops being a recommendation.
 If you cannot get the official adapter, `usb_max_current_enable=1` in
 `config.txt` raises the limit anyway — but then your supply really does have to
 deliver 1.6 A, or it will collapse under load.
+
+### Do not feed it 5 V through the GPIO header
+
+It is a tempting shortcut when you are building an enclosure: one USB socket in the
+back panel, `+` and `−` to pins 2 and 6, done. It costs you three things, and the
+first one is measurable on the running machine.
+
+**The current limit comes from the negotiation, not from the volts.** On the Pi
+here, `usb_max_current_enable` reads 1 — and it is not in `config.txt`, so the
+firmware set it after agreeing 5 V at 5 A with the official adapter. That handshake
+happens on the USB-C **CC** lines. Bypass the socket and there is no handshake, so
+every USB port together falls back to 600 mA, and the panel asks for 500 of them.
+It fits, with a hundred milliamps left for the rest of your life.
+
+**A USB-C socket wired with only `+` and `−` gets nothing.** A USB-C source does
+not energise VBUS until it sees a valid pull-down — 5.1 kΩ to ground on CC1 and CC2
+— so a PD adapter into such a socket delivers zero volts. An old USB-A charger
+would work, because those put 5 V on the line unconditionally, which is a fine
+description of what you would be building.
+
+**And the header bypasses the input protection.** No polyfuse, no reverse-polarity
+or over-voltage protection on that path; you are on the 5 V rail directly.
+
+So: bring the Pi's own USB-C socket out to the back panel instead — a short
+panel-mount extension that carries *all* the pins. The negotiation survives, the
+protection survives, and the enclosure still gets one tidy socket. If you insist on
+the header, put `usb_max_current_enable=1` in `/boot/firmware/config.txt` and use a
+supply that genuinely delivers, because the Pi will then assume it may take 1.6 A
+on USB on top of its own peak.
 
 ---
 
