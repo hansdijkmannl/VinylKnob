@@ -568,6 +568,14 @@ class Ears:
         except Exception as e:                                  # noqa: BLE001
             print(f"[learn] brain unreachable: {e!r}", flush=True)
             return
+        if body.get("full"):
+            # This record has been learnt enough. Stop asking for the rest of
+            # the side, or we send a megabyte and a half every half minute for
+            # nothing — and the brain would keep saying no.
+            self.learn_at = float("inf")
+            print(f"[learn] {self.artist} — {self.album or self.title} "
+                  f"is learnt enough", flush=True)
+            return
         if body.get("ok"):
             self.learned += 1
             print(f"[learn] {self.learned} x {CLIP_S:.0f}s of "

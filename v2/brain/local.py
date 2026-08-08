@@ -40,6 +40,32 @@ CREATE INDEX IF NOT EXISTS idx_prints_hash ON prints(hash);
 # out is a better dial than truncating.
 KEEP_ONE_IN = 4
 
+# How much of one record is enough to keep.
+#
+# Learning a side turned out to need a ceiling, and finding that out cost an
+# evening: with none, one record reached 137,527 hashes against an average of
+# ten thousand — a third of the whole database — and became a magnet. Everything
+# put on after it was recognised as that record, because a release with thirteen
+# times the coverage wins any coincidental alignment and the margin over the
+# runner-up cannot save you from a runner-up that small.
+#
+# Forty thousand is about three and a half minutes of a side, spread over
+# wherever the needle happened to be. Records that recognise reliably today sit
+# between fifteen and thirty-six thousand, so this is comfortably above what
+# works and comfortably below what dominates.
+HASH_CAP = 40_000
+
+
+def count_for(db, release_id: int) -> int:
+    return db.execute("SELECT COUNT(*) FROM prints WHERE release_id = ?",
+                      (release_id,)).fetchone()[0]
+
+
+def is_full(db, release_id: int) -> bool:
+    """Has this record been learnt enough? See HASH_CAP."""
+    return count_for(db, release_id) >= HASH_CAP
+
+
 # When a local hit is good enough to skip the service entirely.
 MIN_SCORE = 25
 MIN_MARGIN = 3.0

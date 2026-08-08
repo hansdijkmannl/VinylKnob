@@ -255,13 +255,19 @@ async def api_enrol(request):
     if store.release(release_id) is None:
         return web.json_response({"ok": False, "error": "no such release"}, status=404)
 
+    # Enough is enough. Without this one record ran to thirteen times the
+    # average and started swallowing every other; see local.HASH_CAP.
+    if local.is_full(store.db, release_id):
+        return web.json_response({"ok": True, "full": True, "hashes": 0})
+
     audio = await request.read()
     samples = local.decode_wav(audio)
     if samples is None:
         return web.json_response({"ok": False, "error": "unreadable audio"}, status=400)
 
     hashes = local.remember(store.db, release_id, samples, track_pos)
-    return web.json_response({"ok": True, "hashes": hashes})
+    return web.json_response({"ok": True, "hashes": hashes,
+                              "full": local.is_full(store.db, release_id)})
 
 
 async def api_scrobble_check(_request):

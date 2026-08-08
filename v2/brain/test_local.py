@@ -146,6 +146,18 @@ def main() -> int:
     check((local.identify(db, side_b1) or {}).get("trackPos") is None,
           "and the untagged clip is still untagged afterwards")
 
+    # -- and there is a ceiling on how much of one record is kept -------------
+    # Without one, a side played through learns until it is a third of the whole
+    # database and every record put on after it is recognised as that one. It
+    # happened, at 137,527 hashes against an average of ten thousand.
+    check(local.HASH_CAP > 0, "there is a cap at all")
+    check(not local.is_full(db, first),
+          "a record with a normal amount of coverage is not full")
+    was, local.HASH_CAP = local.HASH_CAP, 10
+    check(local.is_full(db, first),
+          "and one past the cap is, so the enrolling stops rather than running on")
+    local.HASH_CAP = was
+
     store.close()
     print()
     print(f"{len(FAILS)} problem(s)" if FAILS else "  all good")

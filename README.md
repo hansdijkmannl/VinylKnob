@@ -202,7 +202,11 @@ recognise the record perfectly well; they simply cannot name the song.
 
 Every play also teaches it more of the side. A record that has been identified
 is sampled again every half minute and those stretches join its fingerprints, so
-one play covers a whole side where it used to take dozens. That is what keeps
+one play covers a whole side where it used to take dozens — up to a ceiling of
+about three and a half minutes of coverage per record, after which it stops.
+That ceiling is not tidiness: without it one record ran to thirteen times the
+average, became a third of the whole database, and every record put on after it
+was recognised as that one. That is what keeps
 this working without a service: the local database is checked first, and it only
 grows.
 
